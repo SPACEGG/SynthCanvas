@@ -23,6 +23,7 @@ set(LIBRARY_NAME "synth_canvas_gdextension")
 
 # Define the source files for the library
 set(GDE_SOURCES
+    register_types.cpp
     clap_host_node.cpp
     clap_host_node.h
     ../host/audio_engine.cpp
