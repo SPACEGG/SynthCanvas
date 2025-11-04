@@ -1,6 +1,16 @@
-[submodule ".\\external\\oboe"]
-	path = .\\external\\oboe
+[submodule "libs/oboe"]
+	path = libs/oboe
 	url = https://github.com/google/oboe.git
-[submodule ".\\external\\godot-cpp"]
-	path = .\\external\\godot-cpp
+	branch = 1.10.0
+[submodule "src/gdextension/godot-cpp"]
+	path = src/gdextension/godot-cpp
 	url = https://github.com/godotengine/godot-cpp.git
+	branch = godot-4.5-stable
+[submodule "libs/clap"]
+	path = libs/clap
+	url = https://github.com/free-audio/clap.git
+	branch = 1.2.6
+[submodule "libs/clap-helpers"]
+	path = libs/clap-helpers
+	url = https://github.com/free-audio/clap-helpers.git
+	branch = main
