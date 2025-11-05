@@ -14,6 +14,7 @@ namespace synth_canvas::host {
 #if defined(__ANDROID__)
 // --- Android implementation using Oboe ---
 #include <oboe/Oboe.h>
+#include <clap/clap.h> // For clap_id
 
 namespace synth_canvas::host {
 
@@ -28,6 +29,7 @@ public:
 
     void playNote(int note, double velocity);
     void stopNote(int note);
+    void setParameterValue(clap_id param_id, double value);
 
     std::function<void(int, float)> on_parameter_changed;
     PluginHost* getPluginHost() const { return _plugin_host.get(); }
@@ -51,6 +53,7 @@ private:
 
 #else
 // --- Dummy implementation for non-Android platforms (e.g., Windows) ---
+#include <clap/clap.h> // For clap_id
 
 namespace synth_canvas::host {
 
@@ -65,6 +68,7 @@ public:
 
     void playNote(int note, double velocity);
     void stopNote(int note);
+    void setParameterValue(clap_id param_id, double value);
 
     std::function<void(int, float)> on_parameter_changed;
     PluginHost* getPluginHost() const;

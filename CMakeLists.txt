@@ -6,6 +6,22 @@ cmake_minimum_required(VERSION 3.16)
 # Set the project name
 project(SynthCanvas LANGUAGES CXX)
 
-# Add the subdirectory containing the GDExtension library.
-# This is where the main build logic resides.
+# Ensure the bin directory exists for compiled artifacts
+file(MAKE_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
+
+# Define the source files for the GDExtension library
+set(GDE_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/gdextension/register_types.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/gdextension/clap_host_node.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/gdextension/clap_host_node.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/host/audio_engine.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/host/audio_engine.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/host/plugin_host.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/host/plugin_host.h
+)
+
+# Add the subdirectories for the libraries
+add_subdirectory(libs/clap)
+add_subdirectory(libs/clap-helpers)
+add_subdirectory(src/gdextension/godot-cpp)
 add_subdirectory(src/gdextension)

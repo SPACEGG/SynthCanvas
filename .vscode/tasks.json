@@ -56,6 +56,7 @@
                 "-DANDROID_ABI=arm64-v8a",
                 "-DANDROID_PLATFORM=android-33",
                 "-DCMAKE_BUILD_TYPE=Release",
+                "-DGODOTCPP_DISABLE_EXCEPTIONS=OFF",
                 "."
             ],
             "detail": "Configure the project for Android."

@@ -2,6 +2,7 @@
 #include <godot_cpp/variant/utility_functions.hpp>
 
 #include "host/audio_engine.h"
+#include "host/plugin_host.h" // For getPluginHost()
 #include "clap_host_node.h"
 
 using namespace godot;
@@ -14,13 +15,14 @@ void ClapHostNode::_bind_methods()
     ClassDB::bind_method(D_METHOD("stop_audio"), &ClapHostNode::stop_audio);
     ClassDB::bind_method(D_METHOD("play_note", "note", "velocity"), &ClapHostNode::play_note);
     ClassDB::bind_method(D_METHOD("stop_note", "note"), &ClapHostNode::stop_note);
+    ClassDB::bind_method(D_METHOD("set_parameter_value", "param_id", "value"), &ClapHostNode::set_parameter_value);
 
     // --- Define signals to be emitted from C++ to Godot ---
     // Used to notify Godot that a plugin parameter has changed.
     ADD_SIGNAL(MethodInfo("parameter_changed", PropertyInfo(Variant::INT, "param_id"), PropertyInfo(Variant::FLOAT, "value")));
 
     // Used to notify Godot that the plugin's GUI wants to resize.
-    ADD_SIGNAL(MethodInfo("gui_resized", PropertyInfo(Variant::INT, "width"), PropertyInfo(Variant::INT, "height")));
+
 }
 
 ClapHostNode::ClapHostNode()
@@ -31,7 +33,7 @@ ClapHostNode::ClapHostNode()
     // --- Connect signals from the audio engine to Godot signals ---
     if (audio_engine)
     {
-        audio_engine->on_parameter_changed = [this](int param_id, float value)
+        audio_engine->on_parameter_changed = [this](clap_id param_id, double value)
         {
             emit_signal("parameter_changed", param_id, value);
         };
@@ -55,6 +57,14 @@ void ClapHostNode::_exit_tree()
     stop_audio();
 }
 
+void ClapHostNode::_process(double delta)
+{
+    if (audio_engine && audio_engine->getPluginHost())
+    {
+        audio_engine->getPluginHost()->pollMainThread();
+    }
+}
+
 // --- Implementation of methods exposed to Godot ---
 
 void ClapHostNode::load_plugin(const String &path)
@@ -68,10 +78,7 @@ void ClapHostNode::load_plugin(const String &path)
             auto *plugin_host = audio_engine->getPluginHost();
             if (plugin_host)
             {
-                // plugin_host->on_gui_request_resize = [this](uint32_t width, uint32_t height)
-                // {
-                //     emit_signal("gui_resized", static_cast<int>(width), static_cast<int>(height));
-                // };
+                // GUI-related code removed for headless plugin support.
             }
         }
     }
@@ -110,5 +117,13 @@ void ClapHostNode::stop_note(int note)
     if (audio_engine)
     {
         audio_engine->stopNote(note);
+    }
+}
+
+void ClapHostNode::set_parameter_value(clap_id param_id, double value)
+{
+    if (audio_engine)
+    {
+        audio_engine->setParameterValue(param_id, value);
     }
 }

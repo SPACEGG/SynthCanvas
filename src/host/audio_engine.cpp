@@ -154,6 +154,14 @@ namespace synth_canvas::host
         }
     }
 
+    void AudioEngine::setParameterValue(clap_id param_id, double value)
+    {
+        if (_plugin_host)
+        {
+            _plugin_host->setParameterValue(param_id, value);
+        }
+    }
+
 } // namespace synth_canvas::host
 
 #else
@@ -219,6 +227,14 @@ namespace synth_canvas::host
     void AudioEngine::stopNote(int note)
     {
         // No-op
+    }
+
+    void AudioEngine::setParameterValue(clap_id param_id, double value)
+    {
+        if (_plugin_host)
+        {
+            _plugin_host->setParameterValue(param_id, value);
+        }
     }
 
     PluginHost *AudioEngine::getPluginHost() const

@@ -1,54 +1,23 @@
 # GDExtension Library CMakeLists.txt
 
-# Set the C++ standard to C++17
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
+# Define our GDExtension library
+add_library(synth_canvas_gdextension SHARED ${GDE_SOURCES})
 
-# --- Add Sub-libraries ---
-
-# Add godot-cpp. It's a submodule in the current directory.
-# We build it with GDExtension bindings enabled.
-set(GODOT_CPP_BUILD_EXTENSIONS ON)
-add_subdirectory(godot-cpp)
-
-# Add clap and clap-helpers for the plugin host logic.
-# For out-of-tree sources, an explicit binary directory must be specified.
-add_subdirectory(${CMAKE_SOURCE_DIR}/libs/clap ${CMAKE_CURRENT_BINARY_DIR}/clap)
-add_subdirectory(${CMAKE_SOURCE_DIR}/libs/clap-helpers ${CMAKE_CURRENT_BINARY_DIR}/clap-helpers)
-
-# --- Define the GDExtension Library ---
-
-# Library name that Godot will look for.
-set(LIBRARY_NAME "synth_canvas_gdextension")
-
-# Define the source files for the library
-set(GDE_SOURCES
-    register_types.cpp
-    clap_host_node.cpp
-    clap_host_node.h
-    ../host/audio_engine.cpp
-    ../host/audio_engine.h
-    ../host/plugin_host.h
-)
-
-# Only add the full plugin_host implementation for non-windows builds.
-# Windows uses a header-only dummy class.
-if(NOT WIN32)
-    list(APPEND GDE_SOURCES ../host/plugin_host.cpp)
+# For Android, forcefully enable exceptions for our library to be compatible with clap-helpers.
+# This overrides the `-fno-exceptions` flag inherited from the godot-cpp subdirectory.
+if(ANDROID)
+    target_compile_options(synth_canvas_gdextension PRIVATE -fexceptions)
 endif()
-
-# Create the shared library from the source files.
-add_library(${LIBRARY_NAME} SHARED
-    ${GDE_SOURCES}
-)
 
 # --- Configure Includes and Links ---
 
 # Set the include directories required for our library.
-target_include_directories(${LIBRARY_NAME} PRIVATE
+target_include_directories(synth_canvas_gdextension PRIVATE
     # For godot-cpp headers
     ${CMAKE_CURRENT_SOURCE_DIR}/godot-cpp/include
     ${CMAKE_CURRENT_SOURCE_DIR}/godot-cpp/gen/include
+    # The generated GDExtension interface header is in the binary directory
+    ${CMAKE_CURRENT_BINARY_DIR}/godot-cpp/gdextension
 
     # For our own host headers
     ${CMAKE_CURRENT_SOURCE_DIR}/..
@@ -59,7 +28,7 @@ target_include_directories(${LIBRARY_NAME} PRIVATE
 )
 
 # Link the library against its dependencies.
-target_link_libraries(${LIBRARY_NAME} PRIVATE
+target_link_libraries(synth_canvas_gdextension PRIVATE
     # Link against the compiled godot-cpp library
     godot-cpp
 
@@ -73,28 +42,38 @@ if(ANDROID)
     # Add and link Oboe only for Android
     # For out-of-tree sources, an explicit binary directory must be specified.
     add_subdirectory(${CMAKE_SOURCE_DIR}/libs/oboe ${CMAKE_CURRENT_BINARY_DIR}/oboe)
-    target_include_directories(${LIBRARY_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/libs/oboe/include)
-    target_link_libraries(${LIBRARY_NAME} PRIVATE oboe)
+    target_include_directories(synth_canvas_gdextension PRIVATE ${CMAKE_SOURCE_DIR}/libs/oboe/include)
+    target_link_libraries(synth_canvas_gdextension PRIVATE oboe)
 
     # On Android, we also need to link against libdl for dlopen/dlsym.
-    target_link_libraries(${LIBRARY_NAME} PRIVATE dl)
+    target_link_libraries(synth_canvas_gdextension PRIVATE dl)
 
     # Link logging library
     find_library(log-lib log)
-    target_link_libraries(${LIBRARY_NAME} PRIVATE ${log-lib})
+    target_link_libraries(synth_canvas_gdextension PRIVATE ${log-lib})
 
     # Define that this is an Android build for our source code
-    target_compile_definitions(${LIBRARY_NAME} PRIVATE __ANDROID__)
+    target_compile_definitions(synth_canvas_gdextension PRIVATE __ANDROID__)
 
 elseif(WIN32)
     # Add standard Windows definitions to avoid library conflicts.
-    target_compile_definitions(${LIBRARY_NAME} PRIVATE WIN32 _WINDOWS NDEBUG _WIN32)
+    target_compile_definitions(synth_canvas_gdextension PRIVATE WIN32 _WINDOWS NDEBUG _WIN32)
 endif()
 
+
+# --- Post-build command to copy the library for immediate use ---
+add_custom_command(
+    TARGET synth_canvas_gdextension
+    POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:synth_canvas_gdextension>"
+        "${CMAKE_SOURCE_DIR}/bin/"
+    COMMENT "Copying synth_canvas_gdextension to root bin directory for Godot to use."
+)
 
 # --- Installation (Optional but good practice) ---
 # This helps in packaging the final library.
 # The destination can be adjusted based on your project structure.
-install(TARGETS ${LIBRARY_NAME}
+install(TARGETS synth_canvas_gdextension
     DESTINATION ${CMAKE_SOURCE_DIR}/bin
 )
