@@ -6,6 +6,10 @@ cmake_minimum_required(VERSION 3.16)
 # Set the project name
 project(SynthCanvas LANGUAGES CXX)
 
+# Set the C++ standard for the whole project
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 # Ensure the bin directory exists for compiled artifacts
 file(MAKE_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
 
@@ -25,3 +29,4 @@ add_subdirectory(libs/clap)
 add_subdirectory(libs/clap-helpers)
 add_subdirectory(src/gdextension/godot-cpp)
 add_subdirectory(src/gdextension)
+add_subdirectory(src/module/test-plugin)
