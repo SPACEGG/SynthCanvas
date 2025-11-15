@@ -22,7 +22,6 @@ void ClapHostNode::_bind_methods()
     ADD_SIGNAL(MethodInfo("parameter_changed", PropertyInfo(Variant::INT, "param_id"), PropertyInfo(Variant::FLOAT, "value")));
 
     // Used to notify Godot that the plugin's GUI wants to resize.
-
 }
 
 ClapHostNode::ClapHostNode()

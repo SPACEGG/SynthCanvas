@@ -5,6 +5,7 @@
 #include <memory>
 #include <string>
 #include <functional>
+#include <vector> // Add for std::vector
 
 // Forward declarations
 namespace synth_canvas::host {
@@ -47,6 +48,9 @@ private:
 
     int32_t _channel_count = 2;
     int32_t _sample_rate = 48000;
+
+    std::vector<float *> m_channel_buffers;
+    std::vector<float> m_temp_deinterleaved_buffer;
 };
 
 } // namespace synth_canvas::host

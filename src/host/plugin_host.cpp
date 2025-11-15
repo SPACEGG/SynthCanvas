@@ -83,14 +83,12 @@ namespace synth_canvas::host
           )
     {
         g_thread_type = ThreadType::MainThread;
-        godot::UtilityFunctions::print("[PluginHost] Initialized.");
     }
 
     PluginHost::~PluginHost()
     {
         // checkForMainThread(); // Re-enable if thread checking is fully implemented
         unload();
-        godot::UtilityFunctions::print("[PluginHost] Destroyed.");
     }
 
     // --- Thread Checking --- (Simplified for now)
@@ -268,8 +266,8 @@ namespace synth_canvas::host
 
         log_message(CLAP_LOG_INFO, ("Loading plugin with id: " + std::string(desc->id) + ", index: " + std::to_string(pluginIndex)).c_str());
 
-        const auto plugin = _pluginFactory->create_plugin(_pluginFactory, clapHost(), desc->id);
-        if (!plugin)
+        const auto raw_plugin = _pluginFactory->create_plugin(_pluginFactory, clapHost(), desc->id);
+        if (!raw_plugin)
         {
             log_message(CLAP_LOG_ERROR, ("Could not create the plugin with id: " + std::string(desc->id)).c_str());
             _pluginEntry->deinit();
@@ -282,12 +280,17 @@ namespace synth_canvas::host
             return false;
         }
 
-        _plugin = std::make_unique<PluginProxy>(*plugin, *this);
+        // Create a copy of the plugin structure to ensure its lifetime
+        _plugin_instance = std::make_unique<clap_plugin_t>(*raw_plugin);
+
+        // Initialize the proxy with our copy of the plugin instance
+        _plugin = std::make_unique<PluginProxy>(*_plugin_instance, *this);
 
         if (!_plugin->init())
         {
             log_message(CLAP_LOG_ERROR, ("Could not init the plugin with id: " + std::string(desc->id)).c_str());
             _plugin.reset();
+            _plugin_instance.reset();
             _pluginEntry->deinit();
 #if defined(_WIN32)
             FreeLibrary((HMODULE)_libraryHandle);
@@ -313,8 +316,13 @@ namespace synth_canvas::host
 
         if (_plugin)
         {
-            _plugin->destroy();
+            // The unique_ptr's destructor will call the PluginProxy's destructor,
+            // which in turn calls plugin->destroy().
             _plugin.reset();
+        }
+        if (_plugin_instance)
+        {
+            _plugin_instance.reset();
         }
 
         if (_pluginEntry)
@@ -372,6 +380,10 @@ namespace synth_canvas::host
         // For now, just deactivate directly.
         if (_plugin)
         {
+            if (isPluginProcessing())
+            {
+                _plugin->stopProcessing();
+            }
             _plugin->deactivate();
         }
         setPluginState(Inactive);
@@ -499,6 +511,14 @@ namespace synth_canvas::host
         // Can't process a plugin that is not active
         if (!isPluginActive())
             return;
+
+        if (_plugin_instance && _plugin_instance->process == nullptr)
+        {
+            std::stringstream ss;
+            ss << "[DEBUG] FATAL in PluginHost::process() on instance " << this << ". process ptr is NULL!";
+            log_message(CLAP_LOG_FATAL, ss.str().c_str());
+            return; // Avoid crash
+        }
 
         // Do we want to deactivate the plugin?
         if (_scheduleDeactivate)

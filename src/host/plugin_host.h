@@ -117,6 +117,7 @@ namespace synth_canvas::host
         void *_libraryHandle = nullptr;
         const clap_plugin_entry *_pluginEntry = nullptr;
         const clap_plugin_factory *_pluginFactory = nullptr;
+        std::unique_ptr<clap_plugin_t> _plugin_instance;
         std::unique_ptr<PluginProxy> _plugin;
         clap_audio_buffer _audioIn = {};
         clap_audio_buffer _audioOut = {};

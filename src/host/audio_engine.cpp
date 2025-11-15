@@ -12,6 +12,9 @@ namespace synth_canvas::host
     AudioEngine::AudioEngine()
     {
         godot::UtilityFunctions::print("[AudioEngine] Created for Android.");
+        m_channel_buffers.resize(_channel_count);
+        // Allocate a temporary buffer large enough for max possible frames. 4096 is a safe bet.
+        m_temp_deinterleaved_buffer.resize(_channel_count * 4096);
     }
 
     AudioEngine::~AudioEngine()
@@ -120,20 +123,24 @@ namespace synth_canvas::host
             return oboe::DataCallbackResult::Continue;
         }
 
-        // This part needs a proper stereo-to-stereo or mono-to-stereo handling
-        // For now, we assume the plugin matches the output format.
-        float *outputBuffer = static_cast<float *>(audioData);
-        std::vector<float *> channel_buffers;
-        channel_buffers.resize(_channel_count);
         for (int i = 0; i < _channel_count; ++i)
         {
-            channel_buffers[i] = outputBuffer + i * numFrames; // This assumes interleaved, need to de-interleave
+            m_channel_buffers[i] = m_temp_deinterleaved_buffer.data() + i * numFrames;
         }
 
-        // Simplified processing, assuming plugin can write directly to interleaved buffer for now
-        // A real implementation needs de-interleaving and interleaving steps.
-        _plugin_host->setPorts(_channel_count, channel_buffers.data(), _channel_count, channel_buffers.data());
+        _plugin_host->processBegin(numFrames);
+        _plugin_host->setPorts(0, nullptr, _channel_count, m_channel_buffers.data());
         _plugin_host->process();
+        _plugin_host->processEnd(numFrames);
+
+        float *outputBuffer = static_cast<float *>(audioData);
+        for (int i = 0; i < numFrames; ++i)
+        {
+            for (int j = 0; j < _channel_count; ++j)
+            {
+                outputBuffer[i * _channel_count + j] = m_channel_buffers[j][i];
+            }
+        }
 
         return oboe::DataCallbackResult::Continue;
     }
