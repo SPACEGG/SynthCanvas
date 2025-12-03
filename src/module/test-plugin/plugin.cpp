@@ -3,6 +3,7 @@
 #include <string.h>
 #include <math.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 #ifdef _WIN32
 #define _USE_MATH_DEFINES
@@ -19,6 +20,8 @@ static bool plugin_init_instance(const clap_plugin_t *plugin);
 static void plugin_destroy(const clap_plugin_t *plugin);
 static bool plugin_activate(const clap_plugin_t *plugin, double sample_rate, uint32_t min_frames_count, uint32_t max_frames_count);
 static void plugin_deactivate(const clap_plugin_t *plugin);
+static bool plugin_start_processing(const clap_plugin_t* plugin);
+static void plugin_stop_processing(const clap_plugin_t* plugin);
 static clap_process_status plugin_process(const clap_plugin_t *plugin, const clap_process_t *process);
 static uint32_t get_plugin_count(const clap_plugin_factory_t *factory);
 static const clap_plugin_descriptor_t *get_plugin_descriptor(const clap_plugin_factory_t *factory, uint32_t index);
@@ -32,12 +35,14 @@ typedef struct
 {
     clap_plugin_t plugin;
     const clap_host_t *host;
+    const clap_host_log_t *host_log;
 
     double sample_rate;
     float phase;
     bool note_is_active;
     int32_t note_key;
     double note_freq;
+    double note_velocity;
 } tutorial_plugin_t;
 
 //////////////////
@@ -132,6 +137,9 @@ static bool plugin_activate(const clap_plugin_t *plugin, double sample_rate, uin
 
 static void plugin_deactivate(const clap_plugin_t *plugin) {}
 
+static bool plugin_start_processing(const clap_plugin_t* plugin) { return true; }
+static void plugin_stop_processing(const clap_plugin_t* plugin) {}
+
 static clap_process_status plugin_process(const clap_plugin_t *plugin, const clap_process_t *process)
 {
     tutorial_plugin_t *p = (tutorial_plugin_t *)plugin->plugin_data;
@@ -152,6 +160,7 @@ static clap_process_status plugin_process(const clap_plugin_t *plugin, const cla
                 const clap_event_note_t *ev = (const clap_event_note_t *)hdr;
                 p->note_key = ev->key;
                 p->note_freq = 440.0 * pow(2.0, (p->note_key - 69.0) / 12.0);
+                p->note_velocity = ev->velocity;
                 p->note_is_active = true;
             }
             else if (hdr->space_id == CLAP_CORE_EVENT_SPACE_ID && hdr->type == CLAP_EVENT_NOTE_OFF)
@@ -170,7 +179,7 @@ static clap_process_status plugin_process(const clap_plugin_t *plugin, const cla
 
         if (p->note_is_active)
         {
-            out_l[i] = sinf(p->phase * 2 * M_PI) * 0.2f;
+            out_l[i] = sinf(p->phase * 2 * M_PI) * (float)(p->note_velocity * 0.2);
             p->phase += p->note_freq / p->sample_rate;
             if (p->phase > 1)
                 p->phase -= 1;
@@ -217,12 +226,19 @@ static const clap_plugin_t *create_plugin(const clap_plugin_factory_t *factory, 
 
     tutorial_plugin_t *p = (tutorial_plugin_t *)calloc(1, sizeof(tutorial_plugin_t));
     p->host = host;
+    if(host) {
+       p->host_log = (const clap_host_log_t *)host->get_extension(host, CLAP_EXT_LOG);
+    }
+    p->note_velocity = 0.5; // Default velocity
+
     p->plugin.desc = &g_plugin_descriptor;
     p->plugin.plugin_data = p;
     p->plugin.init = plugin_init_instance;
     p->plugin.destroy = plugin_destroy;
     p->plugin.activate = plugin_activate;
     p->plugin.deactivate = plugin_deactivate;
+    p->plugin.start_processing = plugin_start_processing;
+    p->plugin.stop_processing = plugin_stop_processing;
     p->plugin.process = plugin_process;
     p->plugin.get_extension = plugin_get_extension;
 

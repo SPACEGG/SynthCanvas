@@ -1,10 +1,13 @@
-#include "clap_host_node.h"
+#include "synthcanvas_audio_system.h"
 
 #include <gdextension_interface.h>
 #include <godot_cpp/core/defs.hpp>
 #include <godot_cpp/godot.hpp>
+#include <godot_cpp/classes/engine.hpp>
 
 using namespace godot;
+
+static SynthCanvasAudioSystem *synth_canvas_audio_system_singleton;
 
 void initialize_synth_canvas_module(ModuleInitializationLevel p_level)
 {
@@ -13,7 +16,10 @@ void initialize_synth_canvas_module(ModuleInitializationLevel p_level)
         return;
     }
 
-    ClassDB::register_class<ClapHostNode>();
+    ClassDB::register_class<SynthCanvasAudioSystem>();
+
+    synth_canvas_audio_system_singleton = memnew(SynthCanvasAudioSystem);
+    Engine::get_singleton()->register_singleton("SynthCanvasAudioSystem", synth_canvas_audio_system_singleton);
 }
 
 void uninitialize_synth_canvas_module(ModuleInitializationLevel p_level)
@@ -22,6 +28,9 @@ void uninitialize_synth_canvas_module(ModuleInitializationLevel p_level)
     {
         return;
     }
+
+    Engine::get_singleton()->unregister_singleton("SynthCanvasAudioSystem");
+    memdelete(synth_canvas_audio_system_singleton);
 }
 
 extern "C"

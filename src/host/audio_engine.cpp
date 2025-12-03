@@ -1,25 +1,26 @@
 #include <godot_cpp/variant/utility_functions.hpp>
+#include <queue>
+#include <algorithm>
 
 #include "audio_engine.h"
 #include "plugin_host.h"
 
 #if defined(__ANDROID__)
-// --- Real implementation for Android using Oboe ---
+
+// TODO: change godot::print to custom log api
 
 namespace synth_canvas::host
 {
 
-    AudioEngine::AudioEngine()
+    AudioEngine::AudioEngine(ModuleRouter *router) : _module_router(router)
     {
         godot::UtilityFunctions::print("[AudioEngine] Created for Android.");
-        m_channel_buffers.resize(_channel_count);
-        // Allocate a temporary buffer large enough for max possible frames. 4096 is a safe bet.
-        m_temp_deinterleaved_buffer.resize(_channel_count * 4096);
     }
 
     AudioEngine::~AudioEngine()
     {
         stop();
+        godot::UtilityFunctions::print("[AudioEngine] Destroyed for Android.");
     }
 
     bool AudioEngine::openStream()
@@ -61,17 +62,37 @@ namespace synth_canvas::host
             return true;
         }
 
-        if (_plugin_host)
-        {
-            _plugin_host->activate(_sample_rate, _stream->getFramesPerCallback());
-        }
-
+        // 1. Request start first to initialize stream state
         oboe::Result result = _stream->requestStart();
         if (result != oboe::Result::OK)
         {
             godot::UtilityFunctions::print("[AudioEngine] Failed to start stream. Error: ", oboe::convertToText(result));
             return false;
         }
+
+        // 2. Try to get frames per block after start request
+        _frames_per_block = _stream->getFramesPerDataCallback();
+
+        // 3. Fallback if 0 (stream might be starting asynchronously)
+        if (_frames_per_block <= 0)
+        {
+            _frames_per_block = 512; // Safe default
+            godot::UtilityFunctions::print("[AudioEngine] Warning: Stream returned 0 frames per block. Using default: 512");
+        }
+        else
+        {
+            godot::UtilityFunctions::print("[AudioEngine] Stream started. Frames per block: ", godot::String::num_int64(_frames_per_block));
+        }
+
+        // 4. Activate all plugins with the determined block size
+        if (_module_router)
+        {
+            for (uint32_t instance_id : _module_router->get_process_order())
+            {
+                _module_router->activate_plugin(instance_id, _sample_rate, _frames_per_block);
+            }
+        }
+
         return true;
     }
 
@@ -83,32 +104,20 @@ namespace synth_canvas::host
             _stream->close();
             _stream.reset();
         }
-        if (_plugin_host)
+
+        // Deactivate all plugins
+        if (_module_router)
         {
-            _plugin_host->deactivate();
+            for (uint32_t instance_id : _module_router->get_process_order())
+            {
+                _module_router->deactivate_plugin(instance_id);
+            }
         }
     }
 
-    bool AudioEngine::loadPlugin(const std::string &path)
+    bool AudioEngine::isRunning() const
     {
-        if (!_plugin_host)
-        {
-            _plugin_host = std::make_unique<PluginHost>();
-            if (_plugin_host)
-            {
-                _plugin_host->on_parameter_changed = on_parameter_changed;
-            }
-        }
-
-        if (_plugin_host)
-        {
-            if (!_plugin_host->load(path, 0))
-            {
-                _plugin_host->unload();
-                return false;
-            }
-        }
-        return true;
+        return _stream && _stream->getState() == oboe::StreamState::Started;
     }
 
     oboe::DataCallbackResult AudioEngine::onAudioReady(
@@ -116,56 +125,194 @@ namespace synth_canvas::host
         void *audioData,
         int32_t numFrames)
     {
+        // Dynamically update frames_per_block if the actual buffer size exceeds our current setting.
+        // This ensures newly created plugins are activated with a sufficient buffer size.
+        if (numFrames > _frames_per_block) {
+            _frames_per_block = numFrames;
+        }
 
-        if (!_plugin_host || !_plugin_host->isPluginActive())
+        // Ensure all intermediate buffers are correctly sized and cleared.
+        // TODO: This should ideally be moved to AudioBufferManager later
+        for (auto &pair : _intermediate_buffers)
         {
+            auto &buffer = pair.second;
+            buffer.data.resize(_channel_count);
+            for (auto &channel_data : buffer.data)
+            {
+                channel_data.resize(numFrames);
+                std::fill(channel_data.begin(), channel_data.end(), 0.0f);
+            }
+            buffer.channels = _channel_count;
+            buffer.frames = numFrames;
+        }
+
+        if (!_module_router)
+        {
+            // Output silence if no router
             memset(audioData, 0, numFrames * _channel_count * sizeof(float));
             return oboe::DataCallbackResult::Continue;
         }
 
-        for (int i = 0; i < _channel_count; ++i)
+        const auto &process_order = _module_router->get_process_order();
+        const auto &connections = _module_router->get_connections();
+
+        // Process nodes in topological order.
+        for (uint32_t node_id : process_order)
         {
-            m_channel_buffers[i] = m_temp_deinterleaved_buffer.data() + i * numFrames;
+            PluginHost *host = _module_router->get_plugin_instance(node_id);
+            if (!host || !host->isPluginActive())
+            {
+                continue;
+            }
+
+            // Ensure buffer exists for this node
+            if (_intermediate_buffers.find(node_id) == _intermediate_buffers.end())
+            {
+                _intermediate_buffers[node_id] = AudioBuffer();
+                // Resize will happen in next callback cycle or we can force it here if needed,
+                // but for real-time safety avoiding allocation here is better.
+                // For now, let's assume it was created during create_plugin_instance in System.
+                // Actually, System/Router needs to notify Engine about new plugins to allocate buffers.
+                // For this step, we'll do a quick check/resize which is not RT safe but functional.
+                auto &buf = _intermediate_buffers[node_id];
+                buf.data.resize(_channel_count);
+                for (auto &ch : buf.data)
+                    ch.resize(numFrames, 0.0f);
+                buf.channels = _channel_count;
+                buf.frames = numFrames;
+            }
+
+            // --- Prepare Inputs ---
+            std::vector<float *> input_pointers;
+            std::vector<std::vector<float>> summed_inputs;
+            bool has_input = false;
+
+            for (const auto &conn : connections)
+            {
+                if (conn.to_node == node_id)
+                {
+                    has_input = true;
+                    break;
+                }
+            }
+
+            if (has_input)
+            {
+                summed_inputs.resize(_channel_count, std::vector<float>(numFrames, 0.0f));
+                for (const auto &conn : connections)
+                {
+                    if (conn.to_node == node_id)
+                    {
+                        auto it = _intermediate_buffers.find(conn.from_node);
+                        if (it != _intermediate_buffers.end())
+                        {
+                            AudioBuffer &source_buffer = it->second;
+                            // Sum de-interleaved buffers directly
+                            for (uint32_t ch = 0; ch < _channel_count; ++ch)
+                            {
+                                for (uint32_t frame = 0; frame < numFrames; ++frame)
+                                {
+                                    if (ch < source_buffer.channels && frame < source_buffer.frames)
+                                    {
+                                        summed_inputs[ch][frame] += source_buffer.data[ch][frame];
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                for (uint32_t i = 0; i < _channel_count; ++i)
+                {
+                    input_pointers.push_back(summed_inputs[i].data());
+                }
+            }
+
+            // --- Prepare Outputs ---
+            AudioBuffer &output_audio_buffer = _intermediate_buffers[node_id];
+            std::vector<float *> output_pointers;
+            for (uint32_t i = 0; i < output_audio_buffer.channels; ++i)
+            {
+                output_pointers.push_back(output_audio_buffer.data[i].data());
+            }
+
+            // --- Process ---
+            host->processBegin(numFrames);
+            host->setPorts(has_input ? input_pointers.size() : 0, has_input ? input_pointers.data() : nullptr, output_pointers.size(), output_pointers.data());
+            host->process();
+            host->processEnd(numFrames);
         }
 
-        _plugin_host->processBegin(numFrames);
-        _plugin_host->setPorts(0, nullptr, _channel_count, m_channel_buffers.data());
-        _plugin_host->process();
-        _plugin_host->processEnd(numFrames);
+        // --- Final Output ---
+        // Mix all nodes connected to the designated AUDIO_OUTPUT_NODE_ID into a final de-interleaved buffer.
+        std::vector<std::vector<float>> final_mix(_channel_count, std::vector<float>(numFrames, 0.0f));
 
-        float *outputBuffer = static_cast<float *>(audioData);
-        for (int i = 0; i < numFrames; ++i)
+        for (const auto &conn : connections)
         {
-            for (int j = 0; j < _channel_count; ++j)
+            if (conn.to_node == AudioEngine::AUDIO_OUTPUT_NODE_ID)
             {
-                outputBuffer[i * _channel_count + j] = m_channel_buffers[j][i];
+                auto it = _intermediate_buffers.find(conn.from_node);
+                if (it != _intermediate_buffers.end())
+                {
+                    AudioBuffer &source_buffer = it->second;
+                    // Additively mix (sum) the de-interleaved source buffer into the final mix buffer.
+                    for (uint32_t ch = 0; ch < _channel_count; ++ch)
+                    {
+                        for (uint32_t frame = 0; frame < numFrames; ++frame)
+                        {
+                            if (ch < source_buffer.channels && frame < source_buffer.frames)
+                            {
+                                final_mix[ch][frame] += source_buffer.data[ch][frame];
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Interleave the final mixed audio into the output buffer provided by Oboe.
+        float *outputBuffer = static_cast<float *>(audioData);
+        for (int32_t frame = 0; frame < numFrames; ++frame)
+        {
+            for (int32_t ch = 0; ch < _channel_count; ++ch)
+            {
+                outputBuffer[frame * _channel_count + ch] = final_mix[ch][frame];
             }
         }
 
         return oboe::DataCallbackResult::Continue;
     }
 
-    void AudioEngine::playNote(int note, double velocity)
+    void AudioEngine::playNote(uint32_t instance_id, int note, double velocity)
     {
-        if (_plugin_host)
+        if (_module_router)
         {
-            _plugin_host->processNoteOn(0, 0, note, static_cast<int>(velocity * 127));
+            if (auto *host = _module_router->get_plugin_instance(instance_id))
+            {
+                host->processNoteOn(0, 0, note, static_cast<int>(velocity * 127));
+            }
         }
     }
 
-    void AudioEngine::stopNote(int note)
+    void AudioEngine::stopNote(uint32_t instance_id, int note)
     {
-        if (_plugin_host)
+        if (_module_router)
         {
-            _plugin_host->processNoteOff(0, 0, note, 0);
+            if (auto *host = _module_router->get_plugin_instance(instance_id))
+            {
+                host->processNoteOff(0, 0, note, 0);
+            }
         }
     }
 
-    void AudioEngine::setParameterValue(clap_id param_id, double value)
+    void AudioEngine::setParameterValue(uint32_t instance_id, clap_id param_id, double value)
     {
-        if (_plugin_host)
+        if (_module_router)
         {
-            _plugin_host->setParameterValue(param_id, value);
+            if (auto *host = _module_router->get_plugin_instance(instance_id))
+            {
+                host->setParameterValue(param_id, value);
+            }
         }
     }
 
@@ -177,76 +324,40 @@ namespace synth_canvas::host
 namespace synth_canvas::host
 {
 
-    AudioEngine::AudioEngine()
+    AudioEngine::AudioEngine(ModuleRouter *router) : _module_router(router)
     {
-        godot::UtilityFunctions::print("[AudioEngine] Created with dummy implementation for non-Android.");
-        // On non-android, we still need to create the plugin host
-        if (!_plugin_host)
-        {
-            _plugin_host = std::make_unique<PluginHost>();
-        }
+        godot::UtilityFunctions::print("[AudioEngine] Dummy: Created for non-Android. No audio processing will occur.");
     }
 
     AudioEngine::~AudioEngine()
     {
-        if (_plugin_host)
-        {
-            _plugin_host->unload();
-        }
-    }
-
-    bool AudioEngine::loadPlugin(const std::string &path)
-    {
-        godot::UtilityFunctions::print("[AudioEngine] Dummy: loading plugin ", path.c_str());
-        if (_plugin_host)
-        {
-            return _plugin_host->load(path, 0);
-        }
-        return false;
+        godot::UtilityFunctions::print("[AudioEngine] Dummy: Destroyed for non-Android.");
     }
 
     bool AudioEngine::start()
     {
         godot::UtilityFunctions::print("[AudioEngine] Dummy: start called.");
-        // Cannot start audio on non-Android, but we can activate the plugin for UI
-        if (_plugin_host)
-        {
-            // Activate with dummy values
-            _plugin_host->activate(44100, 512);
-        }
-        return false;
+        return true;
     }
 
     void AudioEngine::stop()
     {
         godot::UtilityFunctions::print("[AudioEngine] Dummy: stop called.");
-        if (_plugin_host)
-        {
-            _plugin_host->deactivate();
-        }
     }
 
-    void AudioEngine::playNote(int note, double velocity)
+    void AudioEngine::playNote(uint32_t instance_id, int note, double velocity)
     {
-        // No-op
+        godot::UtilityFunctions::print("[AudioEngine] Dummy: playNote called. Instance: ", (int)instance_id, " Note: ", note);
     }
 
-    void AudioEngine::stopNote(int note)
+    void AudioEngine::stopNote(uint32_t instance_id, int note)
     {
-        // No-op
+        godot::UtilityFunctions::print("[AudioEngine] Dummy: stopNote called. Instance: ", (int)instance_id, " Note: ", note);
     }
 
-    void AudioEngine::setParameterValue(clap_id param_id, double value)
+    void AudioEngine::setParameterValue(uint32_t instance_id, clap_id param_id, double value)
     {
-        if (_plugin_host)
-        {
-            _plugin_host->setParameterValue(param_id, value);
-        }
-    }
-
-    PluginHost *AudioEngine::getPluginHost() const
-    {
-        return _plugin_host.get();
+        godot::UtilityFunctions::print("[AudioEngine] Dummy: setParameterValue called.");
     }
 
 } // namespace synth_canvas::host

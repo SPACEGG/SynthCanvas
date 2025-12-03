@@ -16,12 +16,14 @@ file(MAKE_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
 # Define the source files for the GDExtension library
 set(GDE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/gdextension/register_types.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/gdextension/clap_host_node.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/gdextension/clap_host_node.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/gdextension/synthcanvas_audio_system.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/gdextension/synthcanvas_audio_system.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/host/audio_engine.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/host/audio_engine.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/host/plugin_host.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/host/plugin_host.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/host/module_router.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/host/module_router.h
 )
 
 # Add the subdirectories for the libraries

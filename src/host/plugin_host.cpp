@@ -280,17 +280,13 @@ namespace synth_canvas::host
             return false;
         }
 
-        // Create a copy of the plugin structure to ensure its lifetime
-        _plugin_instance = std::make_unique<clap_plugin_t>(*raw_plugin);
-
         // Initialize the proxy with our copy of the plugin instance
-        _plugin = std::make_unique<PluginProxy>(*_plugin_instance, *this);
+        _plugin = std::make_unique<PluginProxy>(*raw_plugin, *this);
 
         if (!_plugin->init())
         {
             log_message(CLAP_LOG_ERROR, ("Could not init the plugin with id: " + std::string(desc->id)).c_str());
             _plugin.reset();
-            _plugin_instance.reset();
             _pluginEntry->deinit();
 #if defined(_WIN32)
             FreeLibrary((HMODULE)_libraryHandle);
@@ -320,10 +316,6 @@ namespace synth_canvas::host
             // which in turn calls plugin->destroy().
             _plugin.reset();
         }
-        if (_plugin_instance)
-        {
-            _plugin_instance.reset();
-        }
 
         if (_pluginEntry)
         {
@@ -349,6 +341,7 @@ namespace synth_canvas::host
         // Simplified: assume always true if plugin is loaded and not active
         return _plugin != nullptr && !isPluginActive();
     }
+
 
     void PluginHost::activate(int32_t sample_rate, int32_t blockSize)
     {
@@ -511,14 +504,6 @@ namespace synth_canvas::host
         // Can't process a plugin that is not active
         if (!isPluginActive())
             return;
-
-        if (_plugin_instance && _plugin_instance->process == nullptr)
-        {
-            std::stringstream ss;
-            ss << "[DEBUG] FATAL in PluginHost::process() on instance " << this << ". process ptr is NULL!";
-            log_message(CLAP_LOG_FATAL, ss.str().c_str());
-            return; // Avoid crash
-        }
 
         // Do we want to deactivate the plugin?
         if (_scheduleDeactivate)

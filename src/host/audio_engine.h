@@ -4,54 +4,63 @@
 
 #include <memory>
 #include <string>
-#include <functional>
-#include <vector> // Add for std::vector
+#include <vector>
+#include <unordered_map>
 
-// Forward declarations
-namespace synth_canvas::host {
-    class PluginHost;
-}
+#include <clap/clap.h> // For clap_id
+#include "module_router.h" // Include ModuleRouter
 
 #if defined(__ANDROID__)
 // --- Android implementation using Oboe ---
 #include <oboe/Oboe.h>
-#include <clap/clap.h> // For clap_id
 
-namespace synth_canvas::host {
+namespace synth_canvas::host
+{
 
-class AudioEngine : public oboe::AudioStreamDataCallback {
-public:
-    AudioEngine();
-    ~AudioEngine();
+    class AudioEngine : public oboe::AudioStreamDataCallback
+    {
+    public:
+        // Struct for de-interleaved audio buffer, remains in AudioEngine for now
+        struct AudioBuffer
+        {
+            std::vector<std::vector<float>> data;
+            uint32_t channels = 0;
+            uint32_t frames = 0;
+        };
 
-    bool loadPlugin(const std::string& path);
-    bool start();
-    void stop();
+        static constexpr uint32_t AUDIO_OUTPUT_NODE_ID = 0; // Remains in AudioEngine for mixing
 
-    void playNote(int note, double velocity);
-    void stopNote(int note);
-    void setParameterValue(clap_id param_id, double value);
+        // Constructor accepts ModuleRouter dependency
+        AudioEngine(ModuleRouter* router);
+        ~AudioEngine();
 
-    std::function<void(int, float)> on_parameter_changed;
-    PluginHost* getPluginHost() const { return _plugin_host.get(); }
+        bool start();
+        void stop();
 
-    oboe::DataCallbackResult onAudioReady(
-        oboe::AudioStream *oboeStream,
-        void *audioData,
-        int32_t numFrames) override;
+        void playNote(uint32_t instance_id, int note, double velocity);
+        void stopNote(uint32_t instance_id, int note);
+        void setParameterValue(uint32_t instance_id, clap_id param_id, double value);
 
-private:
-    bool openStream();
+        int32_t getSampleRate() const { return _sample_rate; }
+        int32_t getFramesPerBlock() const { return _frames_per_block; }
+        bool isRunning() const;
 
-    std::shared_ptr<oboe::AudioStream> _stream;
-    std::unique_ptr<PluginHost> _plugin_host;
+        oboe::DataCallbackResult onAudioReady(
+            oboe::AudioStream *oboeStream,
+            void *audioData,
+            int32_t numFrames) override;
 
-    int32_t _channel_count = 2;
-    int32_t _sample_rate = 48000;
+    private:
+        bool openStream();
 
-    std::vector<float *> m_channel_buffers;
-    std::vector<float> m_temp_deinterleaved_buffer;
-};
+        std::shared_ptr<oboe::AudioStream> _stream;
+        ModuleRouter* _module_router; // Weak reference to ModuleRouter
+        std::unordered_map<uint32_t, AudioBuffer> _intermediate_buffers; // Still managed by AudioEngine
+
+        int32_t _channel_count = 2;
+        int32_t _sample_rate = 48000;
+        int32_t _frames_per_block = 0; // Will be determined after stream opens
+    };
 
 } // namespace synth_canvas::host
 
@@ -59,27 +68,40 @@ private:
 // --- Dummy implementation for non-Android platforms (e.g., Windows) ---
 #include <clap/clap.h> // For clap_id
 
-namespace synth_canvas::host {
+namespace synth_canvas::host
+{
 
-class AudioEngine {
-public:
-    AudioEngine();
-    ~AudioEngine();
+    class AudioEngine
+    {
+    public:
+        // Struct for de-interleaved audio buffer, remains in AudioEngine
+        struct AudioBuffer
+        {
+            std::vector<std::vector<float>> data;
+            uint32_t channels = 0;
+            uint32_t frames = 0;
+        };
 
-    bool loadPlugin(const std::string& path);
-    bool start();
-    void stop();
+        static constexpr uint32_t AUDIO_OUTPUT_NODE_ID = 0; // Remains in AudioEngine for mixing
 
-    void playNote(int note, double velocity);
-    void stopNote(int note);
-    void setParameterValue(clap_id param_id, double value);
+        AudioEngine(ModuleRouter* router);
+        ~AudioEngine();
 
-    std::function<void(int, float)> on_parameter_changed;
-    PluginHost* getPluginHost() const;
+        bool start();
+        void stop();
 
-private:
-    std::unique_ptr<PluginHost> _plugin_host;
-};
+        void playNote(uint32_t instance_id, int note, double velocity);
+        void stopNote(uint32_t instance_id, int note);
+        void setParameterValue(uint32_t instance_id, clap_id param_id, double value);
+
+        int32_t getSampleRate() const { return 44100; }
+        int32_t getFramesPerBlock() const { return 512; }
+        bool isRunning() const { return false; }
+
+    private:
+        ModuleRouter* _module_router; // Weak reference to ModuleRouter
+        std::unordered_map<uint32_t, AudioBuffer> _intermediate_buffers; // Still managed by AudioEngine
+    };
 
 } // namespace synth_canvas::host
 

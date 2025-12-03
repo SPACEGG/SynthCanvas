@@ -57,7 +57,7 @@ if(ANDROID)
 
 elseif(WIN32)
     # Add standard Windows definitions to avoid library conflicts.
-    target_compile_definitions(synth_canvas_gdextension PRIVATE WIN32 _WINDOWS NDEBUG _WIN32)
+    target_compile_definitions(synth_canvas_gdextension PRIVATE WIN32 _WINDOWS NDEBUG _WIN32 NOMINMAX)
 endif()
 
 
