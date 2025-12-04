@@ -342,7 +342,6 @@ namespace synth_canvas::host
         return _plugin != nullptr && !isPluginActive();
     }
 
-
     void PluginHost::activate(int32_t sample_rate, int32_t blockSize)
     {
         if (!_plugin)
@@ -350,7 +349,7 @@ namespace synth_canvas::host
             return;
         }
 
-        if (!_plugin->activate(sample_rate, blockSize, blockSize))
+        if (!_plugin->activate(sample_rate, 1, blockSize))
         {
             setPluginState(InactiveWithError);
             log_message(CLAP_LOG_ERROR, "Failed to activate plugin.");
