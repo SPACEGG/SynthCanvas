@@ -1,4 +1,3 @@
-
 #ifndef AUDIO_ENGINE_H
 #define AUDIO_ENGINE_H
 
@@ -9,6 +8,7 @@
 
 #include <clap/clap.h> // For clap_id
 #include "module_router.h" // Include ModuleRouter
+#include "audio_buffer_manager.h"
 
 #if defined(__ANDROID__)
 // --- Android implementation using Oboe ---
@@ -20,15 +20,7 @@ namespace synth_canvas::host
     class AudioEngine : public oboe::AudioStreamDataCallback
     {
     public:
-        // Struct for de-interleaved audio buffer, remains in AudioEngine for now
-        struct AudioBuffer
-        {
-            std::vector<std::vector<float>> data;
-            uint32_t channels = 0;
-            uint32_t frames = 0;
-        };
-
-        static constexpr uint32_t AUDIO_OUTPUT_NODE_ID = 0; // Remains in AudioEngine for mixing
+        static constexpr uint32_t AUDIO_OUTPUT_NODE_ID = 0; 
 
         // Constructor accepts ModuleRouter dependency
         AudioEngine(ModuleRouter* router);
@@ -55,7 +47,7 @@ namespace synth_canvas::host
 
         std::shared_ptr<oboe::AudioStream> _stream;
         ModuleRouter* _module_router; // Weak reference to ModuleRouter
-        std::unordered_map<uint32_t, AudioBuffer> _intermediate_buffers; // Still managed by AudioEngine
+        AudioBufferManager _buffer_manager; // Manages audio buffers
 
         int32_t _channel_count = 2;
         int32_t _sample_rate = 48000;
@@ -74,15 +66,7 @@ namespace synth_canvas::host
     class AudioEngine
     {
     public:
-        // Struct for de-interleaved audio buffer, remains in AudioEngine
-        struct AudioBuffer
-        {
-            std::vector<std::vector<float>> data;
-            uint32_t channels = 0;
-            uint32_t frames = 0;
-        };
-
-        static constexpr uint32_t AUDIO_OUTPUT_NODE_ID = 0; // Remains in AudioEngine for mixing
+        static constexpr uint32_t AUDIO_OUTPUT_NODE_ID = 0;
 
         AudioEngine(ModuleRouter* router);
         ~AudioEngine();
@@ -100,7 +84,7 @@ namespace synth_canvas::host
 
     private:
         ModuleRouter* _module_router; // Weak reference to ModuleRouter
-        std::unordered_map<uint32_t, AudioBuffer> _intermediate_buffers; // Still managed by AudioEngine
+        // AudioBufferManager _buffer_manager; // Not strictly needed for dummy, but good for consistency if dummy logic expands
     };
 
 } // namespace synth_canvas::host

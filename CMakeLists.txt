@@ -24,6 +24,8 @@ set(GDE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/host/plugin_host.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/host/module_router.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/host/module_router.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/host/audio_buffer_manager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/host/audio_buffer_manager.h
 )
 
 # Add the subdirectories for the libraries

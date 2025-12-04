@@ -1,6 +1,7 @@
 #include <godot_cpp/variant/utility_functions.hpp>
 #include <queue>
 #include <algorithm>
+#include <cstring> // for std::memset
 
 #include "audio_engine.h"
 #include "plugin_host.h"
@@ -84,6 +85,9 @@ namespace synth_canvas::host
             godot::UtilityFunctions::print("[AudioEngine] Stream started. Frames per block: ", godot::String::num_int64(_frames_per_block));
         }
 
+        // Initialize buffer manager
+        _buffer_manager.resize(_channel_count, _frames_per_block * 2); // Reserve a bit more space for safety
+
         // 4. Activate all plugins with the determined block size
         if (_module_router)
         {
@@ -126,30 +130,16 @@ namespace synth_canvas::host
         int32_t numFrames)
     {
         // Dynamically update frames_per_block if the actual buffer size exceeds our current setting.
-        // This ensures newly created plugins are activated with a sufficient buffer size.
         if (numFrames > _frames_per_block) {
             _frames_per_block = numFrames;
-        }
-
-        // Ensure all intermediate buffers are correctly sized and cleared.
-        // TODO: This should ideally be moved to AudioBufferManager later
-        for (auto &pair : _intermediate_buffers)
-        {
-            auto &buffer = pair.second;
-            buffer.data.resize(_channel_count);
-            for (auto &channel_data : buffer.data)
-            {
-                channel_data.resize(numFrames);
-                std::fill(channel_data.begin(), channel_data.end(), 0.0f);
-            }
-            buffer.channels = _channel_count;
-            buffer.frames = numFrames;
+            // Note: Resizing buffer manager here might not be strictly RT safe if it allocates,
+            // but we rely on AudioBufferManager::ensure_buffer to handle it or reserve enough initially.
         }
 
         if (!_module_router)
         {
             // Output silence if no router
-            memset(audioData, 0, numFrames * _channel_count * sizeof(float));
+            std::memset(audioData, 0, numFrames * _channel_count * sizeof(float));
             return oboe::DataCallbackResult::Continue;
         }
 
@@ -165,120 +155,48 @@ namespace synth_canvas::host
                 continue;
             }
 
-            // Ensure buffer exists for this node
-            if (_intermediate_buffers.find(node_id) == _intermediate_buffers.end())
-            {
-                _intermediate_buffers[node_id] = AudioBuffer();
-                // Resize will happen in next callback cycle or we can force it here if needed,
-                // but for real-time safety avoiding allocation here is better.
-                // For now, let's assume it was created during create_plugin_instance in System.
-                // Actually, System/Router needs to notify Engine about new plugins to allocate buffers.
-                // For this step, we'll do a quick check/resize which is not RT safe but functional.
-                auto &buf = _intermediate_buffers[node_id];
-                buf.data.resize(_channel_count);
-                for (auto &ch : buf.data)
-                    ch.resize(numFrames, 0.0f);
-                buf.channels = _channel_count;
-                buf.frames = numFrames;
-            }
-
             // --- Prepare Inputs ---
-            std::vector<float *> input_pointers;
-            std::vector<std::vector<float>> summed_inputs;
-            bool has_input = false;
-
+            std::vector<uint32_t> input_nodes;
             for (const auto &conn : connections)
             {
                 if (conn.to_node == node_id)
                 {
-                    has_input = true;
-                    break;
+                    input_nodes.push_back(conn.from_node);
                 }
             }
 
-            if (has_input)
-            {
-                summed_inputs.resize(_channel_count, std::vector<float>(numFrames, 0.0f));
-                for (const auto &conn : connections)
-                {
-                    if (conn.to_node == node_id)
-                    {
-                        auto it = _intermediate_buffers.find(conn.from_node);
-                        if (it != _intermediate_buffers.end())
-                        {
-                            AudioBuffer &source_buffer = it->second;
-                            // Sum de-interleaved buffers directly
-                            for (uint32_t ch = 0; ch < _channel_count; ++ch)
-                            {
-                                for (uint32_t frame = 0; frame < numFrames; ++frame)
-                                {
-                                    if (ch < source_buffer.channels && frame < source_buffer.frames)
-                                    {
-                                        summed_inputs[ch][frame] += source_buffer.data[ch][frame];
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+            float** input_ptrs = nullptr;
+            int input_count = 0;
 
-                for (uint32_t i = 0; i < _channel_count; ++i)
-                {
-                    input_pointers.push_back(summed_inputs[i].data());
-                }
+            if (!input_nodes.empty())
+            {
+                input_ptrs = _buffer_manager.get_input_mix(input_nodes, numFrames);
+                input_count = _channel_count; // Assuming inputs match engine channel count
             }
 
             // --- Prepare Outputs ---
-            AudioBuffer &output_audio_buffer = _intermediate_buffers[node_id];
-            std::vector<float *> output_pointers;
-            for (uint32_t i = 0; i < output_audio_buffer.channels; ++i)
-            {
-                output_pointers.push_back(output_audio_buffer.data[i].data());
-            }
+            float** output_ptrs = _buffer_manager.get_buffer(node_id, numFrames);
 
             // --- Process ---
             host->processBegin(numFrames);
-            host->setPorts(has_input ? input_pointers.size() : 0, has_input ? input_pointers.data() : nullptr, output_pointers.size(), output_pointers.data());
+            host->setPorts(input_nodes.empty() ? 0 : input_count, input_ptrs, _channel_count, output_ptrs);
             host->process();
             host->processEnd(numFrames);
         }
 
         // --- Final Output ---
-        // Mix all nodes connected to the designated AUDIO_OUTPUT_NODE_ID into a final de-interleaved buffer.
-        std::vector<std::vector<float>> final_mix(_channel_count, std::vector<float>(numFrames, 0.0f));
-
+        // Identify nodes connected to the final output
+        std::vector<uint32_t> output_source_nodes;
         for (const auto &conn : connections)
         {
             if (conn.to_node == AudioEngine::AUDIO_OUTPUT_NODE_ID)
             {
-                auto it = _intermediate_buffers.find(conn.from_node);
-                if (it != _intermediate_buffers.end())
-                {
-                    AudioBuffer &source_buffer = it->second;
-                    // Additively mix (sum) the de-interleaved source buffer into the final mix buffer.
-                    for (uint32_t ch = 0; ch < _channel_count; ++ch)
-                    {
-                        for (uint32_t frame = 0; frame < numFrames; ++frame)
-                        {
-                            if (ch < source_buffer.channels && frame < source_buffer.frames)
-                            {
-                                final_mix[ch][frame] += source_buffer.data[ch][frame];
-                            }
-                        }
-                    }
-                }
+                output_source_nodes.push_back(conn.from_node);
             }
         }
 
-        // Interleave the final mixed audio into the output buffer provided by Oboe.
-        float *outputBuffer = static_cast<float *>(audioData);
-        for (int32_t frame = 0; frame < numFrames; ++frame)
-        {
-            for (int32_t ch = 0; ch < _channel_count; ++ch)
-            {
-                outputBuffer[frame * _channel_count + ch] = final_mix[ch][frame];
-            }
-        }
+        // Mix to the interleaved Oboe output buffer
+        _buffer_manager.mix_to_interleaved(output_source_nodes, static_cast<float*>(audioData), numFrames);
 
         return oboe::DataCallbackResult::Continue;
     }

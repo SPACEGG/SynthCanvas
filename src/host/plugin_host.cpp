@@ -368,7 +368,7 @@ namespace synth_canvas::host
             return;
         }
 
-        // In a real scenario, you'd wait for audio thread to finish processing
+        // TODO: In a real scenario, you'd wait for audio thread to finish processing
         // For now, just deactivate directly.
         if (_plugin)
         {
