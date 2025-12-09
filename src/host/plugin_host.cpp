@@ -128,7 +128,7 @@ namespace synth_canvas::host
 
     void PluginHost::requestProcess() noexcept
     {
-        _scheduleProcess = true;
+        _schedule_processing.store(true, std::memory_order_release);
         // In a real scenario, you'd signal the audio thread to process.
         log_message(CLAP_LOG_INFO, "Plugin requested process.");
     }
@@ -356,7 +356,9 @@ namespace synth_canvas::host
             return;
         }
 
-        _scheduleProcess = true;
+        // Signal audio thread to start processing
+        _schedule_processing.store(true, std::memory_order_release);
+        
         setPluginState(ActiveAndSleeping);
         log_message(CLAP_LOG_INFO, "Plugin activated.");
     }
@@ -368,18 +370,33 @@ namespace synth_canvas::host
             return;
         }
 
-        // TODO: In a real scenario, you'd wait for audio thread to finish processing
-        // For now, just deactivate directly.
+        // 1. Request stop processing on the audio thread
+        _schedule_processing.store(false, std::memory_order_release);
+
+        // 2. Wait for audio thread to actually stop processing (Polling with timeout)
+        // We wait up to 200ms which should be plenty of audio cycles.
+        int retry_count = 0;
+        while (_is_processing_active.load(std::memory_order_acquire)) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            if (++retry_count > 200) {
+                 log_message(CLAP_LOG_WARNING, "Timeout waiting for audio thread to stop processing. Force deactivating.");
+                 break; 
+            }
+        }
+
         if (_plugin)
         {
-            if (isPluginProcessing())
-            {
-                _plugin->stopProcessing();
-            }
+            // Note: stopProcessing() is called by the audio thread based on _schedule_processing flag.
+            // We assume it's done or timed out.
             _plugin->deactivate();
         }
         setPluginState(Inactive);
         log_message(CLAP_LOG_INFO, "Plugin deactivated.");
+    }
+
+    void PluginHost::set_processing_enabled(bool enabled)
+    {
+        _schedule_processing.store(enabled, std::memory_order_release);
     }
 
     void PluginHost::setParameterValue(clap_id param_id, double value)
@@ -503,20 +520,37 @@ namespace synth_canvas::host
         // Can't process a plugin that is not active
         if (!isPluginActive())
             return;
+            
+        // --- State Transition Logic (Audio Thread) ---
+        bool should_process = _schedule_processing.load(std::memory_order_acquire);
+        bool is_currently_processing = _is_processing_active.load(std::memory_order_relaxed);
 
-        // Do we want to deactivate the plugin?
-        if (_scheduleDeactivate)
-        {
-            _scheduleDeactivate = false;
-            if (_state == ActiveAndProcessing)
-                _plugin->stopProcessing();
-            setPluginState(ActiveAndReadyToDeactivate);
-            return;
+        if (should_process && !is_currently_processing) {
+            // WAKE UP: Need to start processing
+            if (_plugin->startProcessing()) {
+                _is_processing_active.store(true, std::memory_order_release);
+                setPluginState(ActiveAndProcessing);
+                is_currently_processing = true;
+            } else {
+                setPluginState(ActiveWithError);
+                return;
+            }
+        } else if (!should_process && is_currently_processing) {
+            // SLEEP: Need to stop processing
+            _plugin->stopProcessing();
+            _is_processing_active.store(false, std::memory_order_release);
+            setPluginState(ActiveAndSleeping);
+            is_currently_processing = false;
         }
 
         // We can't process a plugin which failed to start processing
         if (_state == ActiveWithError)
             return;
+            
+        // If we are sleeping, we just return (producing silence essentially, as buffers aren't touched)
+        if (!is_currently_processing) {
+             return;
+        }
 
         _process.transport = nullptr; // TODO: Implement transport if needed
 
@@ -531,25 +565,7 @@ namespace synth_canvas::host
         _evOut.clear();
         generatePluginInputEvents(); // Handle parameter changes from host
 
-        if (isPluginSleeping())
-        {
-            if (!_scheduleProcess && _evIn.empty())
-                return;
-
-            _scheduleProcess = false;
-            if (!_plugin->startProcessing())
-            {
-                setPluginState(ActiveWithError);
-                return;
-            }
-            setPluginState(ActiveAndProcessing);
-        }
-
-        // int32_t status = CLAP_PROCESS_SLEEP; // Original clap-host had this
-        if (isPluginProcessing())
-        {
-            _plugin->process(&_process);
-        }
+        _plugin->process(&_process);
 
         handlePluginOutputEvents(); // Handle parameter changes from plugin
 
@@ -558,7 +574,6 @@ namespace synth_canvas::host
 
         _engineToAppValueQueue.producerDone();
 
-        // TODO: send plugin to sleep if possible
         // g_thread_type = ThreadType::Unknown; // Reset thread type after processing
     }
 
