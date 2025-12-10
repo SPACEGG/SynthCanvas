@@ -9,7 +9,7 @@
 #include <unordered_set>
 #include <string>
 #include <vector>
-#include <atomic> // Required for std::atomic
+#include <atomic>     // Required for std::atomic
 #include <functional> // For std::function
 
 #include <clap/clap.h>
@@ -57,7 +57,6 @@ namespace synth_canvas::host
         bool canActivate() const;
         void activate(int32_t sample_rate, int32_t blockSize);
         void deactivate();
-        // New method for controlling processing from main thread
         void set_processing_enabled(bool enabled);
 
         void setParameterValue(clap_id param_id, double value);
@@ -157,8 +156,6 @@ namespace synth_canvas::host
         PluginState _state = Inactive;
         bool _stateIsDirty = false;
         bool _scheduleRestart = false;
-        // Removed: bool _scheduleDeactivate = false;
-        // Removed: bool _scheduleProcess = true;
         bool _scheduleParamFlush = false;
         bool _scheduleMainThreadCallback = false;
 

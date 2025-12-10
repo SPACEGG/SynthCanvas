@@ -87,25 +87,26 @@ namespace synth_canvas::host
 
     PluginHost::~PluginHost()
     {
-        // checkForMainThread(); // Re-enable if thread checking is fully implemented
+        checkForMainThread();
         unload();
     }
 
-    // --- Thread Checking --- (Simplified for now)
     void PluginHost::checkForMainThread()
     {
-        // if (g_thread_type != ThreadType::MainThread) [[unlikely]] {
-        //     log_message(CLAP_LOG_FATAL, "Requires Main Thread!");
-        //     std::terminate();
-        // }
+        if (g_thread_type != ThreadType::MainThread) [[unlikely]]
+        {
+            log_message(CLAP_LOG_FATAL, "Requires Main Thread!");
+            std::terminate();
+        }
     }
 
     void PluginHost::checkForAudioThread()
     {
-        // if (g_thread_type != ThreadType::AudioThread) {
-        //     log_message(CLAP_LOG_FATAL, "Requires Audio Thread!");
-        //     std::terminate();
-        // }
+        if (g_thread_type != ThreadType::AudioThread)
+        {
+            log_message(CLAP_LOG_FATAL, "Requires Audio Thread!");
+            std::terminate();
+        }
     }
 
     bool PluginHost::threadCheckIsMainThread() const noexcept
@@ -122,21 +123,21 @@ namespace synth_canvas::host
     void PluginHost::requestRestart() noexcept
     {
         _scheduleRestart = true;
-        // In a real scenario, you'd signal the main thread to handle this.
+        // TODO: In a real scenario, you'd signal the main thread to handle this.
         log_message(CLAP_LOG_INFO, "Plugin requested restart.");
     }
 
     void PluginHost::requestProcess() noexcept
     {
         _schedule_processing.store(true, std::memory_order_release);
-        // In a real scenario, you'd signal the audio thread to process.
+        // TODO: In a real scenario, you'd signal the audio thread to process.
         log_message(CLAP_LOG_INFO, "Plugin requested process.");
     }
 
     void PluginHost::requestCallback() noexcept
     {
         _scheduleMainThreadCallback = true;
-        // In a real scenario, you'd signal the main thread to handle this.
+        // TODO: In a real scenario, you'd signal the main thread to handle this.
         log_message(CLAP_LOG_INFO, "Plugin requested main thread callback.");
     }
 
@@ -358,7 +359,7 @@ namespace synth_canvas::host
 
         // Signal audio thread to start processing
         _schedule_processing.store(true, std::memory_order_release);
-        
+
         setPluginState(ActiveAndSleeping);
         log_message(CLAP_LOG_INFO, "Plugin activated.");
     }
@@ -376,11 +377,13 @@ namespace synth_canvas::host
         // 2. Wait for audio thread to actually stop processing (Polling with timeout)
         // We wait up to 200ms which should be plenty of audio cycles.
         int retry_count = 0;
-        while (_is_processing_active.load(std::memory_order_acquire)) {
+        while (_is_processing_active.load(std::memory_order_acquire))
+        {
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
-            if (++retry_count > 200) {
-                 log_message(CLAP_LOG_WARNING, "Timeout waiting for audio thread to stop processing. Force deactivating.");
-                 break; 
+            if (++retry_count > 200)
+            {
+                log_message(CLAP_LOG_WARNING, "Timeout waiting for audio thread to stop processing. Force deactivating.");
+                break;
             }
         }
 
@@ -435,19 +438,17 @@ namespace synth_canvas::host
     {
         g_thread_type = ThreadType::AudioThread;
         _process.frames_count = nframes;
-        // _process.steady_time = _audioEngine._steadyTime; // AudioEngine needs _steadyTime
     }
 
     void PluginHost::processEnd(int nframes)
     {
         g_thread_type = ThreadType::Unknown;
         _process.frames_count = nframes;
-        // _process.steady_time = _audioEngine._steadyTime; // AudioEngine needs _steadyTime
     }
 
     void PluginHost::processNoteOn(int sampleOffset, int channel, int key, int velocity)
     {
-        // checkForAudioThread(); // Re-enable if thread checking is fully implemented
+        checkForAudioThread();
 
         if (!_plugin)
             return;
@@ -469,7 +470,7 @@ namespace synth_canvas::host
 
     void PluginHost::processNoteOff(int sampleOffset, int channel, int key, int velocity)
     {
-        // checkForAudioThread(); // Re-enable if thread checking is fully implemented
+        checkForAudioThread();
 
         if (!_plugin)
             return;
@@ -491,7 +492,7 @@ namespace synth_canvas::host
 
     void PluginHost::processCC(int sampleOffset, int channel, int cc, int value)
     {
-        // checkForAudioThread(); // Re-enable if thread checking is fully implemented
+        checkForAudioThread();
 
         if (!_plugin)
             return;
@@ -512,7 +513,7 @@ namespace synth_canvas::host
 
     void PluginHost::process()
     {
-        // checkForAudioThread(); // Re-enable if thread checking is fully implemented
+        checkForAudioThread(); // Re-enable if thread checking is fully implemented
 
         if (!_plugin)
             return;
@@ -520,22 +521,28 @@ namespace synth_canvas::host
         // Can't process a plugin that is not active
         if (!isPluginActive())
             return;
-            
+
         // --- State Transition Logic (Audio Thread) ---
         bool should_process = _schedule_processing.load(std::memory_order_acquire);
         bool is_currently_processing = _is_processing_active.load(std::memory_order_relaxed);
 
-        if (should_process && !is_currently_processing) {
+        if (should_process && !is_currently_processing)
+        {
             // WAKE UP: Need to start processing
-            if (_plugin->startProcessing()) {
+            if (_plugin->startProcessing())
+            {
                 _is_processing_active.store(true, std::memory_order_release);
                 setPluginState(ActiveAndProcessing);
                 is_currently_processing = true;
-            } else {
+            }
+            else
+            {
                 setPluginState(ActiveWithError);
                 return;
             }
-        } else if (!should_process && is_currently_processing) {
+        }
+        else if (!should_process && is_currently_processing)
+        {
             // SLEEP: Need to stop processing
             _plugin->stopProcessing();
             _is_processing_active.store(false, std::memory_order_release);
@@ -546,10 +553,11 @@ namespace synth_canvas::host
         // We can't process a plugin which failed to start processing
         if (_state == ActiveWithError)
             return;
-            
+
         // If we are sleeping, we just return (producing silence essentially, as buffers aren't touched)
-        if (!is_currently_processing) {
-             return;
+        if (!is_currently_processing)
+        {
+            return;
         }
 
         _process.transport = nullptr; // TODO: Implement transport if needed
@@ -574,7 +582,7 @@ namespace synth_canvas::host
 
         _engineToAppValueQueue.producerDone();
 
-        // g_thread_type = ThreadType::Unknown; // Reset thread type after processing
+        g_thread_type = ThreadType::Unknown;
     }
 
     void PluginHost::generatePluginInputEvents()
