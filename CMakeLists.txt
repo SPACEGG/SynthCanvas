@@ -31,6 +31,7 @@ set(GDE_SOURCES
 # Add the subdirectories for the libraries
 add_subdirectory(libs/clap)
 add_subdirectory(libs/clap-helpers)
+add_subdirectory(libs/readerwriterqueue)
 add_subdirectory(src/gdextension/godot-cpp)
 add_subdirectory(src/gdextension)
 add_subdirectory(src/module)

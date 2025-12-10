@@ -298,6 +298,43 @@ namespace synth_canvas::host
             return false;
         }
 
+        // --- Port Configuration ---
+        // 1. Audio Ports
+        auto audio_ports_ext = static_cast<const clap_plugin_audio_ports_t *>(
+            raw_plugin->get_extension(raw_plugin, CLAP_EXT_AUDIO_PORTS));
+
+        if (audio_ports_ext)
+        {
+            _audio_input_ports_count = audio_ports_ext->count(raw_plugin, true);
+            _audio_output_ports_count = audio_ports_ext->count(raw_plugin, false);
+        }
+        else
+        {
+            // Fallback: assume 1 stereo in/out if extension missing (legacy behavior)
+            _audio_input_ports_count = 1;
+            _audio_output_ports_count = 1;
+        }
+
+        // 2. Note Ports
+        auto note_ports_ext = static_cast<const clap_plugin_note_ports_t *>(
+            raw_plugin->get_extension(raw_plugin, CLAP_EXT_NOTE_PORTS));
+
+        if (note_ports_ext)
+        {
+            uint32_t note_in_count = note_ports_ext->count(raw_plugin, true);
+            _has_note_input = (note_in_count > 0);
+        }
+        else
+        {
+            // If extension is missing, strict interpretation means no note ports.
+            _has_note_input = false;
+        }
+
+        log_message(CLAP_LOG_INFO, ("Port Config - Audio In: " + std::to_string(_audio_input_ports_count) +
+                                    ", Audio Out: " + std::to_string(_audio_output_ports_count) +
+                                    ", Note In: " + (_has_note_input ? "Yes" : "No"))
+                                       .c_str());
+
         setPluginState(Inactive);
         return true;
     }
@@ -404,19 +441,41 @@ namespace synth_canvas::host
 
     void PluginHost::setParameterValue(clap_id param_id, double value)
     {
-        checkForMainThread();
-        _appToEngineValueQueue.set(param_id, {nullptr, value});
+        // Allowed from Main Thread (or any thread really, since queue is lock-free)
+        
+        PluginEvent ev;
+        ev.event.header.size = sizeof(clap_event_param_value);
+        ev.event.header.time = 0;
+        ev.event.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+        ev.event.header.type = CLAP_EVENT_PARAM_VALUE;
+        ev.event.header.flags = 0;
+        
+        ev.event.param_value.param_id = param_id;
+        ev.event.param_value.value = value;
+        ev.event.param_value.cookie = nullptr;
+        ev.event.param_value.note_id = -1;
+        ev.event.param_value.port_index = -1;
+        ev.event.param_value.key = -1;
+        ev.event.param_value.channel = -1;
+
+        _to_plugin_event_queue.try_enqueue(ev);
     }
 
     void PluginHost::pollMainThread()
     {
         checkForMainThread();
-        _engineToAppValueQueue.consume([this](const clap_id &param_id, const EngineToAppParamQueueValue &v)
-                                       {
-            if (v.has_value && on_parameter_changed)
+        
+        PluginEvent ev;
+        while (_from_plugin_event_queue.try_dequeue(ev))
+        {
+            if (ev.event.header.type == CLAP_EVENT_PARAM_VALUE)
             {
-                on_parameter_changed(param_id, v.value);
-            } });
+                if (on_parameter_changed)
+                {
+                    on_parameter_changed(ev.event.param_value.param_id, ev.event.param_value.value);
+                }
+            }
+        }
     }
 
     void PluginHost::setPorts(int numInputs, float **inputs, int numOutputs, float **outputs)
@@ -448,67 +507,67 @@ namespace synth_canvas::host
 
     void PluginHost::processNoteOn(int sampleOffset, int channel, int key, int velocity)
     {
-        checkForAudioThread();
-
-        if (!_plugin)
+        // Thread safe: can be called from Main Thread
+        if (!_plugin || !_has_note_input)
             return;
 
-        clap_event_note ev;
-        ev.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
-        ev.header.type = CLAP_EVENT_NOTE_ON;
-        ev.header.time = sampleOffset;
-        ev.header.flags = 0;
-        ev.header.size = sizeof(ev);
-        ev.port_index = 0;
-        ev.key = key;
-        ev.channel = channel;
-        ev.note_id = -1;
-        ev.velocity = velocity / 127.0;
+        PluginEvent ev;
+        ev.event.header.size = sizeof(clap_event_note);
+        ev.event.header.time = sampleOffset; // Relative to block start (usually 0 if from UI)
+        ev.event.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+        ev.event.header.type = CLAP_EVENT_NOTE_ON;
+        ev.event.header.flags = 0;
+        
+        ev.event.note.port_index = 0;
+        ev.event.note.key = key;
+        ev.event.note.channel = channel;
+        ev.event.note.note_id = -1;
+        ev.event.note.velocity = velocity / 127.0;
 
-        _evIn.push(&ev.header);
+        _to_plugin_event_queue.try_enqueue(ev);
     }
 
     void PluginHost::processNoteOff(int sampleOffset, int channel, int key, int velocity)
     {
-        checkForAudioThread();
-
-        if (!_plugin)
+        // Thread safe: can be called from Main Thread
+        if (!_plugin || !_has_note_input)
             return;
 
-        clap_event_note ev;
-        ev.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
-        ev.header.type = CLAP_EVENT_NOTE_OFF;
-        ev.header.time = sampleOffset;
-        ev.header.flags = 0;
-        ev.header.size = sizeof(ev);
-        ev.port_index = 0;
-        ev.key = key;
-        ev.channel = channel;
-        ev.note_id = -1;
-        ev.velocity = velocity / 127.0;
+        PluginEvent ev;
+        ev.event.header.size = sizeof(clap_event_note);
+        ev.event.header.time = sampleOffset;
+        ev.event.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+        ev.event.header.type = CLAP_EVENT_NOTE_OFF;
+        ev.event.header.flags = 0;
+        
+        ev.event.note.port_index = 0;
+        ev.event.note.key = key;
+        ev.event.note.channel = channel;
+        ev.event.note.note_id = -1;
+        ev.event.note.velocity = velocity / 127.0;
 
-        _evIn.push(&ev.header);
+        _to_plugin_event_queue.try_enqueue(ev);
     }
 
     void PluginHost::processCC(int sampleOffset, int channel, int cc, int value)
     {
-        checkForAudioThread();
-
-        if (!_plugin)
+        // Thread safe: can be called from Main Thread
+        if (!_plugin || !_has_note_input)
             return;
 
-        clap_event_midi ev;
-        ev.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
-        ev.header.type = CLAP_EVENT_MIDI;
-        ev.header.time = sampleOffset;
-        ev.header.flags = 0;
-        ev.header.size = sizeof(ev);
-        ev.port_index = 0;
-        ev.data[0] = 0xB0 | channel;
-        ev.data[1] = cc;
-        ev.data[2] = value;
+        PluginEvent ev;
+        ev.event.header.size = sizeof(clap_event_midi);
+        ev.event.header.time = sampleOffset;
+        ev.event.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+        ev.event.header.type = CLAP_EVENT_MIDI;
+        ev.event.header.flags = 0;
+        
+        ev.event.midi.port_index = 0;
+        ev.event.midi.data[0] = 0xB0 | channel;
+        ev.event.midi.data[1] = cc;
+        ev.event.midi.data[2] = value;
 
-        _evIn.push(&ev.header);
+        _to_plugin_event_queue.try_enqueue(ev);
     }
 
     void PluginHost::process()
@@ -565,10 +624,27 @@ namespace synth_canvas::host
         _process.in_events = _evIn.clapInputEvents();
         _process.out_events = _evOut.clapOutputEvents();
 
-        _process.audio_inputs = &_audioIn;
-        _process.audio_inputs_count = 1;
-        _process.audio_outputs = &_audioOut;
-        _process.audio_outputs_count = 1;
+        if (_audio_input_ports_count == 0)
+        {
+            _process.audio_inputs = nullptr;
+            _process.audio_inputs_count = 0;
+        }
+        else
+        {
+            _process.audio_inputs = &_audioIn;
+            _process.audio_inputs_count = 1;
+        }
+
+        if (_audio_output_ports_count == 0)
+        {
+            _process.audio_outputs = nullptr;
+            _process.audio_outputs_count = 0;
+        }
+        else
+        {
+            _process.audio_outputs = &_audioOut;
+            _process.audio_outputs_count = 1;
+        }
 
         _evOut.clear();
         generatePluginInputEvents(); // Handle parameter changes from host
@@ -580,30 +656,23 @@ namespace synth_canvas::host
         _evOut.clear();
         _evIn.clear();
 
-        _engineToAppValueQueue.producerDone();
+        // No need to call producerDone() as queue handles itself
+        // _engineToAppValueQueue.producerDone(); 
 
         g_thread_type = ThreadType::Unknown;
     }
 
     void PluginHost::generatePluginInputEvents()
     {
-        _appToEngineValueQueue.consume([this](const clap_id &param_id, const AppToEngineParamQueueValue &v)
-                                       {
-            clap_event_param_value ev;
-            ev.header.size = sizeof(ev);
-            ev.header.time = 0; // Process immediately
-            ev.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
-            ev.header.type = CLAP_EVENT_PARAM_VALUE;
-            ev.header.flags = 0;
-            ev.param_id = param_id;
-            ev.cookie = v.cookie;
-            ev.value = v.value;
-            ev.note_id = -1;
-            ev.port_index = -1;
-            ev.key = -1;
-            ev.channel = -1;
-
-            _evIn.push(&ev.header); });
+        PluginEvent ev;
+        // Dequeue all pending events from the UI/Main thread
+        while (_to_plugin_event_queue.try_dequeue(ev))
+        {
+            // Ensure timestamp is within the current block (optional, but safe)
+            // If the event came from UI, time might be 0.
+            // We push the header pointer which points to the union member.
+            _evIn.push(&ev.event.header);
+        }
     }
 
     void PluginHost::handlePluginOutputEvents()
@@ -619,10 +688,15 @@ namespace synth_canvas::host
             case CLAP_EVENT_PARAM_VALUE:
             {
                 auto vev = reinterpret_cast<const clap_event_param_value *>(ev);
-                EngineToAppParamQueueValue v;
-                v.has_value = true;
-                v.value = vev->value;
-                _engineToAppValueQueue.set(vev->param_id, v);
+                
+                PluginEvent out_ev;
+                // Copy the event data to our union
+                // Since clap_event_param_value is a POD, memcpy or member-wise copy works.
+                // Safest is to just fill fields.
+                out_ev.event.param_value = *vev;
+                
+                // Enqueue for Main Thread
+                _from_plugin_event_queue.try_enqueue(out_ev);
                 break;
             }
             }

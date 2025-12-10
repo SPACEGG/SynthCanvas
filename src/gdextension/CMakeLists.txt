@@ -35,6 +35,9 @@ target_link_libraries(synth_canvas_gdextension PRIVATE
     # Link against clap and clap-helpers
     clap
     clap-helpers
+
+    # Link against readerwriterqueue
+    readerwriterqueue
 )
 
 # --- Platform Specific Configuration ---

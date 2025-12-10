@@ -13,10 +13,13 @@
 #include <functional> // For std::function
 
 #include <clap/clap.h>
+#include <clap/ext/audio-ports.h>
+#include <clap/ext/note-ports.h>
 #include <clap/helpers/event-list.hh>
-#include <clap/helpers/reducing-param-queue.hh>
 #include <clap/helpers/host.hh>
 #include <clap/helpers/plugin-proxy.hh>
+
+#include "readerwriterqueue.h"
 
 // Forward declarations
 namespace synth_canvas::host
@@ -124,34 +127,7 @@ namespace synth_canvas::host
         clap::helpers::EventList _evIn;
         clap::helpers::EventList _evOut;
         clap_process _process;
-        struct AppToEngineParamQueueValue
-        {
-            void *cookie;
-            double value;
-        };
-        struct EngineToAppParamQueueValue
-        {
-            void update(const EngineToAppParamQueueValue &v) noexcept
-            {
-                if (v.has_value)
-                {
-                    has_value = true;
-                    value = v.value;
-                }
-                if (v.has_gesture)
-                {
-                    has_gesture = true;
-                    is_begin = v.is_begin;
-                }
-            }
-            bool has_value = false;
-            bool has_gesture = false;
-            bool is_begin = false;
-            double value = 0;
-        };
-        clap::helpers::ReducingParamQueue<clap_id, AppToEngineParamQueueValue> _appToEngineValueQueue;
-        clap::helpers::ReducingParamQueue<clap_id, AppToEngineParamQueueValue> _appToEngineModQueue;
-        clap::helpers::ReducingParamQueue<clap_id, EngineToAppParamQueueValue> _engineToAppValueQueue;
+        
         std::unordered_map<clap_id, bool> _isAdjustingParameter;
         PluginState _state = Inactive;
         bool _stateIsDirty = false;
@@ -159,9 +135,32 @@ namespace synth_canvas::host
         bool _scheduleParamFlush = false;
         bool _scheduleMainThreadCallback = false;
 
+        // Port Configuration
+        uint32_t _audio_input_ports_count = 1;
+        uint32_t _audio_output_ports_count = 1;
+        bool _has_note_input = true;
+
         // Thread-safe processing control (Atomic flags)
         std::atomic<bool> _schedule_processing{false};  // Main Thread sets this (Request)
         std::atomic<bool> _is_processing_active{false}; // Audio Thread sets this (Status)
+
+        // Unified Event Queue System
+        // Wraps various CLAP event types in a union for unified queueing
+        struct PluginEvent
+        {
+            union {
+                clap_event_header_t         header;
+                clap_event_note_t           note;
+                clap_event_midi_t           midi;
+                clap_event_param_value_t    param_value;
+            } event;
+        };
+        
+        // Main Thread -> Audio Thread (Note On/Off, Param Change from UI)
+        moodycamel::ReaderWriterQueue<PluginEvent> _to_plugin_event_queue{4096};
+
+        // Audio Thread -> Main Thread (Param Change from Plugin, Metering, etc.)
+        moodycamel::ReaderWriterQueue<PluginEvent> _from_plugin_event_queue{4096};
     };
 
 } // namespace synth_canvas::host

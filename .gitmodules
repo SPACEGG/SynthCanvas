@@ -17,3 +17,6 @@
 [submodule "app"]
 	path = app
 	url = https://github.com/SPACEGG/SynthCanvas-Godot.git
+[submodule "libs/readerwriterqueue"]
+	path = libs/readerwriterqueue
+	url = https://github.com/cameron314/readerwriterqueue
