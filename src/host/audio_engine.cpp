@@ -102,20 +102,21 @@ namespace synth_canvas::host
 
     void AudioEngine::stop()
     {
-        if (_stream)
-        {
-            _stream->requestStop();
-            _stream->close();
-            _stream.reset();
-        }
-
-        // Deactivate all plugins
+        // 1. Deactivate all plugins first (while audio thread is still active)
         if (_module_router)
         {
             for (uint32_t instance_id : _module_router->get_process_order())
             {
                 _module_router->deactivate_plugin(instance_id);
             }
+        }
+
+        // 2. Then stop the audio stream
+        if (_stream)
+        {
+            _stream->requestStop();
+            _stream->close();
+            _stream.reset();
         }
     }
 
