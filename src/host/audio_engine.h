@@ -48,6 +48,8 @@ namespace synth_canvas::host
         std::shared_ptr<oboe::AudioStream> _stream;
         ModuleRouter* _module_router; // Weak reference to ModuleRouter
         AudioBufferManager _buffer_manager; // Manages audio buffers
+        
+        std::unique_ptr<ModuleRouter::AudioRenderState> _current_render_state;
 
         int32_t _channel_count = 2;
         int32_t _sample_rate = 48000;

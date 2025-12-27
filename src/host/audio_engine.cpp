@@ -130,35 +130,56 @@ namespace synth_canvas::host
         void *audioData,
         int32_t numFrames)
     {
-        // Dynamically update frames_per_block if the actual buffer size exceeds our current setting.
+        // 1. Update frames_per_block if needed.
         if (numFrames > _frames_per_block) {
             _frames_per_block = numFrames;
-            // Note: Resizing buffer manager here might not be strictly RT safe if it allocates,
-            // but we rely on AudioBufferManager::ensure_buffer to handle it or reserve enough initially.
         }
 
         if (!_module_router)
         {
-            // Output silence if no router
             std::memset(audioData, 0, numFrames * _channel_count * sizeof(float));
             return oboe::DataCallbackResult::Continue;
         }
 
-        const auto &process_order = _module_router->get_process_order();
-        const auto &connections = _module_router->get_connections();
-
-        // Process nodes in topological order.
-        for (uint32_t node_id : process_order)
+        // 2. Lock-free state swap: check if ModuleRouter has a new graph snapshot for us.
+        std::unique_ptr<ModuleRouter::AudioRenderState> new_state;
+        while (_module_router->_pending_states.try_dequeue(new_state))
         {
-            PluginHost *host = _module_router->get_plugin_instance(node_id);
+            // If we already had a state, return it to the router for cleanup.
+            if (_current_render_state)
+            {
+                // Move ownership of the old state to the release queue
+                _module_router->_released_states.enqueue(std::move(_current_render_state));
+            }
+            // Take ownership of the new state
+            _current_render_state = std::move(new_state);
+        }
+
+        // If we have no state yet, output silence.
+        if (!_current_render_state)
+        {
+            std::memset(audioData, 0, numFrames * _channel_count * sizeof(float));
+            return oboe::DataCallbackResult::Continue;
+        }
+
+        // 3. Process modules using the current render state snapshot.
+        // We use sorted_modules directly from the snapshot.
+        for (PluginHost* host : _current_render_state->sorted_modules)
+        {
             if (!host || !host->isPluginActive())
             {
                 continue;
             }
 
             // --- Prepare Inputs ---
+            // We need the original node ID of this host to find its connections.
+            // Since PluginHost doesn't store its own ID, we can find it by looking 
+            // at the connections in the current state.
+            // (Note: For better performance, ModuleRouter could store the ID inside PluginHost)
+            uint32_t node_id = host->getInstanceId(); 
+
             std::vector<uint32_t> input_nodes;
-            for (const auto &conn : connections)
+            for (const auto &conn : _current_render_state->connections)
             {
                 if (conn.to_node == node_id)
                 {
@@ -172,7 +193,7 @@ namespace synth_canvas::host
             if (!input_nodes.empty())
             {
                 input_ptrs = _buffer_manager.get_input_mix(input_nodes, numFrames);
-                input_count = _channel_count; // Assuming inputs match engine channel count
+                input_count = _channel_count;
             }
 
             // --- Prepare Outputs ---
@@ -185,10 +206,9 @@ namespace synth_canvas::host
             host->processEnd(numFrames);
         }
 
-        // --- Final Output ---
-        // Identify nodes connected to the final output
+        // --- Final Output Mix ---
         std::vector<uint32_t> output_source_nodes;
-        for (const auto &conn : connections)
+        for (const auto &conn : _current_render_state->connections)
         {
             if (conn.to_node == AudioEngine::AUDIO_OUTPUT_NODE_ID)
             {
@@ -196,7 +216,6 @@ namespace synth_canvas::host
             }
         }
 
-        // Mix to the interleaved Oboe output buffer
         _buffer_manager.mix_to_interleaved(output_source_nodes, static_cast<float*>(audioData), numFrames);
 
         return oboe::DataCallbackResult::Continue;

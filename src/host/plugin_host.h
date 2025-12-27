@@ -82,6 +82,9 @@ namespace synth_canvas::host
         bool isPluginSleeping() const;
         void setPluginState(PluginState state);
 
+        void setInstanceId(uint32_t id) { _instance_id = id; }
+        uint32_t getInstanceId() const { return _instance_id; }
+
     protected:
         void requestRestart() noexcept override;
         void requestProcess() noexcept override;
@@ -161,6 +164,8 @@ namespace synth_canvas::host
 
         // Audio Thread -> Main Thread (Param Change from Plugin, Metering, etc.)
         moodycamel::ReaderWriterQueue<PluginEvent> _from_plugin_event_queue{4096};
+
+        uint32_t _instance_id = 0;
     };
 
 } // namespace synth_canvas::host

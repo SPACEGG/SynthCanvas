@@ -9,6 +9,7 @@
 #include <functional> // For std::function
 
 #include <clap/clap.h> // For clap_id
+#include "readerwriterqueue.h" // Lock-free queue
 
 // Forward declarations
 namespace synth_canvas::host
@@ -30,6 +31,13 @@ namespace synth_canvas::host
             uint32_t to_port;
         };
 
+        // Snapshot of the audio graph state for the audio thread
+        struct AudioRenderState
+        {
+            std::vector<PluginHost *> sorted_modules; // Topologically sorted modules
+            std::vector<PortConnection> connections;
+        };
+
         static constexpr uint32_t AUDIO_OUTPUT_NODE_ID = 0;
 
         ModuleRouter();
@@ -48,6 +56,15 @@ namespace synth_canvas::host
 
         void poll_all_main_threads();
 
+        // Process garbage collection for deleted plugins and old states
+        void poll_resources();
+
+        // Queues for communication with Audio Thread
+        // Audio Thread reads from here to get new states
+        moodycamel::ReaderWriterQueue<std::unique_ptr<AudioRenderState>> _pending_states;
+        // Audio Thread writes here to return old states
+        moodycamel::ReaderWriterQueue<std::unique_ptr<AudioRenderState>> _released_states;
+
         // Callback for parameter changes (forwarded from PluginHost)
         std::function<void(clap_id, double)> on_parameter_changed;
 
@@ -58,11 +75,17 @@ namespace synth_canvas::host
 
     private:
         std::unordered_map<uint32_t, std::unique_ptr<PluginHost>> plugin_instances;
+        // Plugins that are removed from the graph but waiting for the audio thread to release them
+        std::vector<std::unique_ptr<PluginHost>> _pending_deletion_plugins;
+
         std::atomic<uint32_t> next_instance_id{1}; // Start IDs from 1
         std::vector<PortConnection> connections;
         std::vector<uint32_t> _process_order; // Topological sort result
 
         void _topological_sort();
+
+        // Helper to create a new state snapshot and push it to the audio thread
+        void _push_new_state();
     };
 
 } // namespace synth_canvas::host
