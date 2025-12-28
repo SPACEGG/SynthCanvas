@@ -31,10 +31,9 @@ namespace synth_canvas::host
             uint32_t to_port;
         };
 
-        // Snapshot of the audio graph state for the audio thread
         struct AudioRenderState
         {
-            std::vector<PluginHost *> sorted_modules; // Topologically sorted modules
+            std::vector<PluginHost *> sorted_modules; 
             std::vector<PortConnection> connections;
         };
 
@@ -45,7 +44,7 @@ namespace synth_canvas::host
 
         uint32_t create_plugin_instance(const std::string &path);
         void destroy_plugin_instance(uint32_t instance_id);
-        uint32_t register_special_node(); // For nodes like "Audio Output"
+        uint32_t register_special_node(); 
         void connect_nodes(uint32_t from_node, uint32_t from_port, uint32_t to_node, uint32_t to_port);
         void disconnect_nodes(uint32_t from_node, uint32_t from_port, uint32_t to_node, uint32_t to_port);
 
@@ -56,35 +55,28 @@ namespace synth_canvas::host
 
         void poll_all_main_threads();
 
-        // Process garbage collection for deleted plugins and old states
         void poll_resources();
 
         // Queues for communication with Audio Thread
-        // Audio Thread reads from here to get new states
         moodycamel::ReaderWriterQueue<std::unique_ptr<AudioRenderState>> _pending_states;
-        // Audio Thread writes here to return old states
         moodycamel::ReaderWriterQueue<std::unique_ptr<AudioRenderState>> _released_states;
 
-        // Callback for parameter changes (forwarded from PluginHost)
         std::function<void(clap_id, double)> on_parameter_changed;
 
-        // Methods to activate/deactivate plugins (might be called from AudioEngine or here)
         void activate_plugin(uint32_t instance_id, int32_t sample_rate, int32_t frames_per_block);
         void deactivate_plugin(uint32_t instance_id);
 
 
     private:
         std::unordered_map<uint32_t, std::unique_ptr<PluginHost>> plugin_instances;
-        // Plugins that are removed from the graph but waiting for the audio thread to release them
         std::vector<std::unique_ptr<PluginHost>> _pending_deletion_plugins;
 
-        std::atomic<uint32_t> next_instance_id{1}; // Start IDs from 1
+        std::atomic<uint32_t> next_instance_id{1}; 
         std::vector<PortConnection> connections;
-        std::vector<uint32_t> _process_order; // Topological sort result
+        std::vector<uint32_t> _process_order; 
 
         void _topological_sort();
 
-        // Helper to create a new state snapshot and push it to the audio thread
         void _push_new_state();
     };
 

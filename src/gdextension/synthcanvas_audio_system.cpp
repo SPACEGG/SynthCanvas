@@ -11,7 +11,6 @@ using namespace godot;
 
 void SynthCanvasAudioSystem::_bind_methods()
 {
-    // --- Bind methods to be called from Godot scripts ---
     ClassDB::bind_method(D_METHOD("create_plugin_instance", "path"), &SynthCanvasAudioSystem::create_plugin_instance);
     ClassDB::bind_method(D_METHOD("destroy_plugin_instance", "instance_id"), &SynthCanvasAudioSystem::destroy_plugin_instance);
     ClassDB::bind_method(D_METHOD("register_special_node", "type"), &SynthCanvasAudioSystem::register_special_node);
@@ -27,23 +26,18 @@ void SynthCanvasAudioSystem::_bind_methods()
     ClassDB::bind_method(D_METHOD("play_note_from_node", "from_node_id", "note", "velocity"), &SynthCanvasAudioSystem::play_note_from_node);
     ClassDB::bind_method(D_METHOD("stop_note_from_node", "from_node_id", "note"), &SynthCanvasAudioSystem::stop_note_from_node);
 
-    // --- Define signals to be emitted from C++ to Godot ---
-    // Used to notify Godot that a plugin parameter has changed.
     ADD_SIGNAL(MethodInfo("parameter_changed", PropertyInfo(Variant::INT, "param_id"), PropertyInfo(Variant::FLOAT, "value")));
 }
 
 SynthCanvasAudioSystem::SynthCanvasAudioSystem()
 {
-    // Set up the log callback to forward messages to Godot's console
     synth_canvas::host::set_log_callback([](const std::string &msg)
                                          { UtilityFunctions::print(String(msg.c_str())); });
 
     UtilityFunctions::print("[SynthCanvasAudioSystem] Initializing...");
 
-    // Create ModuleRouter first
     module_router = std::make_unique<synth_canvas::host::ModuleRouter>();
 
-    // Connect ModuleRouter callbacks
     if (module_router)
     {
         module_router->on_parameter_changed = [this](clap_id param_id, double value)
@@ -52,14 +46,12 @@ SynthCanvasAudioSystem::SynthCanvasAudioSystem()
         };
     }
 
-    // Create AudioEngine, injecting ModuleRouter
     audio_engine = std::make_unique<synth_canvas::host::AudioEngine>(module_router.get());
 }
 
 SynthCanvasAudioSystem::~SynthCanvasAudioSystem()
 {
     UtilityFunctions::print("[SynthCanvasAudioSystem] Cleaning up.");
-    // Explicitly reset audio_engine before module_router because audio_engine depends on module_router
     audio_engine.reset();
     module_router.reset();
 }

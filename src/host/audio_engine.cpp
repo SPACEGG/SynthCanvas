@@ -61,7 +61,6 @@ namespace synth_canvas::host
             return true;
         }
 
-        // 1. Request start first to initialize stream state
         oboe::Result result = _stream->requestStart();
         if (result != oboe::Result::OK)
         {
@@ -69,10 +68,8 @@ namespace synth_canvas::host
             return false;
         }
 
-        // 2. Try to get frames per block after start request
         _frames_per_block = _stream->getFramesPerDataCallback();
 
-        // 3. Fallback if 0 (stream might be starting asynchronously)
         if (_frames_per_block <= 0)
         {
             _frames_per_block = 512; // Safe default
@@ -83,10 +80,8 @@ namespace synth_canvas::host
             log("[AudioEngine] Stream started. Frames per block: ", _frames_per_block);
         }
 
-        // Initialize buffer manager
         _buffer_manager.resize(_channel_count, _frames_per_block * 2); // Reserve a bit more space for safety
 
-        // 4. Activate all plugins with the determined block size
         if (_module_router)
         {
             for (uint32_t instance_id : _module_router->get_process_order())

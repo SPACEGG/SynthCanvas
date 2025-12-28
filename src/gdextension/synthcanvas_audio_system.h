@@ -4,9 +4,8 @@
 #include <godot_cpp/classes/node.hpp>
 #include <memory>
 
-#include <clap/clap.h> // For clap_id
+#include <clap/clap.h> 
 
-// Forward declare the AudioEngine and ModuleRouter classes.
 namespace synth_canvas::host {
     class AudioEngine;
     class ModuleRouter;
@@ -30,7 +29,6 @@ public:
     void _exit_tree() override;
     void _process(double delta) override;
 
-    // --- Methods exposed to Godot ---
     uint32_t create_plugin_instance(const godot::String& path);
     void destroy_plugin_instance(uint32_t instance_id);
     uint32_t register_special_node(const godot::String& type);

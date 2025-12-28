@@ -1,16 +1,14 @@
 #ifndef SYNTH_CANVAS_HOST_PLUGIN_HOST_H
 #define SYNTH_CANVAS_HOST_PLUGIN_HOST_H
 
-// --- Unified implementation for all platforms ---
-
 #include <array>
 #include <memory>
 #include <unordered_map>
 #include <unordered_set>
 #include <string>
 #include <vector>
-#include <atomic>     // Required for std::atomic
-#include <functional> // For std::function
+#include <atomic>     
+#include <functional> 
 
 #include <clap/clap.h>
 #include <clap/ext/audio-ports.h>
@@ -21,7 +19,6 @@
 
 #include "readerwriterqueue.h"
 
-// Forward declarations
 namespace synth_canvas::host
 {
     class AudioEngine;
@@ -76,7 +73,6 @@ namespace synth_canvas::host
 
         std::function<void(clap_id, double)> on_parameter_changed;
 
-        // Public accessors for plugin state
         bool isPluginActive() const;
         bool isPluginProcessing() const;
         bool isPluginSleeping() const;
@@ -138,17 +134,13 @@ namespace synth_canvas::host
         bool _scheduleParamFlush = false;
         bool _scheduleMainThreadCallback = false;
 
-        // Port Configuration
         uint32_t _audio_input_ports_count = 1;
         uint32_t _audio_output_ports_count = 1;
         bool _has_note_input = true;
 
-        // Thread-safe processing control (Atomic flags)
-        std::atomic<bool> _schedule_processing{false};  // Main Thread sets this (Request)
-        std::atomic<bool> _is_processing_active{false}; // Audio Thread sets this (Status)
+        std::atomic<bool> _schedule_processing{false};  
+        std::atomic<bool> _is_processing_active{false}; 
 
-        // Unified Event Queue System
-        // Wraps various CLAP event types in a union for unified queueing
         struct PluginEvent
         {
             union {
@@ -159,10 +151,7 @@ namespace synth_canvas::host
             } event;
         };
         
-        // Main Thread -> Audio Thread (Note On/Off, Param Change from UI)
         moodycamel::ReaderWriterQueue<PluginEvent> _to_plugin_event_queue{4096};
-
-        // Audio Thread -> Main Thread (Param Change from Plugin, Metering, etc.)
         moodycamel::ReaderWriterQueue<PluginEvent> _from_plugin_event_queue{4096};
 
         uint32_t _instance_id = 0;

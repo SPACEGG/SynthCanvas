@@ -22,7 +22,6 @@ namespace synth_canvas::host
     public:
         static constexpr uint32_t AUDIO_OUTPUT_NODE_ID = 0; 
 
-        // Constructor accepts ModuleRouter dependency
         AudioEngine(ModuleRouter* router);
         ~AudioEngine();
 
@@ -46,14 +45,14 @@ namespace synth_canvas::host
         bool openStream();
 
         std::shared_ptr<oboe::AudioStream> _stream;
-        ModuleRouter* _module_router; // Weak reference to ModuleRouter
-        AudioBufferManager _buffer_manager; // Manages audio buffers
+        ModuleRouter* _module_router;
+        AudioBufferManager _buffer_manager;
         
         std::unique_ptr<ModuleRouter::AudioRenderState> _current_render_state;
 
         int32_t _channel_count = 2;
         int32_t _sample_rate = 48000;
-        int32_t _frames_per_block = 0; // Will be determined after stream opens
+        int32_t _frames_per_block = 0; 
     };
 
 } // namespace synth_canvas::host

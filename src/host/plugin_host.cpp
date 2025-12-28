@@ -5,8 +5,6 @@
 #include <clap/helpers/plugin-proxy.hxx>
 #include <clap/helpers/reducing-param-queue.hxx>
 
-// #include "audio_engine.h" // No longer needed for GUI callbacks
-
 #include <iostream>
 #include <stdexcept>
 #include <string_view>
@@ -20,7 +18,6 @@
 #include <dlfcn.h>
 #endif
 
-// For thread management
 #include <thread>
 #include <mutex>
 #include <condition_variable>
@@ -28,18 +25,15 @@
 namespace synth_canvas::host
 {
 
-    // Global thread type for checking, similar to clap-host's approach
     enum class ThreadType
     {
         Unknown,
         MainThread,
         AudioThread,
-        // AudioThreadPool, // Not implementing thread pool initially
     };
 
     thread_local ThreadType g_thread_type = ThreadType::Unknown;
 
-    // Helper for logging
     void log_message(clap_log_severity severity, const char *msg)
     {
         std::string prefix;
@@ -67,14 +61,14 @@ namespace synth_canvas::host
             prefix = "[UNKNOWN]";
             break;
         }
-        log(prefix, " ", msg); // Used new log function
+        log(prefix, " ", msg);
     }
 
     PluginHost::PluginHost()
-        : BaseHost("SynthCanvas Host",                      // name
-                   "DURUMI",                                // vendor
-                   "0.1.0",                                 // version
-                   "https://github.com/SPACEGG/SynthCanvas" // url
+        : BaseHost("SynthCanvas Host",
+                   "DURUMI",
+                   "0.1.0",
+                   "https://github.com/SPACEGG/SynthCanvas"
           )
     {
         g_thread_type = ThreadType::MainThread;
@@ -114,25 +108,21 @@ namespace synth_canvas::host
         return g_thread_type == ThreadType::AudioThread;
     }
 
-    // --- CLAP Host Callbacks (Simplified/Adapted) ---
     void PluginHost::requestRestart() noexcept
     {
         _scheduleRestart = true;
-        // TODO: In a real scenario, you'd signal the main thread to handle this.
         log_message(CLAP_LOG_INFO, "Plugin requested restart.");
     }
 
     void PluginHost::requestProcess() noexcept
     {
         _schedule_processing.store(true, std::memory_order_release);
-        // TODO: In a real scenario, you'd signal the audio thread to process.
         log_message(CLAP_LOG_INFO, "Plugin requested process.");
     }
 
     void PluginHost::requestCallback() noexcept
     {
         _scheduleMainThreadCallback = true;
-        // TODO: In a real scenario, you'd signal the main thread to handle this.
         log_message(CLAP_LOG_INFO, "Plugin requested main thread callback.");
     }
 
@@ -144,19 +134,16 @@ namespace synth_canvas::host
     void PluginHost::paramsRescan(clap_param_rescan_flags flags) noexcept
     {
         log_message(CLAP_LOG_INFO, ("Plugin requested parameter rescan with flags: " + std::to_string(flags)).c_str());
-        // TODO: Implement parameter scanning logic
     }
 
     void PluginHost::paramsClear(clap_id paramId, clap_param_clear_flags flags) noexcept
     {
         log_message(CLAP_LOG_INFO, ("Plugin requested parameter clear for ID: " + std::to_string(paramId)).c_str());
-        // TODO: Implement parameter clear logic
     }
 
     void PluginHost::paramsRequestFlush() noexcept
     {
         log_message(CLAP_LOG_INFO, "Plugin requested parameter flush.");
-        // TODO: Implement parameter flush logic
     }
 
     void PluginHost::stateMarkDirty() noexcept
@@ -165,10 +152,9 @@ namespace synth_canvas::host
         log_message(CLAP_LOG_INFO, "Plugin marked state as dirty.");
     }
 
-    // --- PluginHost Core Logic ---
     bool PluginHost::load(const std::string &path, int pluginIndex)
     {
-        unload(); // Ensure any previous plugin is unloaded
+        unload();
 
         log_message(CLAP_LOG_INFO, ("Attempting to load plugin: " + path).c_str());
 
@@ -276,7 +262,6 @@ namespace synth_canvas::host
             return false;
         }
 
-        // Initialize the proxy with our copy of the plugin instance
         _plugin = std::make_unique<PluginProxy>(*raw_plugin, *this);
 
         if (!_plugin->init())
@@ -293,8 +278,6 @@ namespace synth_canvas::host
             return false;
         }
 
-        // --- Port Configuration ---
-        // 1. Audio Ports
         auto audio_ports_ext = static_cast<const clap_plugin_audio_ports_t *>(
             raw_plugin->get_extension(raw_plugin, CLAP_EXT_AUDIO_PORTS));
 
@@ -305,12 +288,10 @@ namespace synth_canvas::host
         }
         else
         {
-            // Fallback: assume 1 stereo in/out if extension missing (legacy behavior)
             _audio_input_ports_count = 1;
             _audio_output_ports_count = 1;
         }
 
-        // 2. Note Ports
         auto note_ports_ext = static_cast<const clap_plugin_note_ports_t *>(
             raw_plugin->get_extension(raw_plugin, CLAP_EXT_NOTE_PORTS));
 
@@ -321,7 +302,6 @@ namespace synth_canvas::host
         }
         else
         {
-            // If extension is missing, strict interpretation means no note ports.
             _has_note_input = false;
         }
 
@@ -338,15 +318,13 @@ namespace synth_canvas::host
     {
         if (!_libraryHandle)
         {
-            return; // No plugin loaded
+            return;
         }
 
         deactivate();
 
         if (_plugin)
         {
-            // The unique_ptr's destructor will call the PluginProxy's destructor,
-            // which in turn calls plugin->destroy().
             _plugin.reset();
         }
 
@@ -371,7 +349,6 @@ namespace synth_canvas::host
 
     bool PluginHost::canActivate() const
     {
-        // Simplified: assume always true if plugin is loaded and not active
         return _plugin != nullptr && !isPluginActive();
     }
 
@@ -389,7 +366,6 @@ namespace synth_canvas::host
             return;
         }
 
-        // Signal audio thread to start processing
         _schedule_processing.store(true, std::memory_order_release);
 
         setPluginState(ActiveAndSleeping);
@@ -403,11 +379,8 @@ namespace synth_canvas::host
             return;
         }
 
-        // 1. Request stop processing on the audio thread
         _schedule_processing.store(false, std::memory_order_release);
 
-        // 2. Wait for audio thread to actually stop processing (Polling with timeout)
-        // We wait up to 200ms which should be plenty of audio cycles.
         int retry_count = 0;
         while (_is_processing_active.load(std::memory_order_acquire))
         {
@@ -421,8 +394,6 @@ namespace synth_canvas::host
 
         if (_plugin)
         {
-            // Note: stopProcessing() is called by the audio thread based on _schedule_processing flag.
-            // We assume it's done or timed out.
             _plugin->deactivate();
         }
         setPluginState(Inactive);
@@ -436,8 +407,6 @@ namespace synth_canvas::host
 
     void PluginHost::setParameterValue(clap_id param_id, double value)
     {
-        // Allowed from Main Thread (or any thread really, since queue is lock-free)
-
         PluginEvent ev;
         ev.event.header.size = sizeof(clap_event_param_value);
         ev.event.header.time = 0;
@@ -502,13 +471,12 @@ namespace synth_canvas::host
 
     void PluginHost::processNoteOn(int sampleOffset, int channel, int key, int velocity)
     {
-        // Thread safe: can be called from Main Thread
         if (!_plugin || !_has_note_input)
             return;
 
         PluginEvent ev;
         ev.event.header.size = sizeof(clap_event_note);
-        ev.event.header.time = sampleOffset; // Relative to block start (usually 0 if from UI)
+        ev.event.header.time = sampleOffset;
         ev.event.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
         ev.event.header.type = CLAP_EVENT_NOTE_ON;
         ev.event.header.flags = 0;
@@ -524,7 +492,6 @@ namespace synth_canvas::host
 
     void PluginHost::processNoteOff(int sampleOffset, int channel, int key, int velocity)
     {
-        // Thread safe: can be called from Main Thread
         if (!_plugin || !_has_note_input)
             return;
 
@@ -546,7 +513,6 @@ namespace synth_canvas::host
 
     void PluginHost::processCC(int sampleOffset, int channel, int cc, int value)
     {
-        // Thread safe: can be called from Main Thread
         if (!_plugin || !_has_note_input)
             return;
 
@@ -567,22 +533,19 @@ namespace synth_canvas::host
 
     void PluginHost::process()
     {
-        checkForAudioThread(); // Re-enable if thread checking is fully implemented
+        checkForAudioThread();
 
         if (!_plugin)
             return;
 
-        // Can't process a plugin that is not active
         if (!isPluginActive())
             return;
 
-        // --- State Transition Logic (Audio Thread) ---
         bool should_process = _schedule_processing.load(std::memory_order_acquire);
         bool is_currently_processing = _is_processing_active.load(std::memory_order_relaxed);
 
         if (should_process && !is_currently_processing)
         {
-            // WAKE UP: Need to start processing
             if (_plugin->startProcessing())
             {
                 _is_processing_active.store(true, std::memory_order_release);
@@ -597,24 +560,21 @@ namespace synth_canvas::host
         }
         else if (!should_process && is_currently_processing)
         {
-            // SLEEP: Need to stop processing
             _plugin->stopProcessing();
             _is_processing_active.store(false, std::memory_order_release);
             setPluginState(ActiveAndSleeping);
             is_currently_processing = false;
         }
 
-        // We can't process a plugin which failed to start processing
         if (_state == ActiveWithError)
             return;
 
-        // If we are sleeping, we just return (producing silence essentially, as buffers aren't touched)
         if (!is_currently_processing)
         {
             return;
         }
 
-        _process.transport = nullptr; // TODO: Implement transport if needed
+        _process.transport = nullptr;
 
         _process.in_events = _evIn.clapInputEvents();
         _process.out_events = _evOut.clapOutputEvents();
@@ -642,17 +602,14 @@ namespace synth_canvas::host
         }
 
         _evOut.clear();
-        generatePluginInputEvents(); // Handle parameter changes from host
+        generatePluginInputEvents();
 
         _plugin->process(&_process);
 
-        handlePluginOutputEvents(); // Handle parameter changes from plugin
+        handlePluginOutputEvents();
 
         _evOut.clear();
         _evIn.clear();
-
-        // No need to call producerDone() as queue handles itself
-        // _engineToAppValueQueue.producerDone();
 
         g_thread_type = ThreadType::Unknown;
     }
@@ -660,12 +617,8 @@ namespace synth_canvas::host
     void PluginHost::generatePluginInputEvents()
     {
         PluginEvent ev;
-        // Dequeue all pending events from the UI/Main thread
         while (_to_plugin_event_queue.try_dequeue(ev))
         {
-            // Ensure timestamp is within the current block (optional, but safe)
-            // If the event came from UI, time might be 0.
-            // We push the header pointer which points to the union member.
             _evIn.push(&ev.event.header);
         }
     }
@@ -685,12 +638,7 @@ namespace synth_canvas::host
                 auto vev = reinterpret_cast<const clap_event_param_value *>(ev);
 
                 PluginEvent out_ev;
-                // Copy the event data to our union
-                // Since clap_event_param_value is a POD, memcpy or member-wise copy works.
-                // Safest is to just fill fields.
                 out_ev.event.param_value = *vev;
-
-                // Enqueue for Main Thread
                 _from_plugin_event_queue.try_enqueue(out_ev);
                 break;
             }
@@ -698,10 +646,8 @@ namespace synth_canvas::host
         }
     }
 
-    // --- Plugin State Management ---
     void PluginHost::setPluginState(PluginState state)
     {
-        // Basic state transitions, can be made more robust if needed
         _state = state;
     }
 
@@ -722,6 +668,5 @@ namespace synth_canvas::host
 
 } // namespace synth_canvas::host
 
-// Explicit template instantiation for clap::helpers::Host and PluginProxy
 template class clap::helpers::Host<PluginHost_MH, PluginHost_CL>;
 template class clap::helpers::PluginProxy<PluginHost_MH, PluginHost_CL>;
