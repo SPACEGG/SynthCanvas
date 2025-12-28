@@ -1,27 +1,25 @@
-#include <godot_cpp/variant/utility_functions.hpp>
 #include <queue>
 #include <algorithm>
 #include <cstring> // for std::memset
 
 #include "audio_engine.h"
 #include "plugin_host.h"
+#include "logger.h"
 
 #if defined(__ANDROID__)
-
-// TODO: change godot::print to custom log api
 
 namespace synth_canvas::host
 {
 
     AudioEngine::AudioEngine(ModuleRouter *router) : _module_router(router)
     {
-        godot::UtilityFunctions::print("[AudioEngine] Created for Android.");
+        log("[AudioEngine] Created for Android.");
     }
 
     AudioEngine::~AudioEngine()
     {
         stop();
-        godot::UtilityFunctions::print("[AudioEngine] Destroyed for Android.");
+        log("[AudioEngine] Destroyed for Android.");
     }
 
     bool AudioEngine::openStream()
@@ -43,7 +41,7 @@ namespace synth_canvas::host
         oboe::Result result = builder.openStream(_stream);
         if (result != oboe::Result::OK)
         {
-            godot::UtilityFunctions::print("[AudioEngine] Failed to create stream. Error: ", oboe::convertToText(result));
+            log("[AudioEngine] Failed to create stream. Error: ", oboe::convertToText(result));
             _stream.reset();
             return false;
         }
@@ -67,7 +65,7 @@ namespace synth_canvas::host
         oboe::Result result = _stream->requestStart();
         if (result != oboe::Result::OK)
         {
-            godot::UtilityFunctions::print("[AudioEngine] Failed to start stream. Error: ", oboe::convertToText(result));
+            log("[AudioEngine] Failed to start stream. Error: ", oboe::convertToText(result));
             return false;
         }
 
@@ -78,11 +76,11 @@ namespace synth_canvas::host
         if (_frames_per_block <= 0)
         {
             _frames_per_block = 512; // Safe default
-            godot::UtilityFunctions::print("[AudioEngine] Warning: Stream returned 0 frames per block. Using default: 512");
+            log("[AudioEngine] Warning: Stream returned 0 frames per block. Using default: 512");
         }
         else
         {
-            godot::UtilityFunctions::print("[AudioEngine] Stream started. Frames per block: ", godot::String::num_int64(_frames_per_block));
+            log("[AudioEngine] Stream started. Frames per block: ", _frames_per_block);
         }
 
         // Initialize buffer manager
@@ -131,7 +129,8 @@ namespace synth_canvas::host
         int32_t numFrames)
     {
         // 1. Update frames_per_block if needed.
-        if (numFrames > _frames_per_block) {
+        if (numFrames > _frames_per_block)
+        {
             _frames_per_block = numFrames;
         }
 
@@ -164,7 +163,7 @@ namespace synth_canvas::host
 
         // 3. Process modules using the current render state snapshot.
         // We use sorted_modules directly from the snapshot.
-        for (PluginHost* host : _current_render_state->sorted_modules)
+        for (PluginHost *host : _current_render_state->sorted_modules)
         {
             if (!host || !host->isPluginActive())
             {
@@ -173,10 +172,10 @@ namespace synth_canvas::host
 
             // --- Prepare Inputs ---
             // We need the original node ID of this host to find its connections.
-            // Since PluginHost doesn't store its own ID, we can find it by looking 
+            // Since PluginHost doesn't store its own ID, we can find it by looking
             // at the connections in the current state.
             // (Note: For better performance, ModuleRouter could store the ID inside PluginHost)
-            uint32_t node_id = host->getInstanceId(); 
+            uint32_t node_id = host->getInstanceId();
 
             std::vector<uint32_t> input_nodes;
             for (const auto &conn : _current_render_state->connections)
@@ -187,7 +186,7 @@ namespace synth_canvas::host
                 }
             }
 
-            float** input_ptrs = nullptr;
+            float **input_ptrs = nullptr;
             int input_count = 0;
 
             if (!input_nodes.empty())
@@ -197,7 +196,7 @@ namespace synth_canvas::host
             }
 
             // --- Prepare Outputs ---
-            float** output_ptrs = _buffer_manager.get_buffer(node_id, numFrames);
+            float **output_ptrs = _buffer_manager.get_buffer(node_id, numFrames);
 
             // --- Process ---
             host->processBegin(numFrames);
@@ -216,7 +215,7 @@ namespace synth_canvas::host
             }
         }
 
-        _buffer_manager.mix_to_interleaved(output_source_nodes, static_cast<float*>(audioData), numFrames);
+        _buffer_manager.mix_to_interleaved(output_source_nodes, static_cast<float *>(audioData), numFrames);
 
         return oboe::DataCallbackResult::Continue;
     }
@@ -264,38 +263,38 @@ namespace synth_canvas::host
 
     AudioEngine::AudioEngine(ModuleRouter *router) : _module_router(router)
     {
-        godot::UtilityFunctions::print("[AudioEngine] Dummy: Created for non-Android. No audio processing will occur.");
+        log("[AudioEngine] Dummy: Created for non-Android. No audio processing will occur.");
     }
 
     AudioEngine::~AudioEngine()
     {
-        godot::UtilityFunctions::print("[AudioEngine] Dummy: Destroyed for non-Android.");
+        log("[AudioEngine] Dummy: Destroyed for non-Android.");
     }
 
     bool AudioEngine::start()
     {
-        godot::UtilityFunctions::print("[AudioEngine] Dummy: start called.");
+        log("[AudioEngine] Dummy: start called.");
         return true;
     }
 
     void AudioEngine::stop()
     {
-        godot::UtilityFunctions::print("[AudioEngine] Dummy: stop called.");
+        log("[AudioEngine] Dummy: stop called.");
     }
 
     void AudioEngine::playNote(uint32_t instance_id, int note, double velocity)
     {
-        godot::UtilityFunctions::print("[AudioEngine] Dummy: playNote called. Instance: ", (int)instance_id, " Note: ", note);
+        log("[AudioEngine] Dummy: playNote called. Instance: ", instance_id, " Note: ", note);
     }
 
     void AudioEngine::stopNote(uint32_t instance_id, int note)
     {
-        godot::UtilityFunctions::print("[AudioEngine] Dummy: stopNote called. Instance: ", (int)instance_id, " Note: ", note);
+        log("[AudioEngine] Dummy: stopNote called. Instance: ", instance_id, " Note: ", note);
     }
 
     void AudioEngine::setParameterValue(uint32_t instance_id, clap_id param_id, double value)
     {
-        godot::UtilityFunctions::print("[AudioEngine] Dummy: setParameterValue called.");
+        log("[AudioEngine] Dummy: setParameterValue called.");
     }
 
 } // namespace synth_canvas::host

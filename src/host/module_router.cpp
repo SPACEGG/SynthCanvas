@@ -1,6 +1,6 @@
 #include "module_router.h"
 #include "plugin_host.h"
-#include <godot_cpp/variant/utility_functions.hpp>
+#include "logger.h"
 #include <queue>
 #include <algorithm>
 
@@ -9,7 +9,7 @@ namespace synth_canvas::host
 
     ModuleRouter::ModuleRouter() : _pending_states(32), _released_states(32)
     {
-        godot::UtilityFunctions::print("[ModuleRouter] Created.");
+        log("[ModuleRouter] Created.");
     }
 
     ModuleRouter::~ModuleRouter()
@@ -33,12 +33,12 @@ namespace synth_canvas::host
         }
         _pending_deletion_plugins.clear();
 
-        godot::UtilityFunctions::print("[ModuleRouter] Destroyed.");
+        log("[ModuleRouter] Destroyed.");
     }
 
     uint32_t ModuleRouter::create_plugin_instance(const std::string &path)
     {
-        godot::UtilityFunctions::print("[ModuleRouter] Attempting to create plugin instance from path: ", path.c_str());
+        log("[ModuleRouter] Attempting to create plugin instance from path: ", path);
         auto host = std::make_unique<PluginHost>();
         if (host)
         {
@@ -46,7 +46,7 @@ namespace synth_canvas::host
             if (!host->load(path, 0))
             {
                 host->unload();
-                godot::UtilityFunctions::print("[ModuleRouter] Failed to load plugin from path: ", path.c_str());
+                log("[ModuleRouter] Failed to load plugin from path: ", path);
                 return 0; // Return 0 on failure
             }
             uint32_t id = next_instance_id++;
@@ -55,16 +55,16 @@ namespace synth_canvas::host
             _topological_sort(); // Recalculate sort order
             _push_new_state();   // Notify audio thread
 
-            godot::UtilityFunctions::print("[ModuleRouter] Created plugin instance with ID: ", godot::String::num_int64(id));
+            log("[ModuleRouter] Created plugin instance with ID: ", id);
             return id;
         }
-        godot::UtilityFunctions::print("[ModuleRouter] Failed to create PluginHost object.");
+        log("[ModuleRouter] Failed to create PluginHost object.");
         return 0; // Return 0 on failure
     }
 
     void ModuleRouter::destroy_plugin_instance(uint32_t instance_id)
     {
-        godot::UtilityFunctions::print("[ModuleRouter] Destroying plugin instance: ", godot::String::num_int64(instance_id));
+        log("[ModuleRouter] Destroying plugin instance: ", instance_id);
         auto it = plugin_instances.find(instance_id);
         if (it != plugin_instances.end())
         {
@@ -77,11 +77,11 @@ namespace synth_canvas::host
             _topological_sort(); // Recalculate sort order
             _push_new_state();   // Notify audio thread
 
-            godot::UtilityFunctions::print("[ModuleRouter] Plugin instance ", godot::String::num_int64(instance_id), " moved to pending deletion.");
+            log("[ModuleRouter] Plugin instance ", instance_id, " moved to pending deletion.");
         }
         else
         {
-            godot::UtilityFunctions::print("[ModuleRouter] Plugin instance ", godot::String::num_int64(instance_id), " not found for destruction.");
+            log("[ModuleRouter] Plugin instance ", instance_id, " not found for destruction.");
         }
     }
 
@@ -89,7 +89,7 @@ namespace synth_canvas::host
     {
         uint32_t id = next_instance_id++;
         // No PluginHost is created for special nodes, they are just IDs in the graph.
-        godot::UtilityFunctions::print("[ModuleRouter] Registered special node with ID: ", godot::String::num_int64(id));
+        log("[ModuleRouter] Registered special node with ID: ", id);
         // We might want to push a state here if special nodes affect routing significantly,
         // but usually they are just terminals.
         return id;
@@ -163,7 +163,7 @@ namespace synth_canvas::host
         if (!_pending_states.enqueue(std::move(new_state)))
         {
             // TODO:
-            godot::UtilityFunctions::print("[ModuleRouter] ERROR: Failed to enqueue new render state. Queue might be full.");
+            log("[ModuleRouter] ERROR: Failed to enqueue new render state. Queue might be full.");
         }
     }
 
@@ -172,7 +172,7 @@ namespace synth_canvas::host
         _process_order.clear();
         if (plugin_instances.empty())
         {
-            godot::UtilityFunctions::print("[ModuleRouter] No plugin instances to sort.");
+            log("[ModuleRouter] No plugin instances to sort.");
             return;
         }
 
@@ -246,7 +246,7 @@ namespace synth_canvas::host
         // For simplicity, we'll just log cycles for now.
         if (_process_order.size() < plugin_instances.size()) // We only care about actual plugins here. Output node is not part of _process_order
         {
-            godot::UtilityFunctions::print("[ModuleRouter] Cycle detected or unconnected nodes exist in the graph. Process order might be incomplete.");
+            log("[ModuleRouter] Cycle detected or unconnected nodes exist in the graph. Process order might be incomplete.");
             // If there's a cycle, add remaining plugins not in _process_order to the end for processing
             for (const auto &pair : plugin_instances)
             {
@@ -262,16 +262,16 @@ namespace synth_canvas::host
                 if (!found)
                 {
                     _process_order.push_back(pair.first);
-                    godot::UtilityFunctions::print("[ModuleRouter] Added plugin ID ", godot::String::num_int64(pair.first), " to process order after cycle detection.");
+                    log("[ModuleRouter] Added plugin ID ", pair.first, " to process order after cycle detection.");
                 }
             }
         }
-        godot::UtilityFunctions::print("[ModuleRouter] Topological sort complete. Process order size: ", godot::String::num_int64(_process_order.size()));
+        log("[ModuleRouter] Topological sort complete. Process order size: ", _process_order.size());
     }
 
     void ModuleRouter::connect_nodes(uint32_t from_node, uint32_t from_port, uint32_t to_node, uint32_t to_port)
     {
-        godot::UtilityFunctions::print("[ModuleRouter] Connecting ", godot::String::num_int64(from_node), ":", godot::String::num_int64(from_port), " -> ", godot::String::num_int64(to_node), ":", godot::String::num_int64(to_port));
+        log("[ModuleRouter] Connecting ", from_node, ":", from_port, " -> ", to_node, ":", to_port);
         connections.push_back({from_node, from_port, to_node, to_port});
         _topological_sort();
         _push_new_state(); // Notify audio thread
@@ -279,14 +279,14 @@ namespace synth_canvas::host
 
     void ModuleRouter::disconnect_nodes(uint32_t from_node, uint32_t from_port, uint32_t to_node, uint32_t to_port)
     {
-        godot::UtilityFunctions::print("[ModuleRouter] Disconnecting ", godot::String::num_int64(from_node), ":", godot::String::num_int64(from_port), " -> ", godot::String::num_int64(to_node), ":", godot::String::num_int64(to_port));
+        log("[ModuleRouter] Disconnecting ", from_node, ":", from_port, " -> ", to_node, ":", to_port);
         for (auto it = connections.begin(); it != connections.end();)
         {
             if (it->from_node == from_node && it->from_port == from_port &&
                 it->to_node == to_node && it->to_port == to_port)
             {
                 it = connections.erase(it);
-                godot::UtilityFunctions::print("[ModuleRouter] Connection removed.");
+                log("[ModuleRouter] Connection removed.");
             }
             else
             {
@@ -304,16 +304,16 @@ namespace synth_canvas::host
             if (!host->isPluginActive())
             {
                 host->activate(sample_rate, frames_per_block);
-                godot::UtilityFunctions::print("[ModuleRouter] Plugin ", godot::String::num_int64(instance_id), " activated.");
+                log("[ModuleRouter] Plugin ", instance_id, " activated.");
             }
             else
             {
-                godot::UtilityFunctions::print("[ModuleRouter] Plugin ", godot::String::num_int64(instance_id), " already active.");
+                log("[ModuleRouter] Plugin ", instance_id, " already active.");
             }
         }
         else
         {
-            godot::UtilityFunctions::print("[ModuleRouter] Attempted to activate non-existent plugin ID: ", godot::String::num_int64(instance_id));
+            log("[ModuleRouter] Attempted to activate non-existent plugin ID: ", instance_id);
         }
     }
 
@@ -324,16 +324,16 @@ namespace synth_canvas::host
             if (host->isPluginActive())
             {
                 host->deactivate();
-                godot::UtilityFunctions::print("[ModuleRouter] Plugin ", godot::String::num_int64(instance_id), " deactivated.");
+                log("[ModuleRouter] Plugin ", instance_id, " deactivated.");
             }
             else
             {
-                godot::UtilityFunctions::print("[ModuleRouter] Plugin ", godot::String::num_int64(instance_id), " already inactive.");
+                log("[ModuleRouter] Plugin ", instance_id, " already inactive.");
             }
         }
         else
         {
-            godot::UtilityFunctions::print("[ModuleRouter] Attempted to deactivate non-existent plugin ID: ", godot::String::num_int64(instance_id));
+            log("[ModuleRouter] Attempted to deactivate non-existent plugin ID: ", instance_id);
         }
     }
 

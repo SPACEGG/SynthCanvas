@@ -20,6 +20,8 @@ set(GDE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/gdextension/synthcanvas_audio_system.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/host/audio_engine.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/host/audio_engine.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/host/logger.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/host/logger.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/host/plugin_host.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/host/plugin_host.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/host/module_router.cpp

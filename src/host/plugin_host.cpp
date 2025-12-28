@@ -1,6 +1,5 @@
-#include <godot_cpp/variant/utility_functions.hpp>
-
 #include "plugin_host.h"
+#include "logger.h"
 
 #include <clap/helpers/host.hxx>
 #include <clap/helpers/plugin-proxy.hxx>
@@ -68,11 +67,7 @@ namespace synth_canvas::host
             prefix = "[UNKNOWN]";
             break;
         }
-        godot::UtilityFunctions::print(godot::String(prefix.c_str()) + " " + godot::String(msg));
-        if (severity >= CLAP_LOG_ERROR)
-        {
-            std::cerr << prefix << " " << msg << std::endl;
-        }
+        log(prefix, " ", msg); // Used new log function
     }
 
     PluginHost::PluginHost()
@@ -442,14 +437,14 @@ namespace synth_canvas::host
     void PluginHost::setParameterValue(clap_id param_id, double value)
     {
         // Allowed from Main Thread (or any thread really, since queue is lock-free)
-        
+
         PluginEvent ev;
         ev.event.header.size = sizeof(clap_event_param_value);
         ev.event.header.time = 0;
         ev.event.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
         ev.event.header.type = CLAP_EVENT_PARAM_VALUE;
         ev.event.header.flags = 0;
-        
+
         ev.event.param_value.param_id = param_id;
         ev.event.param_value.value = value;
         ev.event.param_value.cookie = nullptr;
@@ -464,7 +459,7 @@ namespace synth_canvas::host
     void PluginHost::pollMainThread()
     {
         checkForMainThread();
-        
+
         PluginEvent ev;
         while (_from_plugin_event_queue.try_dequeue(ev))
         {
@@ -517,7 +512,7 @@ namespace synth_canvas::host
         ev.event.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
         ev.event.header.type = CLAP_EVENT_NOTE_ON;
         ev.event.header.flags = 0;
-        
+
         ev.event.note.port_index = 0;
         ev.event.note.key = key;
         ev.event.note.channel = channel;
@@ -539,7 +534,7 @@ namespace synth_canvas::host
         ev.event.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
         ev.event.header.type = CLAP_EVENT_NOTE_OFF;
         ev.event.header.flags = 0;
-        
+
         ev.event.note.port_index = 0;
         ev.event.note.key = key;
         ev.event.note.channel = channel;
@@ -561,7 +556,7 @@ namespace synth_canvas::host
         ev.event.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
         ev.event.header.type = CLAP_EVENT_MIDI;
         ev.event.header.flags = 0;
-        
+
         ev.event.midi.port_index = 0;
         ev.event.midi.data[0] = 0xB0 | channel;
         ev.event.midi.data[1] = cc;
@@ -657,7 +652,7 @@ namespace synth_canvas::host
         _evIn.clear();
 
         // No need to call producerDone() as queue handles itself
-        // _engineToAppValueQueue.producerDone(); 
+        // _engineToAppValueQueue.producerDone();
 
         g_thread_type = ThreadType::Unknown;
     }
@@ -688,13 +683,13 @@ namespace synth_canvas::host
             case CLAP_EVENT_PARAM_VALUE:
             {
                 auto vev = reinterpret_cast<const clap_event_param_value *>(ev);
-                
+
                 PluginEvent out_ev;
                 // Copy the event data to our union
                 // Since clap_event_param_value is a POD, memcpy or member-wise copy works.
                 // Safest is to just fill fields.
                 out_ev.event.param_value = *vev;
-                
+
                 // Enqueue for Main Thread
                 _from_plugin_event_queue.try_enqueue(out_ev);
                 break;

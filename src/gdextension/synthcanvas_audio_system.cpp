@@ -3,7 +3,8 @@
 
 #include "host/audio_engine.h"
 #include "host/module_router.h"
-#include "host/plugin_host.h" // For get_plugin_instance() if needed
+#include "host/plugin_host.h"
+#include "host/logger.h"
 #include "synthcanvas_audio_system.h"
 
 using namespace godot;
@@ -33,13 +34,18 @@ void SynthCanvasAudioSystem::_bind_methods()
 
 SynthCanvasAudioSystem::SynthCanvasAudioSystem()
 {
+    // Set up the log callback to forward messages to Godot's console
+    synth_canvas::host::set_log_callback([](const std::string &msg)
+                                         { UtilityFunctions::print(String(msg.c_str())); });
+
     UtilityFunctions::print("[SynthCanvasAudioSystem] Initializing...");
-    
+
     // Create ModuleRouter first
     module_router = std::make_unique<synth_canvas::host::ModuleRouter>();
-    
+
     // Connect ModuleRouter callbacks
-    if (module_router) {
+    if (module_router)
+    {
         module_router->on_parameter_changed = [this](clap_id param_id, double value)
         {
             emit_signal("parameter_changed", param_id, value);
@@ -54,7 +60,7 @@ SynthCanvasAudioSystem::~SynthCanvasAudioSystem()
 {
     UtilityFunctions::print("[SynthCanvasAudioSystem] Cleaning up.");
     // Explicitly reset audio_engine before module_router because audio_engine depends on module_router
-    audio_engine.reset(); 
+    audio_engine.reset();
     module_router.reset();
 }
 
@@ -82,14 +88,16 @@ void SynthCanvasAudioSystem::_process(double delta)
 uint32_t SynthCanvasAudioSystem::create_plugin_instance(const String &path)
 {
     UtilityFunctions::print("[SynthCanvasAudioSystem] Attempting to create plugin instance from path: ", path);
-    
-    if (!module_router) return 0;
+
+    if (!module_router)
+        return 0;
 
     // 1. Load plugin (without activation)
     uint32_t id = module_router->create_plugin_instance(path.utf8().get_data());
-    
+
     // 2. If audio engine is running, activate immediately with current stream settings
-    if (id != 0 && audio_engine && audio_engine->isRunning()) {
+    if (id != 0 && audio_engine && audio_engine->isRunning())
+    {
         int32_t rate = audio_engine->getSampleRate();
         int32_t frames = audio_engine->getFramesPerBlock();
         module_router->activate_plugin(id, rate, frames);
@@ -122,7 +130,8 @@ uint32_t SynthCanvasAudioSystem::register_special_node(const String &type)
 void SynthCanvasAudioSystem::connect_nodes(uint32_t from_node, uint32_t from_port, uint32_t to_node, uint32_t to_port)
 {
     UtilityFunctions::print("[SynthCanvasAudioSystem] Connecting ", (int)from_node, ":", (int)from_port, " -> ", (int)to_node, ":", (int)to_port);
-    if (module_router) {
+    if (module_router)
+    {
         module_router->connect_nodes(from_node, from_port, to_node, to_port);
     }
 }
@@ -130,11 +139,11 @@ void SynthCanvasAudioSystem::connect_nodes(uint32_t from_node, uint32_t from_por
 void SynthCanvasAudioSystem::disconnect_nodes(uint32_t from_node, uint32_t from_port, uint32_t to_node, uint32_t to_port)
 {
     UtilityFunctions::print("[SynthCanvasAudioSystem] Disconnecting ", (int)from_node, ":", (int)from_port, " -> ", (int)to_node, ":", (int)to_port);
-    if (module_router) {
+    if (module_router)
+    {
         module_router->disconnect_nodes(from_node, from_port, to_node, to_port);
     }
 }
-
 
 void SynthCanvasAudioSystem::start_audio()
 {
