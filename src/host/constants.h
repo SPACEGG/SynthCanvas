@@ -16,7 +16,7 @@ namespace constants {
     constexpr int32_t DEFAULT_FRAMES_PER_BLOCK = 512;
     constexpr int32_t DEFAULT_CHANNEL_COUNT = 2;
     constexpr int32_t DEFAULT_AUDIO_PORT_COUNT = 1;
-    constexpr int32_t BUFFER_CAPACITY_MULTIPLIER = 2;
+    constexpr int32_t BUFFER_CAPACITY_MULTIPLIER = 8;
 
     // Queue Sizes
     constexpr size_t SNAPSHOT_QUEUE_SIZE = 32;

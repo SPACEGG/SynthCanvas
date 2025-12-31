@@ -36,8 +36,10 @@ namespace synth_canvas::host
             ->setPerformanceMode(oboe::PerformanceMode::LowLatency)
             ->setSharingMode(oboe::SharingMode::Exclusive)
             ->setFormat(oboe::AudioFormat::Float)
+            ->setUsage(oboe::Usage::Game)
+            ->setContentType(oboe::ContentType::Music)
             ->setChannelCount(_channel_count)
-            ->setSampleRate(_sample_rate) // 0 means unspecified/native
+            ->setSampleRate(constants::DEFAULT_SAMPLE_RATE)
             ->setDataCallback(this);
 
         oboe::Result result = builder.openStream(_stream);
@@ -49,6 +51,7 @@ namespace synth_canvas::host
         }
 
         _sample_rate = _stream->getSampleRate();
+
         return true;
     }
 
@@ -74,12 +77,30 @@ namespace synth_canvas::host
 
         if (_frames_per_block <= 0)
         {
-            _frames_per_block = constants::DEFAULT_FRAMES_PER_BLOCK; // Safe default
-            log("[AudioEngine] Warning: Stream returned 0 frames per block. Using default: ", constants::DEFAULT_FRAMES_PER_BLOCK);
+            // Try to use the hardware burst size as a better default
+            _frames_per_block = _stream->getFramesPerBurst();
+
+            if (_frames_per_block > 0)
+            {
+                log("[AudioEngine] Stream using variable callback size. Initializing with burst size: ", _frames_per_block);
+            }
+            else
+            {
+                _frames_per_block = constants::DEFAULT_FRAMES_PER_BLOCK; // Safe default
+                log("[AudioEngine] Warning: Stream returned 0 frames per block and unknown burst size. Using default: ", constants::DEFAULT_FRAMES_PER_BLOCK);
+            }
         }
         else
         {
             log("[AudioEngine] Stream started. Frames per block: ", _frames_per_block);
+        }
+
+        // Optimize buffer size for low latency (Double buffering)
+        int32_t burstSize = _stream->getFramesPerBurst();
+        if (burstSize > 0)
+        {
+            _stream->setBufferSizeInFrames(burstSize * 2);
+            log("[AudioEngine] Buffer size set to: ", _stream->getBufferSizeInFrames());
         }
 
         _buffer_manager.resize(_channel_count, _frames_per_block * constants::BUFFER_CAPACITY_MULTIPLIER); // Reserve a bit more space for safety
@@ -206,7 +227,7 @@ namespace synth_canvas::host
         std::vector<uint32_t> output_source_nodes;
         for (const auto &conn : _current_render_state->connections)
         {
-            if (conn.to_node == AudioEngine::AUDIO_OUTPUT_NODE_ID)
+            if (conn.to_node == constants::AUDIO_OUTPUT_NODE_ID)
             {
                 output_source_nodes.push_back(conn.from_node);
             }
