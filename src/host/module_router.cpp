@@ -1,13 +1,14 @@
 #include "module_router.h"
 #include "plugin_host.h"
 #include "logger.h"
+#include "constants.h" // Explicitly include constants
 #include <queue>
 #include <algorithm>
 
 namespace synth_canvas::host
 {
 
-    ModuleRouter::ModuleRouter() : _pending_states(32), _released_states(32)
+    ModuleRouter::ModuleRouter() : _pending_states(constants::SNAPSHOT_QUEUE_SIZE), _released_states(constants::SNAPSHOT_QUEUE_SIZE)
     {
         log("[ModuleRouter] Created.");
     }
@@ -170,13 +171,13 @@ namespace synth_canvas::host
         {
             in_degree[pair.first] = 0;
         }
-        in_degree[AUDIO_OUTPUT_NODE_ID] = 0;
+        in_degree[constants::AUDIO_OUTPUT_NODE_ID] = 0;
 
         for (const auto &conn : connections)
         {
             bool from_is_plugin = plugin_instances.count(conn.from_node);
             bool to_is_plugin = plugin_instances.count(conn.to_node);
-            bool to_is_audio_out = (conn.to_node == AUDIO_OUTPUT_NODE_ID);
+            bool to_is_audio_out = (conn.to_node == constants::AUDIO_OUTPUT_NODE_ID);
 
             if (from_is_plugin && (to_is_plugin || to_is_audio_out))
             {

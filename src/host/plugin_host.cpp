@@ -384,8 +384,8 @@ namespace synth_canvas::host
         int retry_count = 0;
         while (_is_processing_active.load(std::memory_order_acquire))
         {
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-            if (++retry_count > 200)
+            std::this_thread::sleep_for(std::chrono::milliseconds(constants::PLUGIN_DEACTIVATE_SLEEP_MS));
+            if (++retry_count > constants::PLUGIN_DEACTIVATE_RETRY_COUNT)
             {
                 log_message(CLAP_LOG_WARNING, "Timeout waiting for audio thread to stop processing. Force deactivating.");
                 break;
@@ -417,10 +417,10 @@ namespace synth_canvas::host
         ev.event.param_value.param_id = param_id;
         ev.event.param_value.value = value;
         ev.event.param_value.cookie = nullptr;
-        ev.event.param_value.note_id = -1;
-        ev.event.param_value.port_index = -1;
-        ev.event.param_value.key = -1;
-        ev.event.param_value.channel = -1;
+        ev.event.param_value.note_id = constants::CLAP_INVALID_ID;
+        ev.event.param_value.port_index = constants::CLAP_INVALID_ID;
+        ev.event.param_value.key = constants::CLAP_INVALID_ID;
+        ev.event.param_value.channel = constants::CLAP_INVALID_ID;
 
         _to_plugin_event_queue.try_enqueue(ev);
     }
@@ -481,11 +481,11 @@ namespace synth_canvas::host
         ev.event.header.type = CLAP_EVENT_NOTE_ON;
         ev.event.header.flags = 0;
 
-        ev.event.note.port_index = 0;
+        ev.event.note.port_index = constants::DEFAULT_EVENT_PORT_INDEX;
         ev.event.note.key = key;
         ev.event.note.channel = channel;
-        ev.event.note.note_id = -1;
-        ev.event.note.velocity = velocity / 127.0;
+        ev.event.note.note_id = constants::CLAP_INVALID_ID;
+        ev.event.note.velocity = velocity / constants::MIDI_MAX_VELOCITY;
 
         _to_plugin_event_queue.try_enqueue(ev);
     }
@@ -502,11 +502,11 @@ namespace synth_canvas::host
         ev.event.header.type = CLAP_EVENT_NOTE_OFF;
         ev.event.header.flags = 0;
 
-        ev.event.note.port_index = 0;
+        ev.event.note.port_index = constants::DEFAULT_EVENT_PORT_INDEX;
         ev.event.note.key = key;
         ev.event.note.channel = channel;
-        ev.event.note.note_id = -1;
-        ev.event.note.velocity = velocity / 127.0;
+        ev.event.note.note_id = constants::CLAP_INVALID_ID;
+        ev.event.note.velocity = velocity / constants::MIDI_MAX_VELOCITY;
 
         _to_plugin_event_queue.try_enqueue(ev);
     }
@@ -523,8 +523,8 @@ namespace synth_canvas::host
         ev.event.header.type = CLAP_EVENT_MIDI;
         ev.event.header.flags = 0;
 
-        ev.event.midi.port_index = 0;
-        ev.event.midi.data[0] = 0xB0 | channel;
+        ev.event.midi.port_index = constants::DEFAULT_EVENT_PORT_INDEX;
+        ev.event.midi.data[0] = constants::MIDI_CC_STATUS_BYTE | channel;
         ev.event.midi.data[1] = cc;
         ev.event.midi.data[2] = value;
 

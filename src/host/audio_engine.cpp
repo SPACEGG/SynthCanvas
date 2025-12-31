@@ -13,6 +13,8 @@ namespace synth_canvas::host
 
     AudioEngine::AudioEngine(ModuleRouter *router) : _module_router(router)
     {
+        // Use UNSPECIFIED (0) to let Oboe choose the optimal native sample rate
+        _sample_rate = constants::UNSPECIFIED_SAMPLE_RATE;
         log("[AudioEngine] Created for Android.");
     }
 
@@ -35,7 +37,7 @@ namespace synth_canvas::host
             ->setSharingMode(oboe::SharingMode::Exclusive)
             ->setFormat(oboe::AudioFormat::Float)
             ->setChannelCount(_channel_count)
-            ->setSampleRate(_sample_rate)
+            ->setSampleRate(_sample_rate) // 0 means unspecified/native
             ->setDataCallback(this);
 
         oboe::Result result = builder.openStream(_stream);
@@ -72,15 +74,15 @@ namespace synth_canvas::host
 
         if (_frames_per_block <= 0)
         {
-            _frames_per_block = 512; // Safe default
-            log("[AudioEngine] Warning: Stream returned 0 frames per block. Using default: 512");
+            _frames_per_block = constants::DEFAULT_FRAMES_PER_BLOCK; // Safe default
+            log("[AudioEngine] Warning: Stream returned 0 frames per block. Using default: ", constants::DEFAULT_FRAMES_PER_BLOCK);
         }
         else
         {
             log("[AudioEngine] Stream started. Frames per block: ", _frames_per_block);
         }
 
-        _buffer_manager.resize(_channel_count, _frames_per_block * 2); // Reserve a bit more space for safety
+        _buffer_manager.resize(_channel_count, _frames_per_block * constants::BUFFER_CAPACITY_MULTIPLIER); // Reserve a bit more space for safety
 
         if (_module_router)
         {
@@ -221,7 +223,7 @@ namespace synth_canvas::host
         {
             if (auto *host = _module_router->get_plugin_instance(instance_id))
             {
-                host->processNoteOn(0, 0, note, static_cast<int>(velocity * 127));
+                host->processNoteOn(0, 0, note, static_cast<int>(velocity * constants::MIDI_MAX_VELOCITY));
             }
         }
     }

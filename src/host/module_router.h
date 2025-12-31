@@ -10,6 +10,7 @@
 
 #include <clap/clap.h> // For clap_id
 #include "readerwriterqueue.h" // Lock-free queue
+#include "constants.h"
 
 // Forward declarations
 namespace synth_canvas::host
@@ -36,8 +37,6 @@ namespace synth_canvas::host
             std::vector<PluginHost *> sorted_modules; 
             std::vector<PortConnection> connections;
         };
-
-        static constexpr uint32_t AUDIO_OUTPUT_NODE_ID = 0;
 
         ModuleRouter();
         ~ModuleRouter();
@@ -71,7 +70,7 @@ namespace synth_canvas::host
         std::unordered_map<uint32_t, std::unique_ptr<PluginHost>> plugin_instances;
         std::vector<std::unique_ptr<PluginHost>> _pending_deletion_plugins;
 
-        std::atomic<uint32_t> next_instance_id{1}; 
+        std::atomic<uint32_t> next_instance_id{constants::INITIAL_PLUGIN_INSTANCE_ID}; 
         std::vector<PortConnection> connections;
         std::vector<uint32_t> _process_order; 
 

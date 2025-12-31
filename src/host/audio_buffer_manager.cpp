@@ -1,12 +1,13 @@
 #include "audio_buffer_manager.h"
+#include "constants.h"
 #include <algorithm>
 #include <cstring>
 
 namespace synth_canvas::host {
 
 AudioBufferManager::AudioBufferManager() {
-    _channels = 2;
-    _max_frames = 512;
+    _channels = constants::DEFAULT_CHANNEL_COUNT;
+    _max_frames = constants::DEFAULT_FRAMES_PER_BLOCK;
 }
 
 AudioBufferManager::~AudioBufferManager() {

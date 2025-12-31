@@ -9,6 +9,7 @@
 #include <clap/clap.h> // For clap_id
 #include "module_router.h" // Include ModuleRouter
 #include "audio_buffer_manager.h"
+#include "constants.h"
 
 #if defined(__ANDROID__)
 // --- Android implementation using Oboe ---
@@ -20,8 +21,6 @@ namespace synth_canvas::host
     class AudioEngine : public oboe::AudioStreamDataCallback
     {
     public:
-        static constexpr uint32_t AUDIO_OUTPUT_NODE_ID = 0; 
-
         AudioEngine(ModuleRouter* router);
         ~AudioEngine();
 
@@ -50,8 +49,8 @@ namespace synth_canvas::host
         
         std::unique_ptr<ModuleRouter::AudioRenderState> _current_render_state;
 
-        int32_t _channel_count = 2;
-        int32_t _sample_rate = 48000;
+        int32_t _channel_count = constants::DEFAULT_CHANNEL_COUNT;
+        int32_t _sample_rate = constants::DEFAULT_SAMPLE_RATE;
         int32_t _frames_per_block = 0; 
     };
 
@@ -67,8 +66,6 @@ namespace synth_canvas::host
     class AudioEngine
     {
     public:
-        static constexpr uint32_t AUDIO_OUTPUT_NODE_ID = 0;
-
         AudioEngine(ModuleRouter* router);
         ~AudioEngine();
 
@@ -79,8 +76,8 @@ namespace synth_canvas::host
         void stopNote(uint32_t instance_id, int note);
         void setParameterValue(uint32_t instance_id, clap_id param_id, double value);
 
-        int32_t getSampleRate() const { return 44100; }
-        int32_t getFramesPerBlock() const { return 512; }
+        int32_t getSampleRate() const { return constants::FALLBACK_SAMPLE_RATE; }
+        int32_t getFramesPerBlock() const { return constants::DEFAULT_FRAMES_PER_BLOCK; }
         bool isRunning() const { return false; }
 
     private:

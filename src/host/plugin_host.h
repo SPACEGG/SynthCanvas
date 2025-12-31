@@ -18,6 +18,7 @@
 #include <clap/helpers/plugin-proxy.hh>
 
 #include "readerwriterqueue.h"
+#include "constants.h"
 
 namespace synth_canvas::host
 {
@@ -134,8 +135,8 @@ namespace synth_canvas::host
         bool _scheduleParamFlush = false;
         bool _scheduleMainThreadCallback = false;
 
-        uint32_t _audio_input_ports_count = 1;
-        uint32_t _audio_output_ports_count = 1;
+        uint32_t _audio_input_ports_count = constants::DEFAULT_AUDIO_PORT_COUNT;
+        uint32_t _audio_output_ports_count = constants::DEFAULT_AUDIO_PORT_COUNT;
         bool _has_note_input = true;
 
         std::atomic<bool> _schedule_processing{false};  
@@ -151,8 +152,8 @@ namespace synth_canvas::host
             } event;
         };
         
-        moodycamel::ReaderWriterQueue<PluginEvent> _to_plugin_event_queue{4096};
-        moodycamel::ReaderWriterQueue<PluginEvent> _from_plugin_event_queue{4096};
+        moodycamel::ReaderWriterQueue<PluginEvent> _to_plugin_event_queue{constants::EVENT_QUEUE_SIZE};
+        moodycamel::ReaderWriterQueue<PluginEvent> _from_plugin_event_queue{constants::EVENT_QUEUE_SIZE};
 
         uint32_t _instance_id = 0;
     };
