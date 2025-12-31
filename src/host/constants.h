@@ -29,7 +29,7 @@ namespace constants {
     constexpr int32_t CLAP_INVALID_ID = -1;
 
     // Timing & Timeouts
-    constexpr int PLUGIN_DEACTIVATE_RETRY_COUNT = 200;
+    constexpr int PLUGIN_DEACTIVATE_TIMEOUT_MS = 200;
     constexpr int PLUGIN_DEACTIVATE_SLEEP_MS = 1;
 
     // Identifiers

@@ -381,15 +381,15 @@ namespace synth_canvas::host
 
         _schedule_processing.store(false, std::memory_order_release);
 
-        int retry_count = 0;
+        auto start_time = std::chrono::steady_clock::now();
         while (_is_processing_active.load(std::memory_order_acquire))
         {
-            std::this_thread::sleep_for(std::chrono::milliseconds(constants::PLUGIN_DEACTIVATE_SLEEP_MS));
-            if (++retry_count > constants::PLUGIN_DEACTIVATE_RETRY_COUNT)
+            if (std::chrono::steady_clock::now() - start_time > std::chrono::milliseconds(constants::PLUGIN_DEACTIVATE_TIMEOUT_MS))
             {
                 log_message(CLAP_LOG_WARNING, "Timeout waiting for audio thread to stop processing. Force deactivating.");
                 break;
             }
+            std::this_thread::sleep_for(std::chrono::milliseconds(constants::PLUGIN_DEACTIVATE_SLEEP_MS));
         }
 
         if (_plugin)
