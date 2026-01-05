@@ -1,65 +1,54 @@
 {
-    "version": "2.0.0",
-    "tasks": [
-        {
-            "label": "Build: Windows",
-            "type": "process",
-            "command": "cmake",
-            "args": [
-                "--build",
-                "build/windows",
-                "--config",
-                "Release"
-            ],
-            "group": {
-                "kind": "build",
-                "isDefault": true
-            },
-            "problemMatcher": [
-                "$msCompile"
-            ],
-            "detail": "Build the project for Windows. (Default)"
-        },
-        {
-            "label": "Build: Android",
-            "type": "process",
-            "command": "cmake",
-            "args": [
-                "--build",
-                "build/android"
-            ],
-            "group": "build",
-            "problemMatcher": [],
-            "detail": "Build the project for Android."
-        },
-        {
-            "label": "Configure: Windows",
-            "type": "process",
-            "command": "cmake",
-            "args": [
-                "-B",
-                "build/windows",
-                "."
-            ],
-            "detail": "Configure the project for Windows."
-        },
-        {
-            "label": "Configure: Android",
-            "type": "process",
-            "command": "cmake",
-            "args": [
-                "-B",
-                "build/android",
-                "-G",
-                "Ninja",
-                "-DCMAKE_TOOLCHAIN_FILE=${env:ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake",
-                "-DANDROID_ABI=arm64-v8a",
-                "-DANDROID_PLATFORM=android-33",
-                "-DCMAKE_BUILD_TYPE=Release",
-                "-DGODOTCPP_DISABLE_EXCEPTIONS=OFF",
-                "."
-            ],
-            "detail": "Configure the project for Android."
-        }
-    ]
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Build: Windows",
+      "type": "process",
+      "command": "cmake",
+      "args": ["--build", "build/windows", "--config", "Release"],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": ["$msCompile"],
+      "detail": "Build the project for Windows. (Default)"
+    },
+    {
+      "label": "Build: Android",
+      "type": "process",
+      "command": "cmake",
+      "args": ["--build", "build/android"],
+      "group": "build",
+      "problemMatcher": [],
+      "detail": "Build the project for Android."
+    },
+    {
+      "label": "Configure: Windows",
+      "type": "process",
+      "command": "cmake",
+      "args": ["-B", "build/windows", "."],
+      "detail": "Configure the project for Windows."
+    },
+    {
+      "label": "Configure: Android",
+      "type": "shell",
+      "command": "cmake -B build/android -G Ninja -DCMAKE_TOOLCHAIN_FILE=${env:ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-33 -DCMAKE_BUILD_TYPE=Release -DGODOTCPP_DISABLE_EXCEPTIONS=OFF -DCMAKE_EXPORT_COMPILE_COMMANDS=ON . ; if ($?) { (Get-Content build/android/compile_commands.json) | ForEach-Object { $_.Replace('C:\\\\', 'c:\\\\').Replace('C:/', 'c:/') } | Set-Content build/android/compile_commands.json -Encoding UTF8 }",
+      "detail": "Configure the project for Android and patch compile_commands.json casing."
+    },
+    {
+      "label": "Clang: Format All",
+      "type": "process",
+      "command": "cmake",
+      "args": ["--build", "build/android", "--target", "format"],
+      "problemMatcher": [],
+      "detail": "Run clang-format on all source files using android build config."
+    },
+    {
+      "label": "Clang: Fix Active File (Tidy)",
+      "type": "shell",
+      "command": "clang-tidy",
+      "args": ["${file}", "-p", "${workspaceFolder}/build/android", "-fix"],
+      "detail": "Run clang-tidy on active source files using android build config."
+    }
+  ]
 }

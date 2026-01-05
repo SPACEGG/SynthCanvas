@@ -13,18 +13,17 @@ endif()
 
 # Set the include directories required for our library.
 target_include_directories(synth_canvas_gdextension PRIVATE
-    # For godot-cpp headers
-    ${CMAKE_CURRENT_SOURCE_DIR}/godot-cpp/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/godot-cpp/gen/include
-    # The generated GDExtension interface header is in the binary directory
-    ${CMAKE_CURRENT_BINARY_DIR}/godot-cpp/gdextension
-
     # For our own host headers
     ${CMAKE_CURRENT_SOURCE_DIR}/..
+)
 
+# Mark external library headers as SYSTEM to suppress warnings and tidy checks
+target_include_directories(synth_canvas_gdextension SYSTEM PRIVATE
     # For clap and clap-helpers headers
     ${CMAKE_SOURCE_DIR}/libs/clap/include
     ${CMAKE_SOURCE_DIR}/libs/clap-helpers/include
+    # For readerwriterqueue
+    ${CMAKE_SOURCE_DIR}/libs/readerwriterqueue
 )
 
 # Link the library against its dependencies.
@@ -45,7 +44,8 @@ if(ANDROID)
     # Add and link Oboe only for Android
     # For out-of-tree sources, an explicit binary directory must be specified.
     add_subdirectory(${CMAKE_SOURCE_DIR}/libs/oboe ${CMAKE_CURRENT_BINARY_DIR}/oboe)
-    target_include_directories(synth_canvas_gdextension PRIVATE ${CMAKE_SOURCE_DIR}/libs/oboe/include)
+    # Mark oboe headers as SYSTEM
+    target_include_directories(synth_canvas_gdextension SYSTEM PRIVATE ${CMAKE_SOURCE_DIR}/libs/oboe/include)
     target_link_libraries(synth_canvas_gdextension PRIVATE oboe)
 
     # On Android, we also need to link against libdl for dlopen/dlsym.
