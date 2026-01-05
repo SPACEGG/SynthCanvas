@@ -1,320 +1,268 @@
-#include <queue>
-#include <algorithm>
-#include <cstring> // for std::memset
-
 #include "audio_engine.h"
-#include "plugin_host.h"
+
+#include <cstring>
+
 #include "logger.h"
+#include "plugin_host.h"
 
 #if defined(__ANDROID__)
 
-namespace synth_canvas::host
-{
+namespace synth_canvas::host {
 
-    AudioEngine::AudioEngine(ModuleRouter *router) : _module_router(router)
-    {
-        // Use UNSPECIFIED (0) to let Oboe choose the optimal native sample rate
-        _sample_rate = constants::UNSPECIFIED_SAMPLE_RATE;
-        log("[AudioEngine] Created for Android.");
-    }
+AudioEngine::AudioEngine(ModuleRouter* router) : _module_router(router) {
+    // Use UNSPECIFIED (0) to let Oboe choose the optimal native sample rate
+    _sample_rate = constants::kUnspecifiedSampleRate;
+    log("[AudioEngine] Created for Android.");
+}
 
-    AudioEngine::~AudioEngine()
-    {
-        stop();
-        log("[AudioEngine] Destroyed for Android.");
-    }
+AudioEngine::~AudioEngine() {
+    stop();
+    log("[AudioEngine] Destroyed for Android.");
+}
 
-    bool AudioEngine::openStream()
-    {
-        if (_stream)
-        {
-            return true;
-        }
-
-        oboe::AudioStreamBuilder builder;
-        builder.setDirection(oboe::Direction::Output)
-            ->setPerformanceMode(oboe::PerformanceMode::LowLatency)
-            ->setSharingMode(oboe::SharingMode::Exclusive)
-            ->setFormat(oboe::AudioFormat::Float)
-            ->setUsage(oboe::Usage::Game)
-            ->setContentType(oboe::ContentType::Music)
-            ->setChannelCount(_channel_count)
-            ->setSampleRate(constants::DEFAULT_SAMPLE_RATE)
-            ->setDataCallback(this);
-
-        oboe::Result result = builder.openStream(_stream);
-        if (result != oboe::Result::OK)
-        {
-            log("[AudioEngine] Failed to create stream. Error: ", oboe::convertToText(result));
-            _stream.reset();
-            return false;
-        }
-
-        _sample_rate = _stream->getSampleRate();
-
+auto AudioEngine::openStream() -> bool {
+    if (_stream) {
         return true;
     }
 
-    bool AudioEngine::start()
-    {
-        if (!_stream && !openStream())
-        {
-            return false;
-        }
-        if (_stream->getState() == oboe::StreamState::Started)
-        {
-            return true;
-        }
+    oboe::AudioStreamBuilder builder;
+    builder.setDirection(oboe::Direction::Output)
+        ->setPerformanceMode(oboe::PerformanceMode::LowLatency)
+        ->setSharingMode(oboe::SharingMode::Exclusive)
+        ->setFormat(oboe::AudioFormat::Float)
+        ->setUsage(oboe::Usage::Game)
+        ->setContentType(oboe::ContentType::Music)
+        ->setChannelCount(_channel_count)
+        ->setSampleRate(constants::kDefaultSampleRate)
+        ->setDataCallback(this);
 
-        oboe::Result result = _stream->requestStart();
-        if (result != oboe::Result::OK)
-        {
-            log("[AudioEngine] Failed to start stream. Error: ", oboe::convertToText(result));
-            return false;
-        }
+    oboe::Result result = builder.openStream(_stream);
+    if (result != oboe::Result::OK) {
+        log("[AudioEngine] Failed to create stream. Error: ", oboe::convertToText(result));
+        _stream.reset();
+        return false;
+    }
 
-        _frames_per_block = _stream->getFramesPerDataCallback();
+    _sample_rate = _stream->getSampleRate();
 
-        if (_frames_per_block <= 0)
-        {
-            // Try to use the hardware burst size as a better default
-            _frames_per_block = _stream->getFramesPerBurst();
+    return true;
+}
 
-            if (_frames_per_block > 0)
-            {
-                log("[AudioEngine] Stream using variable callback size. Initializing with burst size: ", _frames_per_block);
-            }
-            else
-            {
-                _frames_per_block = constants::DEFAULT_FRAMES_PER_BLOCK; // Safe default
-                log("[AudioEngine] Warning: Stream returned 0 frames per block and unknown burst size. Using default: ", constants::DEFAULT_FRAMES_PER_BLOCK);
-            }
-        }
-        else
-        {
-            log("[AudioEngine] Stream started. Frames per block: ", _frames_per_block);
-        }
-
-        // Optimize buffer size for low latency (Double buffering)
-        int32_t burstSize = _stream->getFramesPerBurst();
-        if (burstSize > 0)
-        {
-            _stream->setBufferSizeInFrames(burstSize * 2);
-            log("[AudioEngine] Buffer size set to: ", _stream->getBufferSizeInFrames());
-        }
-
-        _buffer_manager.resize(_channel_count, _frames_per_block * constants::BUFFER_CAPACITY_MULTIPLIER); // Reserve a bit more space for safety
-
-        if (_module_router)
-        {
-            for (uint32_t instance_id : _module_router->get_process_order())
-            {
-                _module_router->activate_plugin(instance_id, _sample_rate, _frames_per_block);
-            }
-        }
-
+auto AudioEngine::start() -> bool {
+    if (!_stream && !openStream()) {
+        return false;
+    }
+    if (_stream->getState() == oboe::StreamState::Started) {
         return true;
     }
 
-    void AudioEngine::stop()
-    {
-        // 1. Deactivate all plugins first (while audio thread is still active)
-        if (_module_router)
-        {
-            for (uint32_t instance_id : _module_router->get_process_order())
-            {
-                _module_router->deactivate_plugin(instance_id);
-            }
-        }
+    oboe::Result result = _stream->requestStart();
+    if (result != oboe::Result::OK) {
+        log("[AudioEngine] Failed to start stream. Error: ", oboe::convertToText(result));
+        return false;
+    }
 
-        // 2. Then stop the audio stream
-        if (_stream)
-        {
-            _stream->requestStop();
-            _stream->close();
-            _stream.reset();
+    _frames_per_block = _stream->getFramesPerDataCallback();
+
+    if (_frames_per_block <= 0) {
+        // Try to use the hardware burst size as a better default
+        _frames_per_block = _stream->getFramesPerBurst();
+
+        if (_frames_per_block > 0) {
+            log("[AudioEngine] Stream using variable callback size. Initializing with burst size: ",
+                _frames_per_block);
+        } else {
+            _frames_per_block = constants::kDefaultFramesPerBlock;  // Safe default
+            log("[AudioEngine] Warning: Stream returned 0 frames per block and unknown burst size. "
+                "Using default: ",
+                constants::kDefaultFramesPerBlock);
+        }
+    } else {
+        log("[AudioEngine] Stream started. Frames per block: ", _frames_per_block);
+    }
+
+    // Optimize buffer size for low latency (Double buffering)
+    int32_t burst_size = _stream->getFramesPerBurst();
+    if (burst_size > 0) {
+        _stream->setBufferSizeInFrames(burst_size * 2);
+        log("[AudioEngine] Buffer size set to: ", _stream->getBufferSizeInFrames());
+    }
+
+    _buffer_manager.resize(
+        _channel_count,
+        _frames_per_block *
+            constants::kBufferCapacityMultiplier);  // Reserve a bit more space for safety
+
+    if (_module_router) {
+        for (uint32_t instance_id : _module_router->getProcessOrder()) {
+            _module_router->activatePlugin(instance_id, _sample_rate, _frames_per_block);
         }
     }
 
-    bool AudioEngine::isRunning() const
-    {
-        return _stream && _stream->getState() == oboe::StreamState::Started;
+    return true;
+}
+
+void AudioEngine::stop() {
+    // 1. Deactivate all plugins first (while audio thread is still active)
+    if (_module_router) {
+        for (uint32_t instance_id : _module_router->getProcessOrder()) {
+            _module_router->deactivatePlugin(instance_id);
+        }
     }
 
-    oboe::DataCallbackResult AudioEngine::onAudioReady(
-        oboe::AudioStream *oboeStream,
-        void *audioData,
-        int32_t numFrames)
-    {
-        // 1. Update frames_per_block if needed.
-        if (numFrames > _frames_per_block)
-        {
-            _frames_per_block = numFrames;
-        }
+    // 2. Then stop the audio stream
+    if (_stream) {
+        _stream->requestStop();
+        _stream->close();
+        _stream.reset();
+    }
+}
 
-        if (!_module_router)
-        {
-            std::memset(audioData, 0, numFrames * _channel_count * sizeof(float));
-            return oboe::DataCallbackResult::Continue;
-        }
+auto AudioEngine::isRunning() const -> bool {
+    return _stream && _stream->getState() == oboe::StreamState::Started;
+}
 
-        // 2. Lock-free state swap: check if ModuleRouter has a new graph snapshot for us.
-        std::unique_ptr<ModuleRouter::AudioRenderState> new_state;
-        while (_module_router->_pending_states.try_dequeue(new_state))
-        {
-            // If we already had a state, return it to the router for cleanup.
-            if (_current_render_state)
-            {
-                // Move ownership of the old state to the release queue
-                _module_router->_released_states.enqueue(std::move(_current_render_state));
-            }
-            // Take ownership of the new state
-            _current_render_state = std::move(new_state);
-        }
+auto AudioEngine::onAudioReady(oboe::AudioStream* oboe_stream, void* audio_data, int32_t num_frames)
+    -> oboe::DataCallbackResult {
+    // 1. Update frames_per_block if needed.
+    if (num_frames > _frames_per_block) {
+        _frames_per_block = num_frames;
+    }
 
-        // If we have no state yet, output silence.
-        if (!_current_render_state)
-        {
-            std::memset(audioData, 0, numFrames * _channel_count * sizeof(float));
-            return oboe::DataCallbackResult::Continue;
-        }
-
-        // 3. Process modules using the current render state snapshot.
-        // We use sorted_modules directly from the snapshot.
-        for (PluginHost *host : _current_render_state->sorted_modules)
-        {
-            if (!host || !host->isPluginActive())
-            {
-                continue;
-            }
-
-            // --- Prepare Inputs ---
-            // We need the original node ID of this host to find its connections.
-            // Since PluginHost doesn't store its own ID, we can find it by looking
-            // at the connections in the current state.
-            // (Note: For better performance, ModuleRouter could store the ID inside PluginHost)
-            uint32_t node_id = host->getInstanceId();
-
-            std::vector<uint32_t> input_nodes;
-            for (const auto &conn : _current_render_state->connections)
-            {
-                if (conn.to_node == node_id)
-                {
-                    input_nodes.push_back(conn.from_node);
-                }
-            }
-
-            float **input_ptrs = nullptr;
-            int input_count = 0;
-
-            if (!input_nodes.empty())
-            {
-                input_ptrs = _buffer_manager.get_input_mix(input_nodes, numFrames);
-                input_count = _channel_count;
-            }
-
-            // --- Prepare Outputs ---
-            float **output_ptrs = _buffer_manager.get_buffer(node_id, numFrames);
-
-            // --- Process ---
-            host->processBegin(numFrames);
-            host->setPorts(input_nodes.empty() ? 0 : input_count, input_ptrs, _channel_count, output_ptrs);
-            host->process();
-            host->processEnd(numFrames);
-        }
-
-        // --- Final Output Mix ---
-        std::vector<uint32_t> output_source_nodes;
-        for (const auto &conn : _current_render_state->connections)
-        {
-            if (conn.to_node == constants::AUDIO_OUTPUT_NODE_ID)
-            {
-                output_source_nodes.push_back(conn.from_node);
-            }
-        }
-
-        _buffer_manager.mix_to_interleaved(output_source_nodes, static_cast<float *>(audioData), numFrames);
-
+    if (!_module_router) {
+        std::memset(audio_data, 0, num_frames * _channel_count * sizeof(float));
         return oboe::DataCallbackResult::Continue;
     }
 
-    void AudioEngine::playNote(uint32_t instance_id, int note, double velocity)
-    {
-        if (_module_router)
-        {
-            if (auto *host = _module_router->get_plugin_instance(instance_id))
-            {
-                host->processNoteOn(0, 0, note, static_cast<int>(velocity * constants::MIDI_MAX_VELOCITY));
+    // 2. Lock-free state swap: check if ModuleRouter has a new graph snapshot for us.
+    std::unique_ptr<ModuleRouter::AudioRenderState> new_state;
+    while (_module_router->pending_states.try_dequeue(new_state)) {
+        // If we already had a state, return it to the router for cleanup.
+        if (_current_render_state) {
+            // Move ownership of the old state to the release queue
+            _module_router->released_states.enqueue(std::move(_current_render_state));
+        }
+        // Take ownership of the new state
+        _current_render_state = std::move(new_state);
+    }
+
+    // If we have no state yet, output silence.
+    if (!_current_render_state) {
+        std::memset(audio_data, 0, num_frames * _channel_count * sizeof(float));
+        return oboe::DataCallbackResult::Continue;
+    }
+
+    // 3. Process modules using the current render state snapshot.
+    // We use sorted_modules directly from the snapshot.
+    for (PluginHost* host : _current_render_state->sorted_modules) {
+        if (!host || !host->isPluginActive()) {
+            continue;
+        }
+
+        // --- Prepare Inputs ---
+        // We need the original node ID of this host to find its connections.
+        // Since PluginHost doesn't store its own ID, we can find it by looking
+        // at the connections in the current state.
+        // (Note: For better performance, ModuleRouter could store the ID inside PluginHost)
+        uint32_t node_id = host->getInstanceId();
+
+        std::vector<uint32_t> input_nodes;
+        for (const auto& conn : _current_render_state->connections) {
+            if (conn.to_node == node_id) {
+                input_nodes.push_back(conn.from_node);
             }
+        }
+
+        float** input_ptrs = nullptr;
+        int input_count = 0;
+
+        if (!input_nodes.empty()) {
+            input_ptrs = _buffer_manager.getInputMix(input_nodes, num_frames);
+            input_count = _channel_count;
+        }
+
+        // --- Prepare Outputs ---
+        float** output_ptrs = _buffer_manager.getBuffer(node_id, num_frames);
+
+        // --- Process ---
+        host->processBegin(num_frames);
+        host->setPorts(input_nodes.empty() ? 0 : input_count, input_ptrs, _channel_count,
+                       output_ptrs);
+        host->process();
+        host->processEnd(num_frames);
+    }
+
+    // --- Final Output Mix ---
+    std::vector<uint32_t> output_source_nodes;
+    for (const auto& conn : _current_render_state->connections) {
+        if (conn.to_node == constants::kAudioOutputNoteId) {
+            output_source_nodes.push_back(conn.from_node);
         }
     }
 
-    void AudioEngine::stopNote(uint32_t instance_id, int note)
-    {
-        if (_module_router)
-        {
-            if (auto *host = _module_router->get_plugin_instance(instance_id))
-            {
-                host->processNoteOff(0, 0, note, 0);
-            }
+    _buffer_manager.mixToInterleaved(output_source_nodes, static_cast<float*>(audio_data),
+                                     num_frames);
+
+    return oboe::DataCallbackResult::Continue;
+}
+
+void AudioEngine::playNote(uint32_t instance_id, int note, double velocity) {
+    if (_module_router) {
+        if (auto* host = _module_router->getPluginInstance(instance_id)) {
+            host->processNoteOn(0, 0, note,
+                                static_cast<int>(velocity * constants::kMidiMaxVelocity));
         }
     }
+}
 
-    void AudioEngine::setParameterValue(uint32_t instance_id, clap_id param_id, double value)
-    {
-        if (_module_router)
-        {
-            if (auto *host = _module_router->get_plugin_instance(instance_id))
-            {
-                host->setParameterValue(param_id, value);
-            }
+void AudioEngine::stopNote(uint32_t instance_id, int note) {
+    if (_module_router) {
+        if (auto* host = _module_router->getPluginInstance(instance_id)) {
+            host->processNoteOff(0, 0, note, 0);
         }
     }
+}
 
-} // namespace synth_canvas::host
+void AudioEngine::setParameterValue(uint32_t instance_id, clap_id param_id, double value) {
+    if (_module_router) {
+        if (auto* host = _module_router->getPluginInstance(instance_id)) {
+            host->setParameterValue(param_id, value);
+        }
+    }
+}
+
+}  // namespace synth_canvas::host
 
 #else
 // --- Dummy implementation for non-Android platforms ---
 
-namespace synth_canvas::host
-{
+namespace synth_canvas::host {
 
-    AudioEngine::AudioEngine(ModuleRouter *router) : _module_router(router)
-    {
-        log("[AudioEngine] Dummy: Created for non-Android. No audio processing will occur.");
-    }
+AudioEngine::AudioEngine(ModuleRouter* router) : _module_router(router) {
+    log("[AudioEngine] Dummy: Created for non-Android. No audio processing will occur.");
+}
 
-    AudioEngine::~AudioEngine()
-    {
-        log("[AudioEngine] Dummy: Destroyed for non-Android.");
-    }
+AudioEngine::~AudioEngine() { log("[AudioEngine] Dummy: Destroyed for non-Android."); }
 
-    bool AudioEngine::start()
-    {
-        log("[AudioEngine] Dummy: start called.");
-        return true;
-    }
+bool AudioEngine::start() {
+    log("[AudioEngine] Dummy: start called.");
+    return true;
+}
 
-    void AudioEngine::stop()
-    {
-        log("[AudioEngine] Dummy: stop called.");
-    }
+void AudioEngine::stop() { log("[AudioEngine] Dummy: stop called."); }
 
-    void AudioEngine::playNote(uint32_t instance_id, int note, double velocity)
-    {
-        log("[AudioEngine] Dummy: playNote called. Instance: ", instance_id, " Note: ", note);
-    }
+void AudioEngine::playNote(uint32_t instance_id, int note, double velocity) {
+    log("[AudioEngine] Dummy: playNote called. Instance: ", instance_id, " Note: ", note);
+}
 
-    void AudioEngine::stopNote(uint32_t instance_id, int note)
-    {
-        log("[AudioEngine] Dummy: stopNote called. Instance: ", instance_id, " Note: ", note);
-    }
+void AudioEngine::stopNote(uint32_t instance_id, int note) {
+    log("[AudioEngine] Dummy: stopNote called. Instance: ", instance_id, " Note: ", note);
+}
 
-    void AudioEngine::setParameterValue(uint32_t instance_id, clap_id param_id, double value)
-    {
-        log("[AudioEngine] Dummy: setParameterValue called.");
-    }
+void AudioEngine::setParameterValue(uint32_t instance_id, clap_id param_id, double value) {
+    log("[AudioEngine] Dummy: setParameterValue called.");
+}
 
-} // namespace synth_canvas::host
+}  // namespace synth_canvas::host
 
-#endif // defined(__ANDROID__)
+#endif  // defined(__ANDROID__)

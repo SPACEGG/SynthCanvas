@@ -1,4 +1,5 @@
 #include "logger.h"
+
 #include <iostream>
 
 namespace synth_canvas::host {
@@ -6,11 +7,9 @@ namespace synth_canvas::host {
 // Static storage for the log callback.
 static LogCallback g_log_callback = nullptr;
 
-void set_log_callback(LogCallback callback) {
-    g_log_callback = callback;
-}
+void setLogCallback(LogCallback callback) { g_log_callback = callback; }
 
-void log_msg(const std::string& message) {
+void logMsg(const std::string& message) {
     if (g_log_callback) {
         g_log_callback(message);
     } else {
@@ -19,4 +18,4 @@ void log_msg(const std::string& message) {
     }
 }
 
-} // namespace synth_canvas::host
+}  // namespace synth_canvas::host
