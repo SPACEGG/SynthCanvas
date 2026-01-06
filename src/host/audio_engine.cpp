@@ -206,19 +206,18 @@ auto AudioEngine::onAudioReady(oboe::AudioStream* oboe_stream, void* audio_data,
     return oboe::DataCallbackResult::Continue;
 }
 
-void AudioEngine::playNote(uint32_t instance_id, int note, double velocity) {
+void AudioEngine::playNote(uint32_t instance_id, int note, double velocity, int32_t note_id) {
     if (_module_router) {
         if (auto* host = _module_router->getPluginInstance(instance_id)) {
-            host->processNoteOn(0, 0, note,
-                                static_cast<int>(velocity * constants::kMidiMaxVelocity));
+            host->processNoteOn(0, 0, note, velocity, note_id);
         }
     }
 }
 
-void AudioEngine::stopNote(uint32_t instance_id, int note) {
+void AudioEngine::stopNote(uint32_t instance_id, int note, double velocity, int32_t note_id) {
     if (_module_router) {
         if (auto* host = _module_router->getPluginInstance(instance_id)) {
-            host->processNoteOff(0, 0, note, 0);
+            host->processNoteOff(0, 0, note, velocity, note_id);
         }
     }
 }
@@ -251,11 +250,11 @@ bool AudioEngine::start() {
 
 void AudioEngine::stop() { log("[AudioEngine] Dummy: stop called."); }
 
-void AudioEngine::playNote(uint32_t instance_id, int note, double velocity) {
+void AudioEngine::playNote(uint32_t instance_id, int note, double velocity, int32_t note_id) {
     log("[AudioEngine] Dummy: playNote called. Instance: ", instance_id, " Note: ", note);
 }
 
-void AudioEngine::stopNote(uint32_t instance_id, int note) {
+void AudioEngine::stopNote(uint32_t instance_id, int note, double velocity, int32_t note_id) {
     log("[AudioEngine] Dummy: stopNote called. Instance: ", instance_id, " Note: ", note);
 }
 

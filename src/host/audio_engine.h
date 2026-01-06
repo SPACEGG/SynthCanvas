@@ -23,8 +23,10 @@ class AudioEngine : public oboe::AudioStreamDataCallback {
     auto start() -> bool;
     void stop();
 
-    void playNote(uint32_t instance_id, int note, double velocity);
-    void stopNote(uint32_t instance_id, int note);
+    void playNote(uint32_t instance_id, int note, double velocity,
+                  int32_t note_id = constants::kClapInvalidId);
+    void stopNote(uint32_t instance_id, int note, double velocity = 0.0,
+                  int32_t note_id = constants::kClapInvalidId);
     void setParameterValue(uint32_t instance_id, clap_id param_id, double value);
 
     [[nodiscard]] auto getSampleRate() const -> int32_t { return _sample_rate; }
@@ -64,8 +66,10 @@ class AudioEngine {
     bool start();
     void stop();
 
-    void playNote(uint32_t instance_id, int note, double velocity);
-    void stopNote(uint32_t instance_id, int note);
+    void playNote(uint32_t instance_id, int note, double velocity,
+                  int32_t note_id = constants::kClapInvalidId);
+    void stopNote(uint32_t instance_id, int note, double velocity = 0.0,
+                  int32_t note_id = constants::kClapInvalidId);
     void setParameterValue(uint32_t instance_id, clap_id param_id, double value);
 
     int32_t getSampleRate() const { return constants::FALLBACK_SAMPLE_RATE; }

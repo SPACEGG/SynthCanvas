@@ -59,9 +59,10 @@ class PluginHost final : public BaseHost {
     void setPorts(int num_inputs, float** inputs, int num_outputs, float** outputs);
 
     void processBegin(int nframes);
-    void processNoteOn(int sample_offset, int channel, int key, int velocity);
-    void processNoteOff(int sample_offset, int channel, int key, int velocity);
-    void processCc(int sample_offset, int channel, int cc, int value);
+    void processNoteOn(int sample_offset, int channel, int key, double velocity,
+                       int32_t note_id = constants::kClapInvalidId);
+    void processNoteOff(int sample_offset, int channel, int key, double velocity,
+                        int32_t note_id = constants::kClapInvalidId);
     void process();
     void processEnd(int nframes);
 

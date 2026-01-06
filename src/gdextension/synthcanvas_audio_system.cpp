@@ -4,6 +4,7 @@
 #include <godot_cpp/variant/utility_functions.hpp>
 
 #include "host/audio_engine.h"
+#include "host/constants.h"
 #include "host/logger.h"
 #include "host/module_router.h"
 #include "host/plugin_host.h"
@@ -25,10 +26,13 @@ void SynthCanvasAudioSystem::_bind_methods() {
     godot::ClassDB::bind_method(godot::D_METHOD("start_audio"),
                                 &SynthCanvasAudioSystem::startAudio);
     godot::ClassDB::bind_method(godot::D_METHOD("stop_audio"), &SynthCanvasAudioSystem::stopAudio);
-    godot::ClassDB::bind_method(godot::D_METHOD("play_note", "instance_id", "note", "velocity"),
-                                &SynthCanvasAudioSystem::playNote);
-    godot::ClassDB::bind_method(godot::D_METHOD("stop_note", "instance_id", "note"),
-                                &SynthCanvasAudioSystem::stopNote);
+    godot::ClassDB::bind_method(
+        godot::D_METHOD("play_note", "instance_id", "note", "velocity", "note_id"),
+        &SynthCanvasAudioSystem::playNote, DEFVAL(synth_canvas::host::constants::kClapInvalidId));
+    godot::ClassDB::bind_method(
+        godot::D_METHOD("stop_note", "instance_id", "note", "velocity", "note_id"),
+        &SynthCanvasAudioSystem::stopNote, DEFVAL(0.0),
+        DEFVAL(synth_canvas::host::constants::kClapInvalidId));
     godot::ClassDB::bind_method(
         godot::D_METHOD("set_parameter_value", "instance_id", "param_id", "value"),
         &SynthCanvasAudioSystem::setParameterValue);
@@ -160,15 +164,17 @@ void SynthCanvasAudioSystem::stopAudio() {
     }
 }
 
-void SynthCanvasAudioSystem::playNote(uint32_t instance_id, int note, double velocity) {
+void SynthCanvasAudioSystem::playNote(uint32_t instance_id, int note, double velocity,
+                                      int32_t note_id) {
     if (_audio_engine) {
-        _audio_engine->playNote(instance_id, note, velocity);
+        _audio_engine->playNote(instance_id, note, velocity, note_id);
     }
 }
 
-void SynthCanvasAudioSystem::stopNote(uint32_t instance_id, int note) {
+void SynthCanvasAudioSystem::stopNote(uint32_t instance_id, int note, double velocity,
+                                      int32_t note_id) {
     if (_audio_engine) {
-        _audio_engine->stopNote(instance_id, note);
+        _audio_engine->stopNote(instance_id, note, velocity, note_id);
     }
 }
 

@@ -417,7 +417,8 @@ void PluginHost::processEnd(int nframes) {
     _process.frames_count = nframes;
 }
 
-void PluginHost::processNoteOn(int sample_offset, int channel, int key, int velocity) {
+void PluginHost::processNoteOn(int sample_offset, int channel, int key, double velocity,
+                               int32_t note_id) {
     if (!_plugin || !_has_note_input) return;
 
     PluginEvent ev;
@@ -430,13 +431,14 @@ void PluginHost::processNoteOn(int sample_offset, int channel, int key, int velo
     ev.event.note.port_index = constants::kDefaultEventPortIndex;
     ev.event.note.key = key;
     ev.event.note.channel = channel;
-    ev.event.note.note_id = constants::kClapInvalidId;
-    ev.event.note.velocity = velocity / constants::kMidiMaxVelocity;
+    ev.event.note.note_id = note_id;
+    ev.event.note.velocity = velocity;
 
     _to_plugin_event_queue.try_enqueue(ev);
 }
 
-void PluginHost::processNoteOff(int sample_offset, int channel, int key, int velocity) {
+void PluginHost::processNoteOff(int sample_offset, int channel, int key, double velocity,
+                                int32_t note_id) {
     if (!_plugin || !_has_note_input) return;
 
     PluginEvent ev;
@@ -449,26 +451,8 @@ void PluginHost::processNoteOff(int sample_offset, int channel, int key, int vel
     ev.event.note.port_index = constants::kDefaultEventPortIndex;
     ev.event.note.key = key;
     ev.event.note.channel = channel;
-    ev.event.note.note_id = constants::kClapInvalidId;
-    ev.event.note.velocity = velocity / constants::kMidiMaxVelocity;
-
-    _to_plugin_event_queue.try_enqueue(ev);
-}
-
-void PluginHost::processCc(int sample_offset, int channel, int cc, int value) {
-    if (!_plugin || !_has_note_input) return;
-
-    PluginEvent ev;
-    ev.event.header.size = sizeof(clap_event_midi);
-    ev.event.header.time = sample_offset;
-    ev.event.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
-    ev.event.header.type = CLAP_EVENT_MIDI;
-    ev.event.header.flags = 0;
-
-    ev.event.midi.port_index = constants::kDefaultEventPortIndex;
-    ev.event.midi.data[0] = constants::kMidiCcStatusByte | channel;
-    ev.event.midi.data[1] = cc;
-    ev.event.midi.data[2] = value;
+    ev.event.note.note_id = note_id;
+    ev.event.note.velocity = velocity;
 
     _to_plugin_event_queue.try_enqueue(ev);
 }

@@ -6,6 +6,8 @@
 #include <godot_cpp/classes/node.hpp>
 #include <memory>
 
+#include "host/constants.h"
+
 namespace synth_canvas::host {
 class AudioEngine;
 class ModuleRouter;
@@ -38,8 +40,10 @@ class SynthCanvasAudioSystem : public godot::Node {
 
     void startAudio();
     void stopAudio();
-    void playNote(uint32_t instance_id, int note, double velocity);
-    void stopNote(uint32_t instance_id, int note);
+    void playNote(uint32_t instance_id, int note, double velocity,
+                  int32_t note_id = synth_canvas::host::constants::kClapInvalidId);
+    void stopNote(uint32_t instance_id, int note, double velocity = 0.0,
+                  int32_t note_id = synth_canvas::host::constants::kClapInvalidId);
     void setParameterValue(uint32_t instance_id, clap_id param_id, double value);
 
     void playNoteFromNode(uint32_t from_node_id, int note, double velocity);
