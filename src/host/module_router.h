@@ -20,6 +20,11 @@ class PluginHost;
 
 namespace synth_canvas::host {
 
+enum class ConnectionType {
+    kAudio,
+    kEvent,
+};
+
 class ModuleRouter {
    public:
     struct PortConnection {
@@ -27,6 +32,7 @@ class ModuleRouter {
         uint32_t from_port;
         uint32_t to_node;
         uint32_t to_port;
+        ConnectionType type;
     };
 
     struct AudioRenderState {
@@ -40,9 +46,10 @@ class ModuleRouter {
     auto createPluginInstance(const std::string& path) -> uint32_t;
     void destroyPluginInstance(uint32_t instance_id);
     auto registerSpecialNode() -> uint32_t;
-    void connectNodes(uint32_t from_node, uint32_t from_port, uint32_t to_node, uint32_t to_port);
-    void disconnectNodes(uint32_t from_node, uint32_t from_port, uint32_t to_node,
-                         uint32_t to_port);
+    void connectNodes(uint32_t from_node, uint32_t from_port, uint32_t to_node, uint32_t to_port,
+                      ConnectionType type = ConnectionType::kAudio);
+    void disconnectNodes(uint32_t from_node, uint32_t from_port, uint32_t to_node, uint32_t to_port,
+                         ConnectionType type = ConnectionType::kAudio);
 
     auto getPluginInstance(uint32_t instance_id) const -> PluginHost*;
     auto getProcessOrder() const -> const std::vector<uint32_t>& { return _process_order; }

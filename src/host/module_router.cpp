@@ -205,19 +205,21 @@ void ModuleRouter::topologicalSort() {
 }
 
 void ModuleRouter::connectNodes(uint32_t from_node, uint32_t from_port, uint32_t to_node,
-                                uint32_t to_port) {
-    log("[ModuleRouter] Connecting ", from_node, ":", from_port, " -> ", to_node, ":", to_port);
-    _connections.push_back({from_node, from_port, to_node, to_port});
+                                uint32_t to_port, ConnectionType type) {
+    log("[ModuleRouter] Connecting ", from_node, ":", from_port, " -> ", to_node, ":", to_port,
+        " (Type: ", (type == ConnectionType::kAudio ? "Audio" : "Event"), ")");
+    _connections.push_back({from_node, from_port, to_node, to_port, type});
     topologicalSort();
     pushNewState();
 }
 
 void ModuleRouter::disconnectNodes(uint32_t from_node, uint32_t from_port, uint32_t to_node,
-                                   uint32_t to_port) {
-    log("[ModuleRouter] Disconnecting ", from_node, ":", from_port, " -> ", to_node, ":", to_port);
+                                   uint32_t to_port, ConnectionType type) {
+    log("[ModuleRouter] Disconnecting ", from_node, ":", from_port, " -> ", to_node, ":", to_port,
+        " (Type: ", (type == ConnectionType::kAudio ? "Audio" : "Event"), ")");
     for (auto it = _connections.begin(); it != _connections.end();) {
         if (it->from_node == from_node && it->from_port == from_port && it->to_node == to_node &&
-            it->to_port == to_port) {
+            it->to_port == to_port && it->type == type) {
             it = _connections.erase(it);
             log("[ModuleRouter] Connection removed.");
         } else {

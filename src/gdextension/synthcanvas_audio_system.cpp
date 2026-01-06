@@ -17,11 +17,11 @@ void SynthCanvasAudioSystem::_bind_methods() {
     godot::ClassDB::bind_method(godot::D_METHOD("register_special_node", "type"),
                                 &SynthCanvasAudioSystem::registerSpecialNode);
     godot::ClassDB::bind_method(
-        godot::D_METHOD("connect_nodes", "from_node", "from_port", "to_node", "to_port"),
-        &SynthCanvasAudioSystem::connectNodes);
+        godot::D_METHOD("connect_nodes", "from_node", "from_port", "to_node", "to_port", "type"),
+        &SynthCanvasAudioSystem::connectNodes, DEFVAL(0));
     godot::ClassDB::bind_method(
-        godot::D_METHOD("disconnect_nodes", "from_node", "from_port", "to_node", "to_port"),
-        &SynthCanvasAudioSystem::disconnectNodes);
+        godot::D_METHOD("disconnect_nodes", "from_node", "from_port", "to_node", "to_port", "type"),
+        &SynthCanvasAudioSystem::disconnectNodes, DEFVAL(0));
 
     godot::ClassDB::bind_method(godot::D_METHOD("start_audio"),
                                 &SynthCanvasAudioSystem::startAudio);
@@ -42,6 +42,9 @@ void SynthCanvasAudioSystem::_bind_methods() {
         &SynthCanvasAudioSystem::playNoteFromNode);
     godot::ClassDB::bind_method(godot::D_METHOD("stop_note_from_node", "from_node_id", "note"),
                                 &SynthCanvasAudioSystem::stopNoteFromNode);
+
+    BIND_ENUM_CONSTANT(CONNECTION_TYPE_AUDIO);
+    BIND_ENUM_CONSTANT(CONNECTION_TYPE_EVENT);
 
     ADD_SIGNAL(godot::MethodInfo("parameter_changed",
                                  godot::PropertyInfo(godot::Variant::INT, "param_id"),
@@ -129,24 +132,26 @@ auto SynthCanvasAudioSystem::registerSpecialNode(const godot::String& type) -> u
 }
 
 void SynthCanvasAudioSystem::connectNodes(uint32_t from_node, uint32_t from_port, uint32_t to_node,
-                                          uint32_t to_port) {
+                                          uint32_t to_port, int type) {
     godot::UtilityFunctions::print("[SynthCanvasAudioSystem] Connecting ",
                                    static_cast<int>(from_node), ":", static_cast<int>(from_port),
                                    " -> ", static_cast<int>(to_node), ":",
-                                   static_cast<int>(to_port));
+                                   static_cast<int>(to_port), " Type: ", type);
     if (_module_router) {
-        _module_router->connectNodes(from_node, from_port, to_node, to_port);
+        _module_router->connectNodes(from_node, from_port, to_node, to_port,
+                                     static_cast<synth_canvas::host::ConnectionType>(type));
     }
 }
 
 void SynthCanvasAudioSystem::disconnectNodes(uint32_t from_node, uint32_t from_port,
-                                             uint32_t to_node, uint32_t to_port) {
+                                             uint32_t to_node, uint32_t to_port, int type) {
     godot::UtilityFunctions::print("[SynthCanvasAudioSystem] Disconnecting ",
                                    static_cast<int>(from_node), ":", static_cast<int>(from_port),
                                    " -> ", static_cast<int>(to_node), ":",
-                                   static_cast<int>(to_port));
+                                   static_cast<int>(to_port), " Type: ", type);
     if (_module_router) {
-        _module_router->disconnectNodes(from_node, from_port, to_node, to_port);
+        _module_router->disconnectNodes(from_node, from_port, to_node, to_port,
+                                        static_cast<synth_canvas::host::ConnectionType>(type));
     }
 }
 
