@@ -36,7 +36,10 @@ class ModuleRouter {
     };
 
     struct AudioRenderState {
+        std::unordered_map<uint32_t, std::vector<uint32_t>> input_audio_sources;
+        std::unordered_map<uint32_t, std::vector<PluginHost*>> output_event_targets;
         std::vector<PluginHost*> sorted_modules;
+        std::vector<uint32_t> master_output_sources;
         std::vector<PortConnection> connections;
     };
 
@@ -60,7 +63,6 @@ class ModuleRouter {
 
     void pollResources();
 
-    // Queues for communication with Audio Thread
     moodycamel::ReaderWriterQueue<std::unique_ptr<AudioRenderState>> pending_states;
     moodycamel::ReaderWriterQueue<std::unique_ptr<AudioRenderState>> released_states;
 

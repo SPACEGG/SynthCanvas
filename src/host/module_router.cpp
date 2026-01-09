@@ -116,13 +116,30 @@ void ModuleRouter::pollResources() {
 void ModuleRouter::pushNewState() {
     auto new_state = std::make_unique<AudioRenderState>();
 
+    // Set sorted modules based on process order
     for (uint32_t id : _process_order) {
         if (auto* host = getPluginInstance(id)) {
             new_state->sorted_modules.push_back(host);
         }
     }
 
+    // Copy raw connections for reference
     new_state->connections = _connections;
+
+    // Pre-calculate optimized lookup tables for the audio thread
+    for (const auto& conn : _connections) {
+        if (conn.type == ConnectionType::kAudio) {
+            if (conn.to_node == constants::kAudioOutputNoteId) {
+                new_state->master_output_sources.push_back(conn.from_node);
+            } else {
+                new_state->input_audio_sources[conn.to_node].push_back(conn.from_node);
+            }
+        } else if (conn.type == ConnectionType::kEvent) {
+            if (auto* target_host = getPluginInstance(conn.to_node)) {
+                new_state->output_event_targets[conn.from_node].push_back(target_host);
+            }
+        }
+    }
 
     if (!pending_states.enqueue(std::move(new_state))) {
         log("[ModuleRouter] ERROR: Failed to enqueue new render state. Queue might be full.");
