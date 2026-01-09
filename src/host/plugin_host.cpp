@@ -377,14 +377,14 @@ void PluginHost::setParameterValue(clap_id param_id, double value) {
     ev.event.param_value.key = constants::kClapInvalidId;
     ev.event.param_value.channel = constants::kClapInvalidId;
 
-    _to_plugin_event_queue.try_enqueue(ev);
+    _input_events.try_enqueue(ev);
 }
 
 void PluginHost::pollMainThread() {
     checkForMainThread();
 
     PluginEvent ev;
-    while (_from_plugin_event_queue.try_dequeue(ev)) {
+    while (_output_events_to_main.try_dequeue(ev)) {
         if (ev.event.header.type == CLAP_EVENT_PARAM_VALUE) {
             if (on_parameter_changed) {
                 on_parameter_changed(ev.event.param_value.param_id, ev.event.param_value.value);
@@ -434,7 +434,7 @@ void PluginHost::processNoteOn(int sample_offset, int channel, int key, double v
     ev.event.note.note_id = note_id;
     ev.event.note.velocity = velocity;
 
-    _to_plugin_event_queue.try_enqueue(ev);
+    _input_events.try_enqueue(ev);
 }
 
 void PluginHost::processNoteOff(int sample_offset, int channel, int key, double velocity,
@@ -454,7 +454,7 @@ void PluginHost::processNoteOff(int sample_offset, int channel, int key, double 
     ev.event.note.note_id = note_id;
     ev.event.note.velocity = velocity;
 
-    _to_plugin_event_queue.try_enqueue(ev);
+    _input_events.try_enqueue(ev);
 }
 
 void PluginHost::process() {
@@ -525,7 +525,7 @@ void PluginHost::process() {
 
 void PluginHost::generatePluginInputEvents() {
     PluginEvent ev;
-    while (_to_plugin_event_queue.try_dequeue(ev)) {
+    while (_input_events.try_dequeue(ev)) {
         _ev_in.push(&ev.event.header);
     }
 }
@@ -541,7 +541,19 @@ void PluginHost::handlePluginOutputEvents() {
 
                 PluginEvent out_ev;
                 out_ev.event.param_value = *vev;
-                _from_plugin_event_queue.try_enqueue(out_ev);
+                _output_events_to_main.try_enqueue(out_ev);
+                _output_events_to_audio.try_enqueue(out_ev);
+                break;
+            }
+            case CLAP_EVENT_NOTE_ON:
+            case CLAP_EVENT_NOTE_OFF:
+            case CLAP_EVENT_NOTE_CHOKE:
+            case CLAP_EVENT_NOTE_EXPRESSION: {
+                auto nev = reinterpret_cast<const clap_event_note*>(ev);
+
+                PluginEvent out_ev;
+                out_ev.event.note = *nev;
+                _output_events_to_audio.try_enqueue(out_ev);
                 break;
             }
         }

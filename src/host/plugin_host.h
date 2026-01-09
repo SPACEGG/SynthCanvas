@@ -76,6 +76,21 @@ class PluginHost final : public BaseHost {
     void setInstanceId(uint32_t id) { _instance_id = id; }
     auto getInstanceId() const -> uint32_t { return _instance_id; }
 
+    struct PluginEvent {
+        union {
+            clap_event_header_t header;
+            clap_event_note_t note;
+            clap_event_midi_t midi;
+            clap_event_param_value_t param_value;
+        } event;
+    };
+
+    auto getAudioThreadOutputQueue() -> moodycamel::ReaderWriterQueue<PluginEvent>& {
+        return _output_events_to_audio;
+    }
+
+    void queueEvent(const PluginEvent& event) { _input_events.try_enqueue(event); }
+
    protected:
     void requestRestart() noexcept override;
     void requestProcess() noexcept override;
@@ -143,17 +158,9 @@ class PluginHost final : public BaseHost {
     std::atomic<bool> _schedule_processing{false};
     std::atomic<bool> _is_processing_active{false};
 
-    struct PluginEvent {
-        union {
-            clap_event_header_t header;
-            clap_event_note_t note;
-            clap_event_midi_t midi;
-            clap_event_param_value_t param_value;
-        } event;
-    };
-
-    moodycamel::ReaderWriterQueue<PluginEvent> _to_plugin_event_queue{constants::kEventQueueSize};
-    moodycamel::ReaderWriterQueue<PluginEvent> _from_plugin_event_queue{constants::kEventQueueSize};
+    moodycamel::ReaderWriterQueue<PluginEvent> _input_events{constants::kEventQueueSize};
+    moodycamel::ReaderWriterQueue<PluginEvent> _output_events_to_main{constants::kEventQueueSize};
+    moodycamel::ReaderWriterQueue<PluginEvent> _output_events_to_audio{constants::kEventQueueSize};
 
     uint32_t _instance_id = 0;
 };

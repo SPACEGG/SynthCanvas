@@ -39,6 +39,10 @@ class AudioEngine : public oboe::AudioStreamDataCallback {
    private:
     auto openStream() -> bool;
 
+    void updateRenderState();
+    void processSinglePlugin(PluginHost* host, int32_t num_frames);
+    void routePluginOutputs(PluginHost* host);
+
     std::shared_ptr<oboe::AudioStream> _stream;
     ModuleRouter* _module_router;
     AudioBufferManager _buffer_manager;
