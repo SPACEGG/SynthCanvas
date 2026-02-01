@@ -2,16 +2,13 @@
 #define AUDIO_ENGINE_H
 
 #include <clap/clap.h>
+#include <oboe/Oboe.h>
 
 #include <memory>
 
 #include "audio_buffer_manager.h"
 #include "constants.h"
 #include "module_router.h"
-
-#if defined(__ANDROID__)
-// --- Android implementation using Oboe ---
-#include <oboe/Oboe.h>
 
 namespace synth_canvas::host {
 
@@ -55,39 +52,5 @@ class AudioEngine : public oboe::AudioStreamDataCallback {
 };
 
 }  // namespace synth_canvas::host
-
-#else
-// --- Dummy implementation for non-Android platforms (e.g., Windows) ---
-#include <clap/clap.h>  // For clap_id
-
-namespace synth_canvas::host {
-
-class AudioEngine {
-   public:
-    AudioEngine(ModuleRouter* router);
-    ~AudioEngine();
-
-    bool start();
-    void stop();
-
-    void playNote(uint32_t instance_id, int note, double velocity,
-                  int32_t note_id = constants::kClapInvalidId);
-    void stopNote(uint32_t instance_id, int note, double velocity = 0.0,
-                  int32_t note_id = constants::kClapInvalidId);
-    void setParameterValue(uint32_t instance_id, clap_id param_id, double value);
-
-    int32_t getSampleRate() const { return constants::FALLBACK_SAMPLE_RATE; }
-    int32_t getFramesPerBlock() const { return constants::DEFAULT_FRAMES_PER_BLOCK; }
-    bool isRunning() const { return false; }
-
-   private:
-    ModuleRouter* _module_router;  // Weak reference to ModuleRouter
-    // AudioBufferManager _buffer_manager; // Not strictly needed for dummy, but good for
-    // consistency if dummy logic expands
-};
-
-}  // namespace synth_canvas::host
-
-#endif  // defined(__ANDROID__)
 
 #endif  // AUDIO_ENGINE_H

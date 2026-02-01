@@ -5,8 +5,6 @@
 #include "logger.h"
 #include "plugin_host.h"
 
-#if defined(__ANDROID__)
-
 namespace synth_canvas::host {
 
 AudioEngine::AudioEngine(ModuleRouter* router) : _module_router(router) {
@@ -304,37 +302,3 @@ void AudioEngine::setParameterValue(uint32_t instance_id, clap_id param_id, doub
 }
 
 }  // namespace synth_canvas::host
-
-#else
-// --- Dummy implementation for non-Android platforms ---
-
-namespace synth_canvas::host {
-
-AudioEngine::AudioEngine(ModuleRouter* router) : _module_router(router) {
-    log("[AudioEngine] Dummy: Created for non-Android. No audio processing will occur.");
-}
-
-AudioEngine::~AudioEngine() { log("[AudioEngine] Dummy: Destroyed for non-Android."); }
-
-bool AudioEngine::start() {
-    log("[AudioEngine] Dummy: start called.");
-    return true;
-}
-
-void AudioEngine::stop() { log("[AudioEngine] Dummy: stop called."); }
-
-void AudioEngine::playNote(uint32_t instance_id, int note, double velocity, int32_t note_id) {
-    log("[AudioEngine] Dummy: playNote called. Instance: ", instance_id, " Note: ", note);
-}
-
-void AudioEngine::stopNote(uint32_t instance_id, int note, double velocity, int32_t note_id) {
-    log("[AudioEngine] Dummy: stopNote called. Instance: ", instance_id, " Note: ", note);
-}
-
-void AudioEngine::setParameterValue(uint32_t instance_id, clap_id param_id, double value) {
-    log("[AudioEngine] Dummy: setParameterValue called.");
-}
-
-}  // namespace synth_canvas::host
-
-#endif  // defined(__ANDROID__)
