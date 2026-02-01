@@ -56,17 +56,29 @@ class PluginHost final : public BaseHost {
     void setParameterValue(clap_id param_id, double value);
     void pollMainThread();
 
-    void setPorts(int num_inputs, float** inputs, int num_outputs, float** outputs);
+    void setPorts(uint32_t num_inputs, clap_audio_buffer* inputs, uint32_t num_outputs, clap_audio_buffer* outputs);
 
     void processBegin(int nframes);
     void processNoteOn(int sample_offset, int channel, int key, double velocity,
                        int32_t note_id = constants::kClapInvalidId);
     void processNoteOff(int sample_offset, int channel, int key, double velocity,
                         int32_t note_id = constants::kClapInvalidId);
+    void processParamModulation(clap_id param_id, double value, uint32_t sample_offset);
     void process();
     void processEnd(int nframes);
 
     std::function<void(clap_id, double)> on_parameter_changed;
+
+    struct AudioPortInfo {
+        uint32_t index;
+        bool is_input;
+        clap_audio_port_info clap_info;
+        bool is_modulation;
+    };
+
+    auto getAudioPorts(bool is_input) const -> const std::vector<AudioPortInfo>& {
+        return is_input ? _audio_input_ports : _audio_output_ports;
+    }
 
     auto isPluginActive() const -> bool;
     auto isPluginProcessing() const -> bool;
@@ -75,6 +87,19 @@ class PluginHost final : public BaseHost {
 
     void setInstanceId(uint32_t id) { _instance_id = id; }
     auto getInstanceId() const -> uint32_t { return _instance_id; }
+
+    struct ParameterSlot {
+        clap_param_info info;
+        std::atomic<double> base_value{0.0};
+        std::atomic<double> current_value{0.0};
+        std::atomic<double> modulation_value{0.0};
+        bool has_modulation = false;
+    };
+
+    auto getParameters() const -> const std::vector<std::unique_ptr<ParameterSlot>>& {
+        return _params;
+    }
+    auto getParameterSlot(clap_id param_id) -> ParameterSlot*;
 
     struct PluginEvent {
         union {
@@ -103,6 +128,9 @@ class PluginHost final : public BaseHost {
     void paramsRescan(clap_param_rescan_flags flags) noexcept override;
     void paramsClear(clap_id param_id, clap_param_clear_flags flags) noexcept override;
     void paramsRequestFlush() noexcept override;
+
+    void scanParameters();
+    void scanAudioPorts();
     auto implementsPosixFdSupport() const noexcept -> bool override { return false; }
     auto posixFdSupportRegisterFd(int fd, clap_posix_fd_flags_t flags) noexcept -> bool override {
         return false;
@@ -138,8 +166,6 @@ class PluginHost final : public BaseHost {
     const clap_plugin_entry* _plugin_entry = nullptr;
     const clap_plugin_factory* _plugin_factory = nullptr;
     std::unique_ptr<PluginProxy> _plugin;
-    clap_audio_buffer _audio_in = {};
-    clap_audio_buffer _audio_out = {};
     clap::helpers::EventList _ev_in;
     clap::helpers::EventList _ev_out;
     clap_process _process;
@@ -163,6 +189,12 @@ class PluginHost final : public BaseHost {
     moodycamel::ReaderWriterQueue<PluginEvent> _output_events_to_audio{constants::kEventQueueSize};
 
     uint32_t _instance_id = 0;
+
+    std::vector<AudioPortInfo> _audio_input_ports;
+    std::vector<AudioPortInfo> _audio_output_ports;
+
+    std::vector<std::unique_ptr<ParameterSlot>> _params;
+    std::unordered_map<clap_id, size_t> _param_id_to_index;
 };
 
 }  // namespace synth_canvas::host

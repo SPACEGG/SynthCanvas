@@ -106,9 +106,51 @@ void PluginHost::logLog(clap_log_severity severity, const char* message) const n
     logMessage(severity, message);
 }
 
+auto PluginHost::isPluginSleeping() const -> bool { return _state == kActiveAndSleeping; }
+
+void PluginHost::scanParameters() {
+    _params.clear();
+    _param_id_to_index.clear();
+
+    if (!_plugin) return;
+
+    auto params_ext = static_cast<const clap_plugin_params_t*>(
+        _plugin->clapPlugin()->get_extension(_plugin->clapPlugin(), CLAP_EXT_PARAMS));
+
+    if (!params_ext) return;
+
+    uint32_t count = params_ext->count(_plugin->clapPlugin());
+    _params.reserve(count);
+
+    for (uint32_t i = 0; i < count; ++i) {
+        auto slot = std::make_unique<ParameterSlot>();
+        if (params_ext->get_info(_plugin->clapPlugin(), i, &slot->info)) {
+            double val = 0.0;
+            if (params_ext->get_value(_plugin->clapPlugin(), slot->info.id, &val)) {
+                slot->base_value.store(val);
+                slot->current_value.store(val);
+            }
+            _param_id_to_index[slot->info.id] = _params.size();
+            _params.push_back(std::move(slot));
+        }
+    }
+
+    logMessage(CLAP_LOG_INFO,
+               ("Scanned " + std::to_string(_params.size()) + " parameters.").c_str());
+}
+
+PluginHost::ParameterSlot* PluginHost::getParameterSlot(clap_id param_id) {
+    auto it = _param_id_to_index.find(param_id);
+    if (it != _param_id_to_index.end()) {
+        return _params[it->second].get();
+    }
+    return nullptr;
+}
+
 void PluginHost::paramsRescan(clap_param_rescan_flags flags) noexcept {
     logMessage(CLAP_LOG_INFO,
                ("Plugin requested parameter rescan with flags: " + std::to_string(flags)).c_str());
+    scanParameters();
 }
 
 void PluginHost::paramsClear(clap_id param_id, clap_param_clear_flags flags) noexcept {
@@ -123,6 +165,46 @@ void PluginHost::paramsRequestFlush() noexcept {
 void PluginHost::stateMarkDirty() noexcept {
     _state_is_dirty = true;
     logMessage(CLAP_LOG_INFO, "Plugin marked state as dirty.");
+}
+
+void PluginHost::scanAudioPorts() {
+    _audio_input_ports.clear();
+    _audio_output_ports.clear();
+    _audio_input_ports_count = 0;
+    _audio_output_ports_count = 0;
+
+    if (!_plugin) return;
+
+    auto audio_ports_ext = static_cast<const clap_plugin_audio_ports_t*>(
+        _plugin->clapPlugin()->get_extension(_plugin->clapPlugin(), CLAP_EXT_AUDIO_PORTS));
+
+    if (!audio_ports_ext) {
+        logMessage(CLAP_LOG_WARNING, "Plugin does not implement CLAP_EXT_AUDIO_PORTS. Assuming no audio ports.");
+        return;
+    }
+
+    _audio_input_ports_count = audio_ports_ext->count(_plugin->clapPlugin(), true);
+    _audio_output_ports_count = audio_ports_ext->count(_plugin->clapPlugin(), false);
+
+    for (uint32_t i = 0; i < _audio_input_ports_count; ++i) {
+        AudioPortInfo info;
+        info.index = i;
+        info.is_input = true;
+        info.is_modulation = false; // Audio inputs are for audio processing only. Modulation targets parameters.
+        if (audio_ports_ext->get(_plugin->clapPlugin(), i, true, &info.clap_info)) {
+            _audio_input_ports.push_back(info);
+        }
+    }
+
+    for (uint32_t i = 0; i < _audio_output_ports_count; ++i) {
+        AudioPortInfo info;
+        info.index = i;
+        info.is_input = false;
+        info.is_modulation = false; // Audio outputs can be sources for modulation, but we treat them as generic audio ports for now.
+        if (audio_ports_ext->get(_plugin->clapPlugin(), i, false, &info.clap_info)) {
+            _audio_output_ports.push_back(info);
+        }
+    }
 }
 
 auto PluginHost::load(const std::string& path, int plugin_index) -> bool {
@@ -254,22 +336,17 @@ auto PluginHost::load(const std::string& path, int plugin_index) -> bool {
         return false;
     }
 
-    auto audio_ports_ext = static_cast<const clap_plugin_audio_ports_t*>(
-        kRawPlugin->get_extension(kRawPlugin, CLAP_EXT_AUDIO_PORTS));
-
-    if (audio_ports_ext) {
-        _audio_input_ports_count = audio_ports_ext->count(kRawPlugin, true);
-        _audio_output_ports_count = audio_ports_ext->count(kRawPlugin, false);
-    } else {
-        _audio_input_ports_count = 1;
-        _audio_output_ports_count = 1;
-    }
+    // Initial parameter scan
+    scanParameters();
+    
+    // Initial audio port scan
+    scanAudioPorts();
 
     auto note_ports_ext = static_cast<const clap_plugin_note_ports_t*>(
-        kRawPlugin->get_extension(kRawPlugin, CLAP_EXT_NOTE_PORTS));
+        _plugin->clapPlugin()->get_extension(_plugin->clapPlugin(), CLAP_EXT_NOTE_PORTS));
 
     if (note_ports_ext) {
-        uint32_t note_in_count = note_ports_ext->count(kRawPlugin, true);
+        uint32_t note_in_count = note_ports_ext->count(_plugin->clapPlugin(), true);
         _has_note_input = (note_in_count > 0);
     } else {
         _has_note_input = false;
@@ -295,6 +372,11 @@ void PluginHost::unload() {
     if (_plugin) {
         _plugin.reset();
     }
+    
+    _params.clear();
+    _param_id_to_index.clear();
+    _audio_input_ports.clear();
+    _audio_output_ports.clear();
 
     if (_plugin_entry) {
         _plugin_entry->deinit();
@@ -312,7 +394,6 @@ void PluginHost::unload() {
     setPluginState(kInactive);
     logMessage(CLAP_LOG_INFO, "Plugin unloaded.");
 }
-
 auto PluginHost::canActivate() const -> bool { return _plugin != nullptr && !isPluginActive(); }
 
 void PluginHost::activate(int32_t sample_rate, int32_t block_size) {
@@ -362,6 +443,11 @@ void PluginHost::setProcessingEnabled(bool enabled) {
 }
 
 void PluginHost::setParameterValue(clap_id param_id, double value) {
+    // Update local parameter slot
+    if (auto* slot = getParameterSlot(param_id)) {
+        slot->base_value.store(value, std::memory_order_relaxed);
+    }
+
     PluginEvent ev;
     ev.event.header.size = sizeof(clap_event_param_value);
     ev.event.header.time = 0;
@@ -386,6 +472,11 @@ void PluginHost::pollMainThread() {
     PluginEvent ev;
     while (_output_events_to_main.try_dequeue(ev)) {
         if (ev.event.header.type == CLAP_EVENT_PARAM_VALUE) {
+            // Update local parameter slot if value changed by plugin
+            if (auto* slot = getParameterSlot(ev.event.param_value.param_id)) {
+                slot->base_value.store(ev.event.param_value.value, std::memory_order_relaxed);
+            }
+
             if (on_parameter_changed) {
                 on_parameter_changed(ev.event.param_value.param_id, ev.event.param_value.value);
             }
@@ -393,18 +484,12 @@ void PluginHost::pollMainThread() {
     }
 }
 
-void PluginHost::setPorts(int num_inputs, float** inputs, int num_outputs, float** outputs) {
-    _audio_in.channel_count = num_inputs;
-    _audio_in.data32 = inputs;
-    _audio_in.data64 = nullptr;
-    _audio_in.constant_mask = 0;
-    _audio_in.latency = 0;
-
-    _audio_out.channel_count = num_outputs;
-    _audio_out.data32 = outputs;
-    _audio_out.data64 = nullptr;
-    _audio_out.constant_mask = 0;
-    _audio_out.latency = 0;
+void PluginHost::setPorts(uint32_t num_inputs, clap_audio_buffer* inputs, uint32_t num_outputs,
+                          clap_audio_buffer* outputs) {
+    _process.audio_inputs = inputs;
+    _process.audio_inputs_count = num_inputs;
+    _process.audio_outputs = outputs;
+    _process.audio_outputs_count = num_outputs;
 }
 
 void PluginHost::processBegin(int nframes) {
@@ -457,6 +542,31 @@ void PluginHost::processNoteOff(int sample_offset, int channel, int key, double 
     _input_events.try_enqueue(ev);
 }
 
+void PluginHost::processParamModulation(clap_id param_id, double value, uint32_t sample_offset) {
+    // Update visualization state (atomic)
+    if (auto* slot = getParameterSlot(param_id)) {
+        slot->current_value.store(value, std::memory_order_relaxed);
+    }
+
+    // Generate CLAP event for the plugin
+    PluginEvent ev;
+    ev.event.header.size = sizeof(clap_event_param_mod);
+    ev.event.header.time = sample_offset;
+    ev.event.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+    ev.event.header.type = CLAP_EVENT_PARAM_MOD;
+    ev.event.header.flags = 0;
+    ev.event.header.type = CLAP_EVENT_PARAM_VALUE;
+    ev.event.param_value.param_id = param_id;
+    ev.event.param_value.value = value;
+    ev.event.param_value.cookie = nullptr;
+    ev.event.param_value.note_id = constants::kClapInvalidId;
+    ev.event.param_value.port_index = constants::kClapInvalidId;
+    ev.event.param_value.key = constants::kClapInvalidId;
+    ev.event.param_value.channel = constants::kClapInvalidId;
+
+    _input_events.try_enqueue(ev);
+}
+
 void PluginHost::process() {
     checkForAudioThread();
 
@@ -494,21 +604,8 @@ void PluginHost::process() {
     _process.in_events = _ev_in.clapInputEvents();
     _process.out_events = _ev_out.clapOutputEvents();
 
-    if (_audio_input_ports_count == 0) {
-        _process.audio_inputs = nullptr;
-        _process.audio_inputs_count = 0;
-    } else {
-        _process.audio_inputs = &_audio_in;
-        _process.audio_inputs_count = 1;
-    }
-
-    if (_audio_output_ports_count == 0) {
-        _process.audio_outputs = nullptr;
-        _process.audio_outputs_count = 0;
-    } else {
-        _process.audio_outputs = &_audio_out;
-        _process.audio_outputs_count = 1;
-    }
+    // Note: Audio inputs/outputs are set via setPorts() called by AudioEngine before process().
+    // We should NOT override them here based on potentially outdated member variables like _audio_in/_audio_out.
 
     _ev_out.clear();
     generatePluginInputEvents();
@@ -567,8 +664,6 @@ auto PluginHost::isPluginActive() const -> bool {
 }
 
 auto PluginHost::isPluginProcessing() const -> bool { return _state == kActiveAndProcessing; }
-
-auto PluginHost::isPluginSleeping() const -> bool { return _state == kActiveAndSleeping; }
 
 }  // namespace synth_canvas::host
 

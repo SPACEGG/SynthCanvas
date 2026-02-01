@@ -176,28 +176,80 @@ void AudioEngine::updateRenderState() {
 void AudioEngine::processSinglePlugin(PluginHost* host, int32_t num_frames) {
     uint32_t node_id = host->getInstanceId();
 
-    // Use pre-calculated audio source IDs for this plugin
-    const std::vector<uint32_t>* input_nodes = nullptr;
-    auto it = _current_render_state->input_audio_sources.find(node_id);
-    if (it != _current_render_state->input_audio_sources.end()) {
-        input_nodes = &it->second;
+    // 1. Process Parameter Modulation
+    auto mod_it = _current_render_state->input_modulations.find(node_id);
+    if (mod_it != _current_render_state->input_modulations.end()) {
+        const auto& mod_sources = mod_it->second;
+        for (const auto& mod : mod_sources) {
+            // Get source buffer (read-only)
+            float** src_buffer =
+                _buffer_manager.getReadOnlyBuffer(mod.source_node_id, mod.source_port_index);
+            if (!src_buffer) continue;
+
+            // Simple Control Rate Modulation: Take the first sample of the first channel.
+            // TODO: Implement Audio Rate Modulation (sample-accurate) later.
+            // TODO: Handle stereo sources (mix or left channel?). Currently using Left (0).
+            float mod_value = src_buffer[0][0];
+
+            // Check if source port index matches output channel?
+            // Currently assuming source port maps to audio channel index directly.
+            // If source_port_index > 0, we should use that channel if available.
+            if (mod.source_port_index < static_cast<uint32_t>(_channel_count)) {
+                mod_value = src_buffer[mod.source_port_index][0];
+            }
+
+            // Update parameter
+            host->processParamModulation(mod.target_param_id, static_cast<double>(mod_value), 0);
+        }
     }
 
-    float** input_ptrs = nullptr;
-    int input_count = 0;
+    // 2. Prepare Audio Inputs
+    const auto& input_ports = host->getAudioPorts(true);
+    std::vector<clap_audio_buffer> clap_inputs(input_ports.size());
 
-    if (input_nodes && !input_nodes->empty()) {
-        input_ptrs = _buffer_manager.getInputMix(*input_nodes, num_frames);
-        input_count = _channel_count;
+    // We need to keep the vectors of PortSource alive until process() is done
+    std::vector<std::vector<AudioBufferManager::PortSource>> input_sources_storage;
+    input_sources_storage.reserve(input_ports.size());
+
+    auto input_map_it = _current_render_state->input_audio_sources.find(node_id);
+
+    for (size_t i = 0; i < input_ports.size(); ++i) {
+        const auto& port_info = input_ports[i];
+        clap_inputs[i].channel_count = port_info.clap_info.channel_count;
+        clap_inputs[i].constant_mask = 0;
+        clap_inputs[i].latency = 0;
+        clap_inputs[i].data64 = nullptr;
+
+        std::vector<AudioBufferManager::PortSource> sources;
+        if (input_map_it != _current_render_state->input_audio_sources.end()) {
+            auto port_sources_it = input_map_it->second.find(port_info.index);
+            if (port_sources_it != input_map_it->second.end()) {
+                sources = port_sources_it->second;
+            }
+        }
+
+        // getInputMix takes care of zeroing/mixing
+        clap_inputs[i].data32 = _buffer_manager.getInputMix(port_info.index, sources, num_frames);
     }
 
-    // --- Prepare Outputs ---
-    float** output_ptrs = _buffer_manager.getBuffer(node_id, num_frames);
+    // 3. Prepare Audio Outputs
+    const auto& output_ports = host->getAudioPorts(false);
+    std::vector<clap_audio_buffer> clap_outputs(output_ports.size());
+
+    for (size_t i = 0; i < output_ports.size(); ++i) {
+        const auto& port_info = output_ports[i];
+        clap_outputs[i].channel_count = port_info.clap_info.channel_count;
+        clap_outputs[i].constant_mask = 0;
+        clap_outputs[i].latency = 0;
+        clap_outputs[i].data64 = nullptr;
+
+        clap_outputs[i].data32 = _buffer_manager.getBuffer(node_id, port_info.index, num_frames);
+    }
 
     // --- Process ---
     host->processBegin(num_frames);
-    host->setPorts(!input_nodes || input_nodes->empty() ? 0 : input_count, input_ptrs,
-                   _channel_count, output_ptrs);
+    host->setPorts(static_cast<uint32_t>(clap_inputs.size()), clap_inputs.data(),
+                   static_cast<uint32_t>(clap_outputs.size()), clap_outputs.data());
     host->process();
     host->processEnd(num_frames);
 }

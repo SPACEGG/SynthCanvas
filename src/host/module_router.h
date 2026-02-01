@@ -10,6 +10,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "audio_buffer_manager.h"
 #include "constants.h"
 #include "readerwriterqueue.h"
 
@@ -23,6 +24,7 @@ namespace synth_canvas::host {
 enum class ConnectionType {
     kAudio,
     kEvent,
+    kModulation,
 };
 
 class ModuleRouter {
@@ -35,11 +37,19 @@ class ModuleRouter {
         ConnectionType type;
     };
 
+    struct ModulationSource {
+        clap_id target_param_id;
+        uint32_t source_node_id;
+        uint32_t source_port_index;
+    };
+
     struct AudioRenderState {
-        std::unordered_map<uint32_t, std::vector<uint32_t>> input_audio_sources;
+        // TargetNodeID -> { TargetPortIndex -> List of Sources }
+        std::unordered_map<uint32_t, std::unordered_map<uint32_t, std::vector<AudioBufferManager::PortSource>>> input_audio_sources;
+        std::unordered_map<uint32_t, std::vector<ModulationSource>> input_modulations;
         std::unordered_map<uint32_t, std::vector<PluginHost*>> output_event_targets;
         std::vector<PluginHost*> sorted_modules;
-        std::vector<uint32_t> master_output_sources;
+        std::vector<AudioBufferManager::PortSource> master_output_sources;
         std::vector<PortConnection> connections;
     };
 

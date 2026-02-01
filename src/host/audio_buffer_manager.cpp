@@ -18,8 +18,8 @@ void AudioBufferManager::resize(int channels, int max_frames) {
     _channels = channels;
     _max_frames = max_frames;
 
-    _buffers.clear();
-    _mix_buffer.resize(_channels, _max_frames);
+    _node_outputs.clear();
+    _input_mix_buffers.clear();
 }
 
 void AudioBufferManager::Buffer::resize(int ch, int caps) {
@@ -30,7 +30,7 @@ void AudioBufferManager::Buffer::resize(int ch, int caps) {
     channels = ch;
     capacity = caps;
 
-    data.resize(channels * capacity);
+    data.assign(channels * capacity, 0.0f);
     ptrs.resize(channels);
 
     for (int i = 0; i < channels; ++i) {
@@ -54,50 +54,77 @@ void AudioBufferManager::ensureBuffer(Buffer& buf, int frames) {
     }
 }
 
-auto AudioBufferManager::getBuffer(uint32_t node_id, int num_frames) -> float** {
-    Buffer& buf = _buffers[node_id];
+auto AudioBufferManager::getBuffer(uint32_t node_id, uint32_t port_index, int num_frames) -> float** {
+    auto& ports = _node_outputs[node_id];
+    if (port_index >= ports.size()) {
+        ports.resize(port_index + 1);
+    }
+    
+    Buffer& buf = ports[port_index];
     ensureBuffer(buf, num_frames);
     buf.clear(num_frames);
     return buf.ptrs.data();
 }
 
-auto AudioBufferManager::getInputMix(const std::vector<uint32_t>& source_nodes, int num_frames)
-    -> float** {
-    ensureBuffer(_mix_buffer, num_frames);
-    _mix_buffer.clear(num_frames);
+auto AudioBufferManager::getReadOnlyBuffer(uint32_t node_id, uint32_t port_index) -> float** {
+    auto it = _node_outputs.find(node_id);
+    if (it != _node_outputs.end()) {
+        const auto& ports = it->second;
+        if (port_index < ports.size()) {
+            return const_cast<float**>(ports[port_index].ptrs.data());
+        }
+    }
+    return nullptr;
+}
 
-    if (source_nodes.empty()) {
-        return _mix_buffer.ptrs.data();
+auto AudioBufferManager::getInputMix(uint32_t target_port_index, const std::vector<PortSource>& sources, int num_frames)
+    -> float** {
+    if (target_port_index >= _input_mix_buffers.size()) {
+        _input_mix_buffers.resize(target_port_index + 1);
     }
 
-    for (uint32_t src_id : source_nodes) {
-        auto it = _buffers.find(src_id);
-        if (it == _buffers.end()) continue;
+    Buffer& mix_buf = _input_mix_buffers[target_port_index];
+    ensureBuffer(mix_buf, num_frames);
+    mix_buf.clear(num_frames);
 
-        Buffer& src_buf = it->second;
+    if (sources.empty()) {
+        return mix_buf.ptrs.data();
+    }
+
+    for (const auto& src : sources) {
+        auto it = _node_outputs.find(src.node_id);
+        if (it == _node_outputs.end()) continue;
+
+        const auto& ports = it->second;
+        if (src.port_index >= ports.size()) continue;
+
+        const Buffer& src_buf = ports[src.port_index];
 
         for (int c = 0; c < _channels; ++c) {
-            float* dest = _mix_buffer.ptrs[c];
-            const float* src = src_buf.ptrs[c];
+            float* dest = mix_buf.ptrs[c];
+            const float* src_ptr = src_buf.ptrs[c];
 
             for (int i = 0; i < num_frames; ++i) {
-                dest[i] += src[i];
+                dest[i] += src_ptr[i];
             }
         }
     }
 
-    return _mix_buffer.ptrs.data();
+    return mix_buf.ptrs.data();
 }
 
-void AudioBufferManager::mixToInterleaved(const std::vector<uint32_t>& source_nodes,
+void AudioBufferManager::mixToInterleaved(const std::vector<PortSource>& sources,
                                           float* output_data, int num_frames) {
     std::memset(output_data, 0, num_frames * _channels * sizeof(float));
 
-    for (uint32_t src_id : source_nodes) {
-        auto it = _buffers.find(src_id);
-        if (it == _buffers.end()) continue;
+    for (const auto& src : sources) {
+        auto it = _node_outputs.find(src.node_id);
+        if (it == _node_outputs.end()) continue;
 
-        Buffer& src_buf = it->second;
+        const auto& ports = it->second;
+        if (src.port_index >= ports.size()) continue;
+
+        const Buffer& src_buf = ports[src.port_index];
 
         for (int i = 0; i < num_frames; ++i) {
             for (int c = 0; c < _channels; ++c) {

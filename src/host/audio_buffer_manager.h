@@ -14,14 +14,22 @@ class AudioBufferManager {
     AudioBufferManager();
     ~AudioBufferManager();
 
-    // Get a zero-initialized buffer for a specific node (plugin output)
-    auto getBuffer(uint32_t node_id, int num_frames) -> float**;
+    // Get a zero-initialized buffer for a specific node and port
+    auto getBuffer(uint32_t node_id, uint32_t port_index, int num_frames) -> float**;
 
-    // Get a mixed input buffer from multiple source nodes
-    auto getInputMix(const std::vector<uint32_t>& source_nodes, int num_frames) -> float**;
+    // Get a read-only buffer for a specific node and port (does NOT clear)
+    auto getReadOnlyBuffer(uint32_t node_id, uint32_t port_index) -> float**;
+
+    // Get a mixed input buffer for a specific target port from multiple source (node, port) pairs
+    struct PortSource {
+        uint32_t node_id;
+        uint32_t port_index;
+    };
+    auto getInputMix(uint32_t target_port_index, const std::vector<PortSource>& sources,
+                     int num_frames) -> float**;
 
     // Mix multiple sources into a single interleaved buffer (for final output)
-    void mixToInterleaved(const std::vector<uint32_t>& source_nodes, float* output_data,
+    void mixToInterleaved(const std::vector<PortSource>& sources, float* output_data,
                           int num_frames);
 
     void resize(int channels, int max_frames);
@@ -39,8 +47,11 @@ class AudioBufferManager {
 
     void ensureBuffer(Buffer& buf, int frames);
 
-    std::unordered_map<uint32_t, Buffer> _buffers;
-    Buffer _mix_buffer;  // Temp buffer for mixing inputs
+    // Map: NodeID -> Vector of Output Port Buffers
+    std::unordered_map<uint32_t, std::vector<Buffer>> _node_outputs;
+    
+    // Multiple mix buffers for multiple input ports
+    std::vector<Buffer> _input_mix_buffers;
 
     int _channels = 2;
     int _max_frames = constants::kDefaultFramesPerBlock;

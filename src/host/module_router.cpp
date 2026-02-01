@@ -130,14 +130,17 @@ void ModuleRouter::pushNewState() {
     for (const auto& conn : _connections) {
         if (conn.type == ConnectionType::kAudio) {
             if (conn.to_node == constants::kAudioOutputNoteId) {
-                new_state->master_output_sources.push_back(conn.from_node);
+                new_state->master_output_sources.push_back({conn.from_node, conn.from_port});
             } else {
-                new_state->input_audio_sources[conn.to_node].push_back(conn.from_node);
+                new_state->input_audio_sources[conn.to_node][conn.to_port].push_back({conn.from_node, conn.from_port});
             }
         } else if (conn.type == ConnectionType::kEvent) {
             if (auto* target_host = getPluginInstance(conn.to_node)) {
                 new_state->output_event_targets[conn.from_node].push_back(target_host);
             }
+        } else if (conn.type == ConnectionType::kModulation) {
+            new_state->input_modulations[conn.to_node].push_back(
+                {static_cast<clap_id>(conn.to_port), conn.from_node, conn.from_port});
         }
     }
 
