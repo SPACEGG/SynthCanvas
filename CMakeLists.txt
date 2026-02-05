@@ -10,32 +10,35 @@ project(SynthCanvas LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Save the core directory path for relative referencing
+set(CORE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
+
 # Ensure the bin directory exists for compiled artifacts
 file(MAKE_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
 
 # Define the source files for the GDExtension library
 if(ANDROID)
     set(GDE_SOURCES
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/gdextension/register_types.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/gdextension/synthcanvas_audio_system.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/gdextension/synthcanvas_audio_system.h
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/host/audio_engine.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/host/audio_engine.h
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/host/logger.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/host/logger.h
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/host/plugin_host.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/host/plugin_host.h
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/host/module_router.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/host/module_router.h
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/host/audio_buffer_manager.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/host/audio_buffer_manager.h
+        ${CORE_DIR}/src/gdextension/register_types.cpp
+        ${CORE_DIR}/src/gdextension/synthcanvas_audio_system.cpp
+        ${CORE_DIR}/src/gdextension/synthcanvas_audio_system.h
+        ${CORE_DIR}/src/host/audio_engine.cpp
+        ${CORE_DIR}/src/host/audio_engine.h
+        ${CORE_DIR}/src/host/logger.cpp
+        ${CORE_DIR}/src/host/logger.h
+        ${CORE_DIR}/src/host/plugin_host.cpp
+        ${CORE_DIR}/src/host/plugin_host.h
+        ${CORE_DIR}/src/host/module_router.cpp
+        ${CORE_DIR}/src/host/module_router.h
+        ${CORE_DIR}/src/host/audio_buffer_manager.cpp
+        ${CORE_DIR}/src/host/audio_buffer_manager.h
     )
 else()
     # For Windows/Editor builds, we only need the GDExtension interface with dummy implementation
     set(GDE_SOURCES
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/gdextension/register_types.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/gdextension/synthcanvas_audio_system.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/gdextension/synthcanvas_audio_system.h
+        ${CORE_DIR}/src/gdextension/register_types.cpp
+        ${CORE_DIR}/src/gdextension/synthcanvas_audio_system.cpp
+        ${CORE_DIR}/src/gdextension/synthcanvas_audio_system.h
     )
 endif()
 
@@ -57,11 +60,11 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # 2. Find all source files in src/ (excluding godot-cpp)
 file(GLOB_RECURSE ALL_SOURCE_FILES 
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp" 
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.h" 
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.hpp" 
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.c" 
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cc"
+    "${CORE_DIR}/src/*.cpp" 
+    "${CORE_DIR}/src/*.h" 
+    "${CORE_DIR}/src/*.hpp" 
+    "${CORE_DIR}/src/*.c" 
+    "${CORE_DIR}/src/*.cc"
 )
 
 # Filter out godot-cpp and clap-saw-demo files from the analysis list
@@ -74,7 +77,7 @@ if(CLANG_FORMAT_EXE)
         format
         COMMAND "${CLANG_FORMAT_EXE}" -i -style=file ${ALL_SOURCE_FILES}
         COMMENT "Running clang-format on source files..."
-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        WORKING_DIRECTORY ${CORE_DIR}
     )
 else()
     message(WARNING "clang-format not found. 'format' target will not be available.")
@@ -87,7 +90,7 @@ if(CLANG_TIDY_EXE)
         check
         COMMAND "${CLANG_TIDY_EXE}" -p ${CMAKE_BINARY_DIR} ${ALL_SOURCE_FILES}
         COMMENT "Running clang-tidy on source files..."
-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        WORKING_DIRECTORY ${CORE_DIR}
     )
 else()
     message(WARNING "clang-tidy not found. 'check' target will not be available.")

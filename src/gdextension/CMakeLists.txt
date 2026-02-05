@@ -20,10 +20,10 @@ target_include_directories(synth_canvas_gdextension PRIVATE
 # Mark external library headers as SYSTEM to suppress warnings and tidy checks
 target_include_directories(synth_canvas_gdextension SYSTEM PRIVATE
     # For clap and clap-helpers headers
-    ${CMAKE_SOURCE_DIR}/libs/clap/include
-    ${CMAKE_SOURCE_DIR}/libs/clap-helpers/include
+    ${CORE_DIR}/libs/clap/include
+    ${CORE_DIR}/libs/clap-helpers/include
     # For readerwriterqueue
-    ${CMAKE_SOURCE_DIR}/libs/readerwriterqueue
+    ${CORE_DIR}/libs/readerwriterqueue
 )
 
 # Link the library against its dependencies.
@@ -43,9 +43,9 @@ target_link_libraries(synth_canvas_gdextension PRIVATE
 if(ANDROID)
     # Add and link Oboe only for Android
     # For out-of-tree sources, an explicit binary directory must be specified.
-    add_subdirectory(${CMAKE_SOURCE_DIR}/libs/oboe ${CMAKE_CURRENT_BINARY_DIR}/oboe)
+    add_subdirectory(${CORE_DIR}/libs/oboe ${CMAKE_CURRENT_BINARY_DIR}/oboe)
     # Mark oboe headers as SYSTEM
-    target_include_directories(synth_canvas_gdextension SYSTEM PRIVATE ${CMAKE_SOURCE_DIR}/libs/oboe/include)
+    target_include_directories(synth_canvas_gdextension SYSTEM PRIVATE ${CORE_DIR}/libs/oboe/include)
     target_link_libraries(synth_canvas_gdextension PRIVATE oboe)
 
     # On Android, we also need to link against libdl for dlopen/dlsym.
