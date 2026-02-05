@@ -1,6 +1,5 @@
 # GDExtension Library CMakeLists.txt
 
-# Define our GDExtension library
 add_library(synth_canvas_gdextension SHARED ${GDE_SOURCES})
 
 # For Android, forcefully enable exceptions for our library to be compatible with clap-helpers.
