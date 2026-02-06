@@ -1,0 +1,102 @@
+name: build
+
+on:
+  push:
+    branches: ["main", "dev"]
+  pull_request:
+    branches: ["main", "dev"]
+
+jobs:
+  android-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build cmake ccache
+
+      - name: ccache cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ${{ runner.os }}-ccache-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-
+
+      - name: Setup NDK
+        uses: android-actions/setup-android@v3
+
+      - name: Cache NDK
+        id: cache-ndk
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.ANDROID_SDK_ROOT }}/ndk/27.3.13750724
+          key: ${{ runner.os }}-ndk-27.3.13750724
+
+      - name: Install NDK
+        if: steps.cache-ndk.outputs.cache-hit != 'true'
+        run: sdkmanager "ndk;27.3.13750724"
+
+      - name: Set NDK Environment Variable
+        run: echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/27.3.13750724" >> $GITHUB_ENV
+
+      - name: Configure
+        run: |
+          cmake -B build/android -G Ninja \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM=android-33 \
+            -DCMAKE_BUILD_TYPE=Release .
+
+      - name: Build
+        run: cmake --build build/android
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: synthcanvas-android-libs
+          path: |
+            bin/libsynth_canvas_gdextension.so
+            bin/module/*.so
+
+  windows-build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install sccache
+        run: choco install sccache
+
+      - name: sccache cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.USERPROFILE }}\AppData\Local\Mozilla\sccache
+          key: ${{ runner.os }}-sccache-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-sccache-
+
+      - name: Configure
+        run: |
+          $env:SCCACHE_DIRECT = "true"
+          cmake -B build/windows -G Ninja -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache .
+
+      - name: Build
+        run: cmake --build build/windows --config Release
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: synthcanvas-windows-libs
+          path: |
+            bin/synth_canvas_gdextension.dll
+            bin/module/*.dll
