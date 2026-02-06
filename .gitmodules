@@ -18,7 +18,3 @@
 	path = libs/readerwriterqueue
 	url = https://github.com/cameron314/readerwriterqueue
 
-# Test Plugin
-[submodule "src/module/clap-saw-demo"]
-	path = src/module/clap-saw-demo
-	url = https://github.com/surge-synthesizer/clap-saw-demo
