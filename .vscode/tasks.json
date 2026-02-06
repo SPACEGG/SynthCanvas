@@ -34,8 +34,10 @@
       "type": "process",
       "command": "cmake",
       "args": [
-        "-B", "build/windows",
-        "-G", "Ninja",
+        "-B",
+        "build/windows",
+        "-G",
+        "Ninja",
         "-DCMAKE_C_COMPILER_LAUNCHER=sccache",
         "-DCMAKE_CXX_COMPILER_LAUNCHER=sccache",
         "."
@@ -68,6 +70,13 @@
       "command": "clang-tidy",
       "args": ["${file}", "-p", "${workspaceFolder}/build/android", "-fix"],
       "detail": "Run clang-tidy on active source files using android build config."
+    },
+    {
+      "label": "Clang: Check",
+      "type": "process",
+      "command": "cmake",
+      "args": ["--build", "build/android", "--target", "check"],
+      "detail": "Run clang-tidy on all source files using android build config"
     }
   ]
 }
