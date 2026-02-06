@@ -54,12 +54,13 @@ void AudioBufferManager::ensureBuffer(Buffer& buf, int frames) {
     }
 }
 
-auto AudioBufferManager::getBuffer(uint32_t node_id, uint32_t port_index, int num_frames) -> float** {
+auto AudioBufferManager::getBuffer(uint32_t node_id, uint32_t port_index, int num_frames)
+    -> float** {
     auto& ports = _node_outputs[node_id];
     if (port_index >= ports.size()) {
         ports.resize(port_index + 1);
     }
-    
+
     Buffer& buf = ports[port_index];
     ensureBuffer(buf, num_frames);
     buf.clear(num_frames);
@@ -77,7 +78,8 @@ auto AudioBufferManager::getReadOnlyBuffer(uint32_t node_id, uint32_t port_index
     return nullptr;
 }
 
-auto AudioBufferManager::getInputMix(uint32_t target_port_index, const std::vector<PortSource>& sources, int num_frames)
+auto AudioBufferManager::getInputMix(uint32_t target_port_index,
+                                     const std::vector<PortSource>& sources, int num_frames)
     -> float** {
     if (target_port_index >= _input_mix_buffers.size()) {
         _input_mix_buffers.resize(target_port_index + 1);

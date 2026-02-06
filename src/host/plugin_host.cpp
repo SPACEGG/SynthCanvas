@@ -179,7 +179,8 @@ void PluginHost::scanAudioPorts() {
         _plugin->clapPlugin()->get_extension(_plugin->clapPlugin(), CLAP_EXT_AUDIO_PORTS));
 
     if (!audio_ports_ext) {
-        logMessage(CLAP_LOG_WARNING, "Plugin does not implement CLAP_EXT_AUDIO_PORTS. Assuming no audio ports.");
+        logMessage(CLAP_LOG_WARNING,
+                   "Plugin does not implement CLAP_EXT_AUDIO_PORTS. Assuming no audio ports.");
         return;
     }
 
@@ -190,7 +191,8 @@ void PluginHost::scanAudioPorts() {
         AudioPortInfo info;
         info.index = i;
         info.is_input = true;
-        info.is_modulation = false; // Audio inputs are for audio processing only. Modulation targets parameters.
+        info.is_modulation =
+            false;  // Audio inputs are for audio processing only. Modulation targets parameters.
         if (audio_ports_ext->get(_plugin->clapPlugin(), i, true, &info.clap_info)) {
             _audio_input_ports.push_back(info);
         }
@@ -200,7 +202,8 @@ void PluginHost::scanAudioPorts() {
         AudioPortInfo info;
         info.index = i;
         info.is_input = false;
-        info.is_modulation = false; // Audio outputs can be sources for modulation, but we treat them as generic audio ports for now.
+        info.is_modulation = false;  // Audio outputs can be sources for modulation, but we treat
+                                     // them as generic audio ports for now.
         if (audio_ports_ext->get(_plugin->clapPlugin(), i, false, &info.clap_info)) {
             _audio_output_ports.push_back(info);
         }
@@ -338,7 +341,7 @@ auto PluginHost::load(const std::string& path, int plugin_index) -> bool {
 
     // Initial parameter scan
     scanParameters();
-    
+
     // Initial audio port scan
     scanAudioPorts();
 
@@ -372,7 +375,7 @@ void PluginHost::unload() {
     if (_plugin) {
         _plugin.reset();
     }
-    
+
     _params.clear();
     _param_id_to_index.clear();
     _audio_input_ports.clear();
@@ -605,7 +608,8 @@ void PluginHost::process() {
     _process.out_events = _ev_out.clapOutputEvents();
 
     // Note: Audio inputs/outputs are set via setPorts() called by AudioEngine before process().
-    // We should NOT override them here based on potentially outdated member variables like _audio_in/_audio_out.
+    // We should NOT override them here based on potentially outdated member variables like
+    // _audio_in/_audio_out.
 
     _ev_out.clear();
     generatePluginInputEvents();

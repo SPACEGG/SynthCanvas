@@ -45,7 +45,9 @@ class ModuleRouter {
 
     struct AudioRenderState {
         // TargetNodeID -> { TargetPortIndex -> List of Sources }
-        std::unordered_map<uint32_t, std::unordered_map<uint32_t, std::vector<AudioBufferManager::PortSource>>> input_audio_sources;
+        std::unordered_map<
+            uint32_t, std::unordered_map<uint32_t, std::vector<AudioBufferManager::PortSource>>>
+            input_audio_sources;
         std::unordered_map<uint32_t, std::vector<ModulationSource>> input_modulations;
         std::unordered_map<uint32_t, std::vector<PluginHost*>> output_event_targets;
         std::vector<PluginHost*> sorted_modules;

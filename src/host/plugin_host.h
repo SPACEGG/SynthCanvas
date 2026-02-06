@@ -56,7 +56,8 @@ class PluginHost final : public BaseHost {
     void setParameterValue(clap_id param_id, double value);
     void pollMainThread();
 
-    void setPorts(uint32_t num_inputs, clap_audio_buffer* inputs, uint32_t num_outputs, clap_audio_buffer* outputs);
+    void setPorts(uint32_t num_inputs, clap_audio_buffer* inputs, uint32_t num_outputs,
+                  clap_audio_buffer* outputs);
 
     void processBegin(int nframes);
     void processNoteOn(int sample_offset, int channel, int key, double velocity,

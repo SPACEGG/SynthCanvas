@@ -49,7 +49,7 @@ class AudioBufferManager {
 
     // Map: NodeID -> Vector of Output Port Buffers
     std::unordered_map<uint32_t, std::vector<Buffer>> _node_outputs;
-    
+
     // Multiple mix buffers for multiple input ports
     std::vector<Buffer> _input_mix_buffers;
 
