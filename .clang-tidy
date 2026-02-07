@@ -1,6 +1,6 @@
 ---
 Checks: "google-*,readability-identifier-naming,modernize-*"
-WarningsAsErrors: ""
+WarningsAsErrors: "*"
 HeaderFilterRegex: 'src[\\/](?!gdextension[\\/]godot-cpp|module[\\/]clap-saw-demo).*'
 FormatStyle: none
 CheckOptions:

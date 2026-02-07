@@ -1,2 +1,3 @@
 src/gdextension/godot-cpp/**
 src/module/clap-saw-demo/**
+libs/**
