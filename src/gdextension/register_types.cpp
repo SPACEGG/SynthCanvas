@@ -31,9 +31,9 @@ void uninitializeSynthCanvasModule(godot::ModuleInitializationLevel p_level) {
 
 extern "C" {
 // Initialization.
-auto GDE_EXPORT synth_canvas_gdextension_init(GDExtensionInterfaceGetProcAddress p_get_proc_address,
-                                              const GDExtensionClassLibraryPtr kPLibrary,
-                                              GDExtensionInitialization* r_initialization)
+auto GDE_EXPORT synthcanvasGDExtensionInit(GDExtensionInterfaceGetProcAddress p_get_proc_address,
+                                           const GDExtensionClassLibraryPtr kPLibrary,
+                                           GDExtensionInitialization* r_initialization)
     -> GDExtensionBool {
     godot::GDExtensionBinding::InitObject init_obj(p_get_proc_address, kPLibrary, r_initialization);
 

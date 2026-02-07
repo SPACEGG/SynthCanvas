@@ -12,7 +12,7 @@ AudioBufferManager::AudioBufferManager() {
     _max_frames = constants::kDefaultFramesPerBlock;
 }
 
-AudioBufferManager::~AudioBufferManager() {}
+AudioBufferManager::~AudioBufferManager() = default;
 
 void AudioBufferManager::resize(int channels, int max_frames) {
     _channels = channels;

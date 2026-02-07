@@ -11,24 +11,28 @@ class PassthroughPlugin
     : public clap::helpers::Plugin<clap::helpers::MisbehaviourHandler::Terminate,
                                    clap::helpers::CheckingLevel::Maximal> {
    public:
-    PassthroughPlugin(const std::string &pluginPath, const clap_host *host);
+    PassthroughPlugin(const std::string& plugin_path, const clap_host* host);
 
-    static const clap_plugin_descriptor *descriptor();
+    static auto descriptor() -> const clap_plugin_descriptor*;
 
     // --- Ports ---
-    bool implementsAudioPorts() const noexcept override { return true; }
-    uint32_t audioPortsCount(bool isInput) const noexcept override { return 1; }
-    bool audioPortsInfo(uint32_t index, bool isInput,
-                        clap_audio_port_info *info) const noexcept override;
+    [[nodiscard]] auto implementsAudioPorts() const noexcept -> bool override { return true; }
+    [[nodiscard]] auto audioPortsCount(bool is_input) const noexcept -> uint32_t override {
+        return 1;
+    }
+    auto audioPortsInfo(uint32_t index, bool is_input, clap_audio_port_info* info) const noexcept
+        -> bool override;
 
-    bool implementsNotePorts() const noexcept override { return false; }
-    uint32_t notePortsCount(bool isInput) const noexcept override { return 0; }
-    bool notePortsInfo(uint32_t index, bool isInput,
-                       clap_note_port_info *info) const noexcept override {
+    [[nodiscard]] auto implementsNotePorts() const noexcept -> bool override { return false; }
+    [[nodiscard]] auto notePortsCount(bool is_input) const noexcept -> uint32_t override {
+        return 0;
+    }
+    auto notePortsInfo(uint32_t index, bool is_input, clap_note_port_info* info) const noexcept
+        -> bool override {
         return false;
     }
 
     // --- Processing ---
-    clap_process_status process(const clap_process *process) noexcept override;
+    auto process(const clap_process* process) noexcept -> clap_process_status override;
 };
 }  // namespace synth_canvas::passthrough_plugin

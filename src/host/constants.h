@@ -3,9 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace synth_canvas {
-namespace host {
-namespace constants {
+namespace synth_canvas::host::constants {
 
 // Audio Settings & Defaults
 // 0 allows Oboe/systems to choose the optimal native rate
@@ -36,6 +34,4 @@ constexpr int kPluginDeactivateSleepMs = 1;
 constexpr uint32_t kAudioOutputNoteId = 0;
 constexpr uint32_t kInitialPluginInstanceId = 1;
 
-}  // namespace constants
-}  // namespace host
-}  // namespace synth_canvas
+}  // namespace synth_canvas::host::constants

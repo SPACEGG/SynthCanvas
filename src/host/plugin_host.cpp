@@ -139,7 +139,7 @@ void PluginHost::scanParameters() {
                ("Scanned " + std::to_string(_params.size()) + " parameters.").c_str());
 }
 
-PluginHost::ParameterSlot* PluginHost::getParameterSlot(clap_id param_id) {
+auto PluginHost::getParameterSlot(clap_id param_id) -> PluginHost::ParameterSlot* {
     auto it = _param_id_to_index.find(param_id);
     if (it != _param_id_to_index.end()) {
         return _params[it->second].get();

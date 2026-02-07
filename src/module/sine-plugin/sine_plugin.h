@@ -9,24 +9,24 @@ class SinePlugin : public helpers::Plugin<helpers::MisbehaviourHandler::Terminat
         helpers::Plugin<helpers::MisbehaviourHandler::Terminate, helpers::CheckingLevel::Maximal>;
 
    public:
-    SinePlugin(const clap_host_t *host);
+    explicit SinePlugin(const clap_host_t* host);
 
-    static const clap_plugin_descriptor *descriptor();
+    static auto descriptor() -> const clap_plugin_descriptor*;
 
    protected:
-    bool activate(double sampleRate, uint32_t minFrameCount,
-                  uint32_t maxFrameCount) noexcept override;
-    clap_process_status process(const clap_process *process) noexcept override;
+    auto activate(double sample_rate, uint32_t min_frame_count, uint32_t max_frame_count) noexcept
+        -> bool override;
+    auto process(const clap_process* process) noexcept -> clap_process_status override;
 
-    bool implementsAudioPorts() const noexcept override { return true; }
-    uint32_t audioPortsCount(bool is_input) const noexcept override;
-    bool audioPortsInfo(uint32_t index, bool is_input,
-                        clap_audio_port_info_t *info) const noexcept override;
+    [[nodiscard]] auto implementsAudioPorts() const noexcept -> bool override { return true; }
+    [[nodiscard]] auto audioPortsCount(bool is_input) const noexcept -> uint32_t override;
+    auto audioPortsInfo(uint32_t index, bool is_input, clap_audio_port_info_t* info) const noexcept
+        -> bool override;
 
-    bool implementsNotePorts() const noexcept override { return true; }
-    uint32_t notePortsCount(bool is_input) const noexcept override;
-    bool notePortsInfo(uint32_t index, bool is_input,
-                       clap_note_port_info_t *info) const noexcept override;
+    [[nodiscard]] auto implementsNotePorts() const noexcept -> bool override { return true; }
+    [[nodiscard]] auto notePortsCount(bool is_input) const noexcept -> uint32_t override;
+    auto notePortsInfo(uint32_t index, bool is_input, clap_note_port_info_t* info) const noexcept
+        -> bool override;
 
    private:
     double _sample_rate = 44100;

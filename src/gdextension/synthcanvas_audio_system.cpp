@@ -51,9 +51,9 @@ void SynthCanvasAudioSystem::_bind_methods() {
     godot::ClassDB::bind_method(godot::D_METHOD("stop_note_from_node", "from_node_id", "note"),
                                 &SynthCanvasAudioSystem::stopNoteFromNode);
 
-    BIND_ENUM_CONSTANT(CONNECTION_TYPE_AUDIO);
-    BIND_ENUM_CONSTANT(CONNECTION_TYPE_EVENT);
-    BIND_ENUM_CONSTANT(CONNECTION_TYPE_MODULATION);
+    BIND_ENUM_CONSTANT(kConnectionTypeAudio);
+    BIND_ENUM_CONSTANT(kConnectionTypeEvent);
+    BIND_ENUM_CONSTANT(kConnectionTypeModulation);
 
     ADD_SIGNAL(godot::MethodInfo("parameter_changed",
                                  godot::PropertyInfo(godot::Variant::INT, "param_id"),
@@ -65,15 +65,16 @@ void SynthCanvasAudioSystem::_bind_methods() {
 // Implementation
 
 SynthCanvasAudioSystem::SynthCanvasAudioSystem() {
-    synth_canvas::host::setLogCallback(
-        [](const std::string& msg) { godot::UtilityFunctions::print(godot::String(msg.c_str())); });
+    synth_canvas::host::setLogCallback([](const std::string& msg) -> void {
+        godot::UtilityFunctions::print(godot::String(msg.c_str()));
+    });
 
     godot::UtilityFunctions::print("[SynthCanvasAudioSystem] Initializing (Android)...");
 
     _module_router = std::make_unique<synth_canvas::host::ModuleRouter>();
 
     if (_module_router) {
-        _module_router->on_parameter_changed = [this](clap_id param_id, double value) {
+        _module_router->on_parameter_changed = [this](clap_id param_id, double value) -> void {
             emit_signal("parameter_changed", param_id, value);
         };
     }
@@ -201,7 +202,7 @@ void SynthCanvasAudioSystem::setParameterValue(uint32_t instance_id, clap_id par
     }
 }
 
-godot::Dictionary SynthCanvasAudioSystem::getPluginParameters(uint32_t instance_id) {
+auto SynthCanvasAudioSystem::getPluginParameters(uint32_t instance_id) -> godot::Dictionary {
     godot::Dictionary result;
     if (!_module_router) return result;
 

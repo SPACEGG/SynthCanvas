@@ -15,7 +15,7 @@ namespace synth_canvas::host {
 class AudioEngine : public oboe::AudioStreamDataCallback {
    public:
     explicit AudioEngine(ModuleRouter* router);
-    ~AudioEngine();
+    ~AudioEngine() override;
 
     auto start() -> bool;
     void stop();

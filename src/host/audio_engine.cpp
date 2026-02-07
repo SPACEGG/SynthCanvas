@@ -185,14 +185,14 @@ void AudioEngine::processSinglePlugin(PluginHost* host, int32_t num_frames) {
             if (!src_buffer) continue;
 
             // Simple Control Rate Modulation: Take the first sample of the first channel.
-            // TODO: Implement Audio Rate Modulation (sample-accurate) later.
-            // TODO: Handle stereo sources (mix or left channel?). Currently using Left (0).
+            // TODO(): Implement Audio Rate Modulation (sample-accurate) later.
+            // TODO(): Handle stereo sources (mix or left channel?). Currently using Left (0).
             float mod_value = src_buffer[0][0];
 
             // Check if source port index matches output channel?
             // Currently assuming source port maps to audio channel index directly.
             // If source_port_index > 0, we should use that channel if available.
-            if (mod.source_port_index < static_cast<uint32_t>(_channel_count)) {
+            if (mod.source_port_index < (static_cast<uint32_t>(_channel_count))) {
                 mod_value = src_buffer[mod.source_port_index][0];
             }
 

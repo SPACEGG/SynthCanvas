@@ -16,13 +16,14 @@ class ModuleRouter;
 #endif
 
 class SynthCanvasAudioSystem : public godot::Node {
+    // NOLINTNEXTLINE(modernize-use-auto)
     GDCLASS(SynthCanvasAudioSystem, godot::Node);
 
    public:
     enum ConnectionType {
-        CONNECTION_TYPE_AUDIO = 0,
-        CONNECTION_TYPE_EVENT = 1,
-        CONNECTION_TYPE_MODULATION = 2,
+        kConnectionTypeAudio = 0,
+        kConnectionTypeEvent = 1,
+        kConnectionTypeModulation = 2,
     };
 
    private:
@@ -36,7 +37,7 @@ class SynthCanvasAudioSystem : public godot::Node {
 
    public:
     SynthCanvasAudioSystem();
-    ~SynthCanvasAudioSystem();
+    ~SynthCanvasAudioSystem() override;
 
     void _ready() override;
     void _exit_tree() override;
@@ -57,7 +58,7 @@ class SynthCanvasAudioSystem : public godot::Node {
     void stopNote(uint32_t instance_id, int note, double velocity = 0.0,
                   int32_t note_id = synth_canvas::host::constants::kClapInvalidId);
     void setParameterValue(uint32_t instance_id, clap_id param_id, double value);
-    godot::Dictionary getPluginParameters(uint32_t instance_id);
+    auto getPluginParameters(uint32_t instance_id) -> godot::Dictionary;
 
     void playNoteFromNode(uint32_t from_node_id, int note, double velocity);
     void stopNoteFromNode(uint32_t from_node_id, int note);
