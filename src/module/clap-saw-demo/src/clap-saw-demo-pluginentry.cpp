@@ -68,7 +68,7 @@ extern "C"
 {
     // clang-format off
     extern const CLAP_EXPORT struct clap_plugin_entry clap_entry;
-    const CLAP_EXPORT struct clap_plugin_entry clap_entry = {
+    extern const CLAP_EXPORT struct clap_plugin_entry clap_entry = {
         CLAP_VERSION,
         sst::clap_saw_demo::pluginentry::clap_init,
         sst::clap_saw_demo::pluginentry::clap_deinit,
