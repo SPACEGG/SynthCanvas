@@ -18,11 +18,15 @@ jobs:
       - name: Install Tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build cmake clang-tidy
+          sudo apt-get install -y ninja-build cmake
 
-      - name: Check Tool Version
+      - name: Install LLVM 19 (Clang-Tidy)
         run: |
-          cmake --version
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 19
+          sudo apt-get install -y clang-tidy-19
+          sudo ln -sf /usr/bin/clang-tidy-19 /usr/bin/clang-tidy
           clang-tidy --version
 
       - name: Setup NDK
