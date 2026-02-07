@@ -72,11 +72,17 @@
       "detail": "Run clang-tidy on active source files using android build config."
     },
     {
-      "label": "Clang: Check",
+      "label": "Clang: Check All",
       "type": "process",
       "command": "cmake",
       "args": ["--build", "build/android", "--target", "check"],
       "detail": "Run clang-tidy on all source files using android build config"
+    },
+    {
+      "label": "Clang: Check All + Log File",
+      "type": "shell",
+      "command": "cmake --build build/android --target check | tee -FilePath temp/clang-tidy-check.txt -Encoding utf8",
+      "detail": "Run clang-tidy on all source files and save tidy log."
     }
   ]
 }
