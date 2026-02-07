@@ -48,7 +48,7 @@ static const clap_plugin *clap_create_plugin(const clap_plugin_factory *f, const
     return p->clapPlugin();
 }
 
-const CLAP_EXPORT struct clap_plugin_factory clap_saw_demo_factory = {
+extern "C" const CLAP_EXPORT struct clap_plugin_factory clap_saw_demo_factory = {
     sst::clap_saw_demo::pluginentry::clap_get_plugin_count,
     sst::clap_saw_demo::pluginentry::clap_get_plugin_descriptor,
     sst::clap_saw_demo::pluginentry::clap_create_plugin,
@@ -67,6 +67,7 @@ void clap_deinit() {}
 extern "C"
 {
     // clang-format off
+    extern const CLAP_EXPORT struct clap_plugin_entry clap_entry;
     const CLAP_EXPORT struct clap_plugin_entry clap_entry = {
         CLAP_VERSION,
         sst::clap_saw_demo::pluginentry::clap_init,
