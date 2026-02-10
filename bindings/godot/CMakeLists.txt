@@ -39,10 +39,10 @@ add_custom_command(
     POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "$<TARGET_FILE:synth_canvas_gdextension>"
-        "${CMAKE_SOURCE_DIR}/bin/"
+        "${CORE_DIR}/bin/"
     COMMENT "Copying synth_canvas_gdextension to root bin directory for Godot to use."
 )
 
 install(TARGETS synth_canvas_gdextension
-    DESTINATION ${CMAKE_SOURCE_DIR}/bin
+    DESTINATION ${CORE_DIR}/bin
 )

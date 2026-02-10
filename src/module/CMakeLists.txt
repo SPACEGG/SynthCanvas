@@ -3,10 +3,10 @@
 # Define a function to add the post-build copy command to a plugin target.
 function(add_plugin_post_build_copy_command target_name)
     add_custom_command(TARGET ${target_name} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_SOURCE_DIR}/bin/module"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${CORE_DIR}/bin/module"
         COMMAND ${CMAKE_COMMAND} -E copy
             $<TARGET_FILE:${target_name}>
-            "${CMAKE_SOURCE_DIR}/bin/module/"
+            "${CORE_DIR}/bin/module/"
         COMMENT "Copying ${target_name} to bin/module"
     )
     
