@@ -2,7 +2,7 @@ CompileFlags:
   CompilationDatabase: build/android
 
 If:
-  PathMatch: [libs/.*, src/gdextension/godot-cpp/.*]
+  PathMatch: [libs/.*, bindings/godot/godot-cpp/.*]
 Diagnostics:
   ClangTidy:
     Remove: ["*"]

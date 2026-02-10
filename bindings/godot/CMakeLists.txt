@@ -1,4 +1,14 @@
-# src/gdextension/CMakeLists.txt
+# bindings/godot/CMakeLists.txt
+
+# --- Godot-cpp Dependency ---
+include(FetchContent)
+FetchContent_Declare(
+    godot-cpp
+    GIT_REPOSITORY https://github.com/godotengine/godot-cpp.git
+    GIT_TAG        godot-4.5-stable
+)
+set(GODOTCPP_SYSTEM_HEADERS ON CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(godot-cpp)
 
 # --- GDExtension Library ---
 # Godot bindings that interface with the core engine.

@@ -1,7 +1,7 @@
 ---
 Checks: "google-*,readability-identifier-naming,modernize-*"
 WarningsAsErrors: "*"
-HeaderFilterRegex: "src/(?!gdextension/godot-cpp|module/clap-saw-demo).*"
+HeaderFilterRegex: "(src|bindings/godot)/(?!godot-cpp|module/clap-saw-demo).*"
 FormatStyle: none
 CheckOptions:
   # --- Naming Conventions (Google Style with Custom Member Prefix) ---

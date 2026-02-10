@@ -21,9 +21,7 @@ add_subdirectory(src)         # synth_canvas_core
 add_subdirectory(src/module)  # plugins
 
 # 3. GDExtension (Godot Bindings)
-set(GODOTCPP_SYSTEM_HEADERS ON CACHE BOOL "" FORCE)
-add_subdirectory(src/gdextension/godot-cpp)
-add_subdirectory(src/gdextension) # synth_canvas_gdextension
+add_subdirectory(bindings/godot) # synth_canvas_gdextension
 
 # --- Custom Build Targets ---
 
