@@ -17,7 +17,7 @@
       "label": "Build: Android",
       "type": "process",
       "command": "cmake",
-      "args": ["--build", "build/android"],
+      "args": ["--build", "build/android", "--target", "build_full"],
       "group": "build",
       "problemMatcher": [],
       "detail": "Build the project for Android."
