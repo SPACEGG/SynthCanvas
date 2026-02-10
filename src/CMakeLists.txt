@@ -1,7 +1,6 @@
 # src/CMakeLists.txt
 
-# --- Core Engine Library ---
-# Pure C++ engine logic without any Godot dependencies.
+# SynthCanvas core sources
 
 set(CORE_SOURCES
     api/system.cpp

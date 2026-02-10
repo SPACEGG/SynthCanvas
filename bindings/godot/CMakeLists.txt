@@ -1,6 +1,6 @@
 # bindings/godot/CMakeLists.txt
 
-# --- Godot-cpp Dependency ---
+# godot-cpp
 include(FetchContent)
 FetchContent_Declare(
     godot-cpp
@@ -10,9 +10,7 @@ FetchContent_Declare(
 set(GODOTCPP_SYSTEM_HEADERS ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(godot-cpp)
 
-# --- GDExtension Library ---
-# Godot bindings that interface with the core engine.
-
+# godot binding
 set(GDE_SOURCES
     register_types.cpp
     synthcanvas_audio_system.cpp
@@ -35,7 +33,7 @@ target_link_libraries(synth_canvas_gdextension PRIVATE
     synth_canvas_core
 )
 
-# --- Post-build command to copy the library ---
+# copy the library
 add_custom_command(
     TARGET synth_canvas_gdextension
     POST_BUILD

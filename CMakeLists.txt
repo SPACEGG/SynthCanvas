@@ -9,38 +9,38 @@ set(CORE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
 file(MAKE_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
 
-# --- Subdirectories ---
+## Subdirectories
 
-# 1. External Libraries
+# External Libraries
 add_subdirectory(libs/clap)
 add_subdirectory(libs/clap-helpers)
 add_subdirectory(libs/readerwriterqueue)
 
-# 2. Engine & Plugins
+# Engine & Plugins
 add_subdirectory(src)         # synth_canvas_core
 add_subdirectory(src/module)  # plugins
 
-# 3. GDExtension (Godot Bindings)
+# Godot Bindings
 add_subdirectory(bindings/godot) # synth_canvas_gdextension
 
-# --- Custom Build Targets ---
+## Custom Build Targets
 
-# A. Build only the static engine core (No Godot, No Plugins)
+# Core only
 add_custom_target(build_core
     DEPENDS synth_canvas_core
     COMMENT "Building only the static engine core library..."
 )
 
-# B. Build only the plugins (CLAP Modules)
+# Plugins only
 # Note: This target is defined in src/module/CMakeLists.txt but can be used here.
 
-# C. Build everything including GDExtension
+# Full build with godot binding
 add_custom_target(build_full
     DEPENDS synth_canvas_gdextension build_plugins
-    COMMENT "Building full project (GDExtension + Core + Plugins)..."
+    COMMENT "Building godot-binding project (GDExtension + Core + Plugins)..."
 )
 
-## Development Tools (Clang-Format / Clang-Tidy)
+## Clang-Format / Clang-Tidy
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 file(GLOB_RECURSE ALL_SOURCE_FILES 
     "${CORE_DIR}/src/*.cpp" "${CORE_DIR}/src/*.h" "${CORE_DIR}/src/*.hpp"

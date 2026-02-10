@@ -41,6 +41,14 @@
       "detail": "Build only the plugins for Android."
     },
     {
+      "label": "Godot: Generate Bindings",
+      "type": "process",
+      "command": "cmake",
+      "args": ["--build", "build/android", "--target", "generate_bindings"],
+      "group": "build",
+      "detail": "Generate Godot C++ binding headers (Fixes IDE include errors)."
+    },
+    {
       "label": "Configure: Windows",
       "type": "process",
       "command": "cmake",
