@@ -44,6 +44,7 @@ add_custom_target(build_full
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 file(GLOB_RECURSE ALL_SOURCE_FILES 
     "${CORE_DIR}/src/*.cpp" "${CORE_DIR}/src/*.h" "${CORE_DIR}/src/*.hpp"
+    "${CORE_DIR}/bindings/*.cpp" "${CORE_DIR}/bindings/*.h" "${CORE_DIR}/bindings/*.hpp"
 )
 list(FILTER ALL_SOURCE_FILES EXCLUDE REGEX "/godot-cpp/|/clap-saw-demo/")
 
