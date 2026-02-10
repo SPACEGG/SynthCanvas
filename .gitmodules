@@ -3,7 +3,7 @@
 	url = https://github.com/google/oboe.git
 	branch = 1.10.0
 [submodule "src/gdextension/godot-cpp"]
-	path = src/gdextension/godot-cpp
+	path = bindings/godot/godot-cpp
 	url = https://github.com/godotengine/godot-cpp.git
 	branch = godot-4.5-stable
 [submodule "libs/clap"]
