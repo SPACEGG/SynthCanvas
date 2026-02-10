@@ -1,19 +1,9 @@
 #ifndef SYNTHCANVAS_AUDIO_SYSTEM_H
 #define SYNTHCANVAS_AUDIO_SYSTEM_H
 
-#include <clap/clap.h>
-
 #include <godot_cpp/classes/node.hpp>
-#include <memory>
 
-#include "host/constants.h"
-
-#if defined(__ANDROID__)
-namespace synth_canvas::host {
-class AudioEngine;
-class ModuleRouter;
-}  // namespace synth_canvas::host
-#endif
+#include "api/system.h"  // synth_canvas::System
 
 class SynthCanvasAudioSystem : public godot::Node {
     // NOLINTNEXTLINE(modernize-use-auto)
@@ -27,10 +17,7 @@ class SynthCanvasAudioSystem : public godot::Node {
     };
 
    private:
-#if defined(__ANDROID__)
-    std::unique_ptr<synth_canvas::host::ModuleRouter> _module_router;
-    std::unique_ptr<synth_canvas::host::AudioEngine> _audio_engine;
-#endif
+    std::unique_ptr<synth_canvas::System> _system;
 
    protected:
     static void _bind_methods();
@@ -53,11 +40,9 @@ class SynthCanvasAudioSystem : public godot::Node {
 
     void startAudio();
     void stopAudio();
-    void playNote(uint32_t instance_id, int note, double velocity,
-                  int32_t note_id = synth_canvas::host::constants::kClapInvalidId);
-    void stopNote(uint32_t instance_id, int note, double velocity = 0.0,
-                  int32_t note_id = synth_canvas::host::constants::kClapInvalidId);
-    void setParameterValue(uint32_t instance_id, clap_id param_id, double value);
+    void playNote(uint32_t instance_id, int note, double velocity, int32_t note_id = -1);
+    void stopNote(uint32_t instance_id, int note, double velocity = 0.0, int32_t note_id = -1);
+    void setParameterValue(uint32_t instance_id, uint32_t param_id, double value);
     auto getPluginParameters(uint32_t instance_id) -> godot::Dictionary;
 
     void playNoteFromNode(uint32_t from_node_id, int note, double velocity);

@@ -9,75 +9,52 @@ set(CORE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
 file(MAKE_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
 
-if(ANDROID)
-    set(GDE_SOURCES
-        ${CORE_DIR}/src/gdextension/register_types.cpp
-        ${CORE_DIR}/src/gdextension/synthcanvas_audio_system.cpp
-        ${CORE_DIR}/src/gdextension/synthcanvas_audio_system.h
-        ${CORE_DIR}/src/host/audio_engine.cpp
-        ${CORE_DIR}/src/host/audio_engine.h
-        ${CORE_DIR}/src/host/logger.cpp
-        ${CORE_DIR}/src/host/logger.h
-        ${CORE_DIR}/src/host/plugin_host.cpp
-        ${CORE_DIR}/src/host/plugin_host.h
-        ${CORE_DIR}/src/host/module_router.cpp
-        ${CORE_DIR}/src/host/module_router.h
-        ${CORE_DIR}/src/host/audio_buffer_manager.cpp
-        ${CORE_DIR}/src/host/audio_buffer_manager.h
-    )
-else()
-    # GDExtension interface with dummy implementation
-    set(GDE_SOURCES
-        ${CORE_DIR}/src/gdextension/register_types.cpp
-        ${CORE_DIR}/src/gdextension/synthcanvas_audio_system.cpp
-        ${CORE_DIR}/src/gdextension/synthcanvas_audio_system.h
-    )
-endif()
+# --- Subdirectories ---
 
-# Libraries
+# 1. External Libraries
 add_subdirectory(libs/clap)
 add_subdirectory(libs/clap-helpers)
 add_subdirectory(libs/readerwriterqueue)
 
+# 2. Engine & Plugins
+add_subdirectory(src)         # synth_canvas_core
+add_subdirectory(src/module)  # plugins
+
+# 3. GDExtension (Godot Bindings)
 set(GODOTCPP_SYSTEM_HEADERS ON CACHE BOOL "" FORCE)
 add_subdirectory(src/gdextension/godot-cpp)
-add_subdirectory(src/gdextension)
-add_subdirectory(src/module)
+add_subdirectory(src/gdextension) # synth_canvas_gdextension
 
-## Clang-Format & Clang-Tidy
+# --- Custom Build Targets ---
 
+# A. Build only the static engine core (No Godot, No Plugins)
+add_custom_target(build_core
+    DEPENDS synth_canvas_core
+    COMMENT "Building only the static engine core library..."
+)
+
+# B. Build only the plugins (CLAP Modules)
+# Note: This target is defined in src/module/CMakeLists.txt but can be used here.
+
+# C. Build everything including GDExtension
+add_custom_target(build_full
+    DEPENDS synth_canvas_gdextension build_plugins
+    COMMENT "Building full project (GDExtension + Core + Plugins)..."
+)
+
+## Development Tools (Clang-Format / Clang-Tidy)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 file(GLOB_RECURSE ALL_SOURCE_FILES 
-    "${CORE_DIR}/src/*.cpp" 
-    "${CORE_DIR}/src/*.h" 
-    "${CORE_DIR}/src/*.hpp" 
-    "${CORE_DIR}/src/*.c" 
-    "${CORE_DIR}/src/*.cc"
+    "${CORE_DIR}/src/*.cpp" "${CORE_DIR}/src/*.h" "${CORE_DIR}/src/*.hpp"
 )
 list(FILTER ALL_SOURCE_FILES EXCLUDE REGEX "/godot-cpp/|/clap-saw-demo/")
 
-# clang-format -i
 find_program(CLANG_FORMAT_EXE NAMES "clang-format")
 if(CLANG_FORMAT_EXE)
-    add_custom_target(
-        format
-        COMMAND "${CLANG_FORMAT_EXE}" -i -style=file ${ALL_SOURCE_FILES}
-        COMMENT "Running clang-format on source files..."
-        WORKING_DIRECTORY ${CORE_DIR}
-    )
-else()
-    message(WARNING "clang-format not found. 'format' target will not be available.")
+    add_custom_target(format COMMAND "${CLANG_FORMAT_EXE}" -i -style=file ${ALL_SOURCE_FILES})
 endif()
 
-# clang-tidy
 find_program(CLANG_TIDY_EXE NAMES "clang-tidy")
 if(CLANG_TIDY_EXE)
-    add_custom_target(
-        check
-        COMMAND "${CLANG_TIDY_EXE}" -p ${CMAKE_BINARY_DIR} ${ALL_SOURCE_FILES}
-        COMMENT "Running clang-tidy on source files..."
-        WORKING_DIRECTORY ${CORE_DIR}
-    )
-else()
-    message(WARNING "clang-tidy not found. 'check' target will not be available.")
+    add_custom_target(check COMMAND "${CLANG_TIDY_EXE}" -p ${CMAKE_BINARY_DIR} ${ALL_SOURCE_FILES})
 endif()

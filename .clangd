@@ -1,5 +1,5 @@
 CompileFlags:
-  CompilationDatabase: .
+  CompilationDatabase: build/android
 
 If:
   PathMatch: [libs/.*, src/gdextension/godot-cpp/.*]

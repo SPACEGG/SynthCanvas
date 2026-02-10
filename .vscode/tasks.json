@@ -23,6 +23,24 @@
       "detail": "Build the project for Android."
     },
     {
+      "label": "Build: Android (Core Only)",
+      "type": "process",
+      "command": "cmake",
+      "args": ["--build", "build/android", "--target", "build_core"],
+      "group": "build",
+      "problemMatcher": [],
+      "detail": "Build only the engine core for Android."
+    },
+    {
+      "label": "Build: Android (Plugins Only)",
+      "type": "process",
+      "command": "cmake",
+      "args": ["--build", "build/android", "--target", "build_plugins"],
+      "group": "build",
+      "problemMatcher": [],
+      "detail": "Build only the plugins for Android."
+    },
+    {
       "label": "Configure: Windows",
       "type": "process",
       "command": "cmake",

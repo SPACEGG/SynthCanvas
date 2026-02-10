@@ -1,5 +1,6 @@
+# src/module/CMakeLists.txt
+
 # Define a function to add the post-build copy command to a plugin target.
-# This function can be called from subdirectories' CMakeLists.txt files.
 function(add_plugin_post_build_copy_command target_name)
     add_custom_command(TARGET ${target_name} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_SOURCE_DIR}/bin/module"
@@ -8,9 +9,12 @@ function(add_plugin_post_build_copy_command target_name)
             "${CMAKE_SOURCE_DIR}/bin/module/"
         COMMENT "Copying ${target_name} to bin/module"
     )
+    
+    # Register this target to a global list of plugins
+    set_property(GLOBAL APPEND PROPERTY SYNTH_CANVAS_PLUGIN_TARGETS ${target_name})
 endfunction()
 
-# Set the output directory for all plugin libraries built from this point onwards.
+# Set the output directory for all plugin libraries
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/module")
 
 # Automatically find and add all plugin subdirectories
@@ -21,3 +25,12 @@ foreach(dir ${plugin_dirs})
         add_subdirectory(${dir})
     endif()
 endforeach()
+
+# Create a 'build_plugins' target that depends on all registered plugins
+get_property(PLUGINS GLOBAL PROPERTY SYNTH_CANVAS_PLUGIN_TARGETS)
+if(PLUGINS)
+    add_custom_target(build_plugins
+        DEPENDS ${PLUGINS}
+        COMMENT "Building all instrument and effect plugins..."
+    )
+endif()
