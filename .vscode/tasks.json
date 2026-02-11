@@ -5,7 +5,7 @@
       "label": "Build: Windows",
       "type": "process",
       "command": "cmake",
-      "args": ["--build", "build/windows", "--config", "Release"],
+      "args": ["--build", "build/windows"],
       "group": {
         "kind": "build",
         "isDefault": true
@@ -52,7 +52,15 @@
       "label": "Configure: Windows",
       "type": "process",
       "command": "cmake",
-      "args": ["-B", "build/windows", "."],
+      "args": [
+        "-B",
+        "build/windows",
+        "-G",
+        "Ninja",
+        "-DCMAKE_C_COMPILER=clang",
+        "-DCMAKE_CXX_COMPILER=clang++",
+        "."
+      ],
       "detail": "Configure the project for Windows."
     },
     {
@@ -66,6 +74,8 @@
         "Ninja",
         "-DCMAKE_C_COMPILER_LAUNCHER=sccache",
         "-DCMAKE_CXX_COMPILER_LAUNCHER=sccache",
+        "-DCMAKE_C_COMPILER=clang",
+        "-DCMAKE_CXX_COMPILER=clang++",
         "."
       ],
       "detail": "Configure the project for Windows using Ninja and sccache."
