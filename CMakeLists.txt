@@ -42,7 +42,7 @@ add_custom_target(build_core
 # Note: This target is defined in src/module/CMakeLists.txt but can be used here.
 
 # Full build with godot binding
-add_custom_target(build_full
+add_custom_target(build_godot
     DEPENDS synth_canvas_gdextension build_plugins
     COMMENT "Building godot-binding project (GDExtension + Core + Plugins)..."
 )

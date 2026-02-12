@@ -14,10 +14,10 @@
       "detail": "Build the project for Windows. (Default)"
     },
     {
-      "label": "Build: Android",
+      "label": "Build: Android (Full Godot binding)",
       "type": "process",
       "command": "cmake",
-      "args": ["--build", "build/android", "--target", "build_full"],
+      "args": ["--build", "build/android", "--target", "build_godot"],
       "group": "build",
       "problemMatcher": [],
       "detail": "Build the project for Android."
