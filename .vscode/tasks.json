@@ -5,7 +5,7 @@
       "label": "Build: Windows",
       "type": "process",
       "command": "cmake",
-      "args": ["--build", "build/windows", "--config", "Release"],
+      "args": ["--build", "build/windows"],
       "group": {
         "kind": "build",
         "isDefault": true
@@ -14,19 +14,53 @@
       "detail": "Build the project for Windows. (Default)"
     },
     {
-      "label": "Build: Android",
+      "label": "Build: Android (Full Godot binding)",
       "type": "process",
       "command": "cmake",
-      "args": ["--build", "build/android"],
+      "args": ["--build", "build/android", "--target", "build_godot"],
       "group": "build",
       "problemMatcher": [],
       "detail": "Build the project for Android."
     },
     {
+      "label": "Build: Android (Core Only)",
+      "type": "process",
+      "command": "cmake",
+      "args": ["--build", "build/android", "--target", "build_core"],
+      "group": "build",
+      "problemMatcher": [],
+      "detail": "Build only the engine core for Android."
+    },
+    {
+      "label": "Build: Android (Plugins Only)",
+      "type": "process",
+      "command": "cmake",
+      "args": ["--build", "build/android", "--target", "build_plugins"],
+      "group": "build",
+      "problemMatcher": [],
+      "detail": "Build only the plugins for Android."
+    },
+    {
+      "label": "Godot: Generate Bindings",
+      "type": "process",
+      "command": "cmake",
+      "args": ["--build", "build/android", "--target", "generate_bindings"],
+      "group": "build",
+      "detail": "Generate Godot C++ binding headers (Fixes IDE include errors)."
+    },
+    {
       "label": "Configure: Windows",
       "type": "process",
       "command": "cmake",
-      "args": ["-B", "build/windows", "."],
+      "args": [
+        "-B",
+        "build/windows",
+        "-G",
+        "Ninja",
+        "-DCMAKE_C_COMPILER=clang",
+        "-DCMAKE_CXX_COMPILER=clang++",
+        "."
+      ],
       "detail": "Configure the project for Windows."
     },
     {
@@ -40,6 +74,8 @@
         "Ninja",
         "-DCMAKE_C_COMPILER_LAUNCHER=sccache",
         "-DCMAKE_CXX_COMPILER_LAUNCHER=sccache",
+        "-DCMAKE_C_COMPILER=clang",
+        "-DCMAKE_CXX_COMPILER=clang++",
         "."
       ],
       "detail": "Configure the project for Windows using Ninja and sccache."

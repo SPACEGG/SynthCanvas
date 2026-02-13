@@ -56,7 +56,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release .
 
       - name: Build
-        run: cmake --build build/android
+        run: cmake --build build/android --target build_godot
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
@@ -74,6 +74,16 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: CLANG64
+          path-type: inherit
+          install: >-
+            mingw-w64-clang-x86_64-toolchain
+            mingw-w64-clang-x86_64-ninja
+            mingw-w64-clang-x86_64-cmake
+
       - name: Install sccache
         run: choco install sccache
 
@@ -86,12 +96,19 @@ jobs:
             ${{ runner.os }}-sccache-
 
       - name: Configure
+        shell: msys2 {0}
         run: |
-          $env:SCCACHE_DIRECT = "true"
-          cmake -B build/windows -G Ninja -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache .
+          export SCCACHE_DIRECT=true
+          cmake -B build/windows -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_C_COMPILER_LAUNCHER=sccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=sccache .
 
       - name: Build
-        run: cmake --build build/windows --config Release
+        shell: msys2 {0}
+        run: cmake --build build/windows --target build_godot
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
