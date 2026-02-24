@@ -558,7 +558,6 @@ void PluginHost::processParamModulation(clap_id param_id, double value, uint32_t
     ev.event.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
     ev.event.header.type = CLAP_EVENT_PARAM_MOD;
     ev.event.header.flags = 0;
-    ev.event.header.type = CLAP_EVENT_PARAM_VALUE;
     ev.event.param_value.param_id = param_id;
     ev.event.param_value.value = value;
     ev.event.param_value.cookie = nullptr;
