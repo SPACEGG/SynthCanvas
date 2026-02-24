@@ -9,7 +9,7 @@
 [submodule "libs/clap-helpers"]
 	path = libs/clap-helpers
 	url = https://github.com/free-audio/clap-helpers.git
-	branch = main
+	# Fixed to commit: f6bedf6f9e87ae97cadc32e77c47d93c603ff308
 [submodule "libs/readerwriterqueue"]
 	path = libs/readerwriterqueue
 	url = https://github.com/cameron314/readerwriterqueue
