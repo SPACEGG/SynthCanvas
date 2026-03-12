@@ -43,6 +43,7 @@ void SynthCanvasAudioSystem::_bind_methods() {
     BIND_ENUM_CONSTANT(kConnectionTypeModulation);
 
     ADD_SIGNAL(godot::MethodInfo("parameter_changed",
+                                 godot::PropertyInfo(godot::Variant::INT, "instance_id"),
                                  godot::PropertyInfo(godot::Variant::INT, "param_id"),
                                  godot::PropertyInfo(godot::Variant::FLOAT, "value")));
 }
@@ -54,8 +55,8 @@ SynthCanvasAudioSystem::SynthCanvasAudioSystem() {
         godot::UtilityFunctions::print(godot::String(msg.c_str()));
     });
 
-    _system->setParameterChangedCallback([this](uint32_t param_id, double value) -> void {
-        emit_signal("parameter_changed", param_id, value);
+    _system->setParameterChangedCallback([this](uint32_t instance_id, uint32_t param_id, double value) -> void {
+        emit_signal("parameter_changed", instance_id, param_id, value);
     });
 }
 

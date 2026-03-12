@@ -68,7 +68,7 @@ class PluginHost final : public BaseHost {
     void process();
     void processEnd(int nframes);
 
-    std::function<void(clap_id, double)> on_parameter_changed;
+    std::function<void(uint32_t, clap_id, double)> on_parameter_changed;
 
     struct AudioPortInfo {
         uint32_t index;

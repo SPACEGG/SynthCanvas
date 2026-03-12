@@ -481,7 +481,7 @@ void PluginHost::pollMainThread() {
             }
 
             if (on_parameter_changed) {
-                on_parameter_changed(ev.event.param_value.param_id, ev.event.param_value.value);
+                on_parameter_changed(_instance_id, ev.event.param_value.param_id, ev.event.param_value.value);
             }
         }
     }

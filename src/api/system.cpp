@@ -34,10 +34,10 @@ void System::initialize(LogCallback log_cb) {
 #if defined(__ANDROID__)
     synth_canvas::host::setLogCallback(log_cb);
     if (_pimpl->module_router) {
-        _pimpl->module_router->on_parameter_changed = [this](uint32_t param_id,
+        _pimpl->module_router->on_parameter_changed = [this](uint32_t instance_id, uint32_t param_id,
                                                              double value) -> void {
             if (_pimpl->on_parameter_changed) {
-                _pimpl->on_parameter_changed(param_id, value);
+                _pimpl->on_parameter_changed(instance_id, param_id, value);
             }
         };
     }

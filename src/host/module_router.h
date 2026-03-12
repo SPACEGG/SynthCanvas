@@ -78,7 +78,7 @@ class ModuleRouter {
     moodycamel::ReaderWriterQueue<std::unique_ptr<AudioRenderState>> pending_states;
     moodycamel::ReaderWriterQueue<std::unique_ptr<AudioRenderState>> released_states;
 
-    std::function<void(clap_id, double)> on_parameter_changed;
+    std::function<void(uint32_t, clap_id, double)> on_parameter_changed;
 
     void activatePlugin(uint32_t instance_id, int32_t sample_rate, int32_t frames_per_block);
     void deactivatePlugin(uint32_t instance_id);
