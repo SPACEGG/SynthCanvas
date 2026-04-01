@@ -29,7 +29,7 @@ auto AudioEngine::openStream() -> bool {
         ->setSharingMode(oboe::SharingMode::Exclusive)
         ->setFormat(oboe::AudioFormat::Float)
         ->setUsage(oboe::Usage::Game)
-        ->setContentType(oboe::ContentType::Music)
+        ->setContentType(oboe::ContentType::Sonification)
         ->setChannelCount(_channel_count)
         ->setSampleRate(constants::kDefaultSampleRate)
         ->setDataCallback(this);
