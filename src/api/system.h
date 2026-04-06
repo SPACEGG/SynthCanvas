@@ -11,7 +11,8 @@ namespace synth_canvas {
 
 class System {
    public:
-    using ParameterChangedCallback = std::function<void(uint32_t instance_id, uint32_t param_id, double value)>;
+    using ParameterChangedCallback =
+        std::function<void(uint32_t instance_id, uint32_t param_id, double value)>;
     using LogCallback = std::function<void(const std::string& msg)>;
 
     System();
@@ -27,6 +28,11 @@ class System {
     void destroyPluginInstance(uint32_t instance_id);
     auto registerSpecialNode(const std::string& type) -> uint32_t;
 
+    // Composite Node Management
+    auto createCompositeInstance(const CompositeConfig& config) -> uint32_t;
+    void setCompositeParameter(uint32_t instance_id, const std::string& param_id, double value);
+
+    // Connectivity
     void connectNodes(uint32_t from_node, uint32_t from_port, uint32_t to_node, uint32_t to_port,
                       ConnectionType type);
     void disconnectNodes(uint32_t from_node, uint32_t from_port, uint32_t to_node, uint32_t to_port,

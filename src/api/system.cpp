@@ -2,10 +2,13 @@
 
 #if defined(__ANDROID__)
 #include "host/audio_engine.h"
+#include "host/composite_node.h"
 #include "host/logger.h"
 #include "host/module_router.h"
 #include "host/plugin_host.h"
 #endif
+
+#include <map>
 
 namespace synth_canvas {
 
@@ -22,7 +25,6 @@ struct System::Impl {
 };
 #else
 struct System::Impl {
-    // Dummy state for Windows/Desktop testing
     ParameterChangedCallback on_parameter_changed;
 };
 #endif
@@ -34,8 +36,8 @@ void System::initialize(LogCallback log_cb) {
 #if defined(__ANDROID__)
     synth_canvas::host::setLogCallback(log_cb);
     if (_pimpl->module_router) {
-        _pimpl->module_router->on_parameter_changed = [this](uint32_t instance_id, uint32_t param_id,
-                                                             double value) -> void {
+        _pimpl->module_router->on_parameter_changed =
+            [this](uint32_t instance_id, uint32_t param_id, double value) -> void {
             if (_pimpl->on_parameter_changed) {
                 _pimpl->on_parameter_changed(instance_id, param_id, value);
             }
@@ -63,18 +65,18 @@ auto System::createPluginInstance(const std::string& path) -> uint32_t {
     if (id != 0 && _pimpl->audio_engine && _pimpl->audio_engine->isRunning()) {
         int32_t rate = _pimpl->audio_engine->getSampleRate();
         int32_t frames = _pimpl->audio_engine->getFramesPerBlock();
-        _pimpl->module_router->activatePlugin(id, rate, frames);
+        _pimpl->module_router->activateNode(id, rate, frames);
     }
     return id;
 #else
-    return 100;  // Dummy ID
+    return 100;
 #endif
 }
 
 void System::destroyPluginInstance(uint32_t instance_id) {
 #if defined(__ANDROID__)
     if (_pimpl->module_router) {
-        _pimpl->module_router->deactivatePlugin(instance_id);
+        _pimpl->module_router->deactivateNode(instance_id);
         _pimpl->module_router->destroyPluginInstance(instance_id);
     }
 #endif
@@ -90,8 +92,37 @@ auto System::registerSpecialNode(const std::string& type) -> uint32_t {
     }
     return 0;
 #else
-    if (type == "audio_out") return 0;
-    return 200;  // Dummy ID
+    return (type == "audio_out") ? 0 : 200;
+#endif
+}
+
+auto System::createCompositeInstance(const CompositeConfig& config) -> uint32_t {
+#if defined(__ANDROID__)
+    if (!_pimpl->module_router) return 0;
+
+    uint32_t id = _pimpl->module_router->createCompositeInstance(config);
+
+    if (id != 0 && _pimpl->audio_engine && _pimpl->audio_engine->isRunning()) {
+        int32_t rate = _pimpl->audio_engine->getSampleRate();
+        int32_t frames = _pimpl->audio_engine->getFramesPerBlock();
+        _pimpl->module_router->activateNode(id, rate, frames);
+    }
+
+    return id;
+#else
+    return 300;
+#endif
+}
+
+void System::setCompositeParameter(uint32_t instance_id, const std::string& param_id,
+                                   double value) {
+#if defined(__ANDROID__)
+    if (_pimpl->module_router) {
+        auto* node = _pimpl->module_router->getProcessingNode(instance_id);
+        if (auto* composite = dynamic_cast<synth_canvas::host::CompositeNode*>(node)) {
+            composite->setCompositeParameter(param_id, value);
+        }
+    }
 #endif
 }
 
@@ -100,7 +131,7 @@ void System::connectNodes(uint32_t from_node, uint32_t from_port, uint32_t to_no
 #if defined(__ANDROID__)
     if (_pimpl->module_router) {
         _pimpl->module_router->connectNodes(from_node, from_port, to_node, to_port,
-                                            static_cast<synth_canvas::host::ConnectionType>(type));
+                                            type);
     }
 #endif
 }
@@ -111,48 +142,38 @@ void System::disconnectNodes(uint32_t from_node, uint32_t from_port, uint32_t to
     if (_pimpl->module_router) {
         _pimpl->module_router->disconnectNodes(
             from_node, from_port, to_node, to_port,
-            static_cast<synth_canvas::host::ConnectionType>(type));
+            type);
     }
 #endif
 }
 
 void System::startAudio() {
 #if defined(__ANDROID__)
-    if (_pimpl->audio_engine) {
-        _pimpl->audio_engine->start();
-    }
+    if (_pimpl->audio_engine) _pimpl->audio_engine->start();
 #endif
 }
 
 void System::stopAudio() {
 #if defined(__ANDROID__)
-    if (_pimpl->audio_engine) {
-        _pimpl->audio_engine->stop();
-    }
+    if (_pimpl->audio_engine) _pimpl->audio_engine->stop();
 #endif
 }
 
 void System::playNote(uint32_t instance_id, int note, double velocity, int32_t note_id) {
 #if defined(__ANDROID__)
-    if (_pimpl->audio_engine) {
-        _pimpl->audio_engine->playNote(instance_id, note, velocity, note_id);
-    }
+    if (_pimpl->audio_engine) _pimpl->audio_engine->playNote(instance_id, note, velocity, note_id);
 #endif
 }
 
 void System::stopNote(uint32_t instance_id, int note, double velocity, int32_t note_id) {
 #if defined(__ANDROID__)
-    if (_pimpl->audio_engine) {
-        _pimpl->audio_engine->stopNote(instance_id, note, velocity, note_id);
-    }
+    if (_pimpl->audio_engine) _pimpl->audio_engine->stopNote(instance_id, note, velocity, note_id);
 #endif
 }
 
 void System::setParameterValue(uint32_t instance_id, uint32_t param_id, double value) {
 #if defined(__ANDROID__)
-    if (_pimpl->audio_engine) {
-        _pimpl->audio_engine->setParameterValue(instance_id, param_id, value);
-    }
+    if (_pimpl->audio_engine) _pimpl->audio_engine->setParameterValue(instance_id, param_id, value);
 #endif
 }
 
@@ -160,20 +181,14 @@ auto System::getPluginParameters(uint32_t instance_id) -> ParameterList {
     ParameterList result;
 #if defined(__ANDROID__)
     if (!_pimpl->module_router) return result;
-    auto* host = _pimpl->module_router->getPluginInstance(instance_id);
-    if (!host) return result;
+    auto* node = _pimpl->module_router->getProcessingNode(instance_id);
+    if (!node) return result;
 
-    const auto& params = host->getParameters();
-    for (const auto& param_slot : params) {
+    for (const auto& param_slot : node->getParameters()) {
         result.push_back({param_slot->info.id, param_slot->info.name, param_slot->info.module,
                           param_slot->info.min_value, param_slot->info.max_value,
                           param_slot->info.default_value, param_slot->base_value.load()});
     }
-#else
-    // Dummy parameters for Windows testing
-    result.push_back({101, "Cutoff", "Filter", 20.0, 20000.0, 1000.0, 1000.0});
-    result.push_back({102, "Resonance", "Filter", 0.0, 1.0, 0.5, 0.5});
-    result.push_back({103, "Volume", "Output", 0.0, 1.0, 0.8, 0.8});
 #endif
     return result;
 }

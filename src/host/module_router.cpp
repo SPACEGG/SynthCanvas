@@ -1,8 +1,7 @@
 #include "module_router.h"
 
-#include <queue>
-
-#include "constants.h"  // Explicitly include constants
+#include "composite_node.h"
+#include "constants.h"
 #include "logger.h"
 #include "plugin_host.h"
 
@@ -16,84 +15,81 @@ ModuleRouter::ModuleRouter()
 
 ModuleRouter::~ModuleRouter() {
     pollResources();
-
-    for (auto const& [id, host] : _plugin_instances) {
-        if (host) {
-            host->unload();
-        }
-    }
-    _plugin_instances.clear();
-
-    for (auto& host : _pending_deletion_plugins) {
-        if (host) host->unload();
-    }
-    _pending_deletion_plugins.clear();
-
+    // ProcessingNodes are owned by _graph_processor via unique_ptr
     log("[ModuleRouter] Destroyed.");
 }
 
 auto ModuleRouter::createPluginInstance(const std::string& path) -> uint32_t {
-    log("[ModuleRouter] Attempting to create plugin instance from path: ", path);
+    log("[ModuleRouter] Creating plugin instance from path: ", path);
     auto host = std::make_unique<PluginHost>();
-    if (host) {
-        host->on_parameter_changed = on_parameter_changed;
-        if (!host->load(path, 0)) {
-            host->unload();
-            log("[ModuleRouter] Failed to load plugin from path: ", path);
-            return 0;
-        }
-        uint32_t id = _next_instance_id++;
-        host->setInstanceId(id);
-        _plugin_instances[id] = std::move(host);
-        topologicalSort();
-        pushNewState();
-
-        log("[ModuleRouter] Created plugin instance with ID: ", id);
-        return id;
+    if (!host->load(path, 0)) {
+        log("[ModuleRouter] Failed to load plugin: ", path);
+        return 0;
     }
-    log("[ModuleRouter] Failed to create PluginHost object.");
-    return 0;
+
+    uint32_t id = _next_instance_id++;
+    host->setInstanceId(id);
+    host->on_parameter_changed = on_parameter_changed;
+
+    _graph_processor.addNode(id, std::move(host));
+    pushNewState();
+
+    log("[ModuleRouter] Created plugin ID: ", id);
+    return id;
+}
+
+auto ModuleRouter::createCompositeInstance(const CompositeConfig& config) -> uint32_t {
+    log("[ModuleRouter] Creating composite instance.");
+    auto composite = std::make_unique<CompositeNode>();
+
+    if (!composite->load(config)) {
+        log("[ModuleRouter] Failed to load composite configuration.");
+        return 0;
+    }
+
+    uint32_t id = _next_instance_id++;
+    composite->setInstanceId(id);
+
+    _graph_processor.addNode(id, std::move(composite));
+    pushNewState();
+
+    log("[ModuleRouter] Created composite ID: ", id);
+    return id;
 }
 
 void ModuleRouter::destroyPluginInstance(uint32_t instance_id) {
-    log("[ModuleRouter] Destroying plugin instance: ", instance_id);
-    auto it = _plugin_instances.find(instance_id);
-    if (it != _plugin_instances.end()) {
-        // Move ownership to pending deletion list instead of immediate deletion.
-        // This ensures the PluginHost is kept alive until the audio thread switches to a new state
-        // that doesn't reference this plugin anymore.
-        _pending_deletion_plugins.push_back(std::move(it->second));
-        _plugin_instances.erase(it);
-
-        topologicalSort();
+    log("[ModuleRouter] Destroying instance: ", instance_id);
+    auto node = _graph_processor.removeNode(instance_id);
+    if (node) {
+        _pending_deletion_nodes.push_back(std::move(node));
         pushNewState();
-
-        log("[ModuleRouter] Plugin instance ", instance_id, " moved to pending deletion.");
-    } else {
-        log("[ModuleRouter] Plugin instance ", instance_id, " not found for destruction.");
     }
 }
 
 auto ModuleRouter::registerSpecialNode() -> uint32_t {
     uint32_t id = _next_instance_id++;
-    log("[ModuleRouter] Registered special node with ID: ", id);
+    // Special nodes (like custom audio IO) can be registered as ProcessingNodes here if needed
+    log("[ModuleRouter] Registered special node ID: ", id);
     return id;
 }
 
-auto ModuleRouter::getPluginInstance(uint32_t instance_id) const -> PluginHost* {
-    auto it = _plugin_instances.find(instance_id);
-    if (it != _plugin_instances.end()) {
-        return it->second.get();
-    }
-    return nullptr;
+auto ModuleRouter::getProcessingNode(uint32_t instance_id) const -> ProcessingNode* {
+    return _graph_processor.getNode(instance_id);
+}
+
+auto ModuleRouter::getProcessOrder() const -> const std::vector<uint32_t>& {
+    return _graph_processor.getProcessOrder();
+}
+
+auto ModuleRouter::getConnections() const -> const std::vector<PortConnection>& {
+    return _graph_processor.getConnections();
 }
 
 void ModuleRouter::pollAllMainThreads() {
     pollResources();
-
-    for (auto const& [id, host] : _plugin_instances) {
-        if (host) {
-            host->pollMainThread();
+    for (uint32_t id : _graph_processor.getProcessOrder()) {
+        if (auto* node = _graph_processor.getNode(id)) {
+            node->pollMainThread();
         }
     }
 }
@@ -106,175 +102,55 @@ void ModuleRouter::pollResources() {
     }
 
     if (state_returned && pending_states.size_approx() == 0) {
-        for (auto& host : _pending_deletion_plugins) {
-            if (host) host->unload();
-        }
-        _pending_deletion_plugins.clear();
+        _pending_deletion_nodes.clear();
     }
 }
 
 void ModuleRouter::pushNewState() {
-    auto new_state = std::make_unique<AudioRenderState>();
-
-    // Set sorted modules based on process order
-    for (uint32_t id : _process_order) {
-        if (auto* host = getPluginInstance(id)) {
-            new_state->sorted_modules.push_back(host);
-        }
-    }
-
-    // Copy raw connections for reference
-    new_state->connections = _connections;
-
-    // Pre-calculate optimized lookup tables for the audio thread
-    for (const auto& conn : _connections) {
-        if (conn.type == ConnectionType::kAudio) {
-            if (conn.to_node == constants::kAudioOutputNoteId) {
-                new_state->master_output_sources.push_back({conn.from_node, conn.from_port});
-            } else {
-                new_state->input_audio_sources[conn.to_node][conn.to_port].push_back(
-                    {conn.from_node, conn.from_port});
-            }
-        } else if (conn.type == ConnectionType::kEvent) {
-            if (auto* target_host = getPluginInstance(conn.to_node)) {
-                new_state->output_event_targets[conn.from_node].push_back(target_host);
-            }
-        } else if (conn.type == ConnectionType::kModulation) {
-            new_state->input_modulations[conn.to_node].push_back(
-                {static_cast<clap_id>(conn.to_port), conn.from_node, conn.from_port});
-        }
-    }
+    // Delegate state creation to graph processor
+    auto new_state = _graph_processor.createRenderState(constants::kAudioOutputNoteId);
 
     if (!pending_states.enqueue(std::move(new_state))) {
-        log("[ModuleRouter] ERROR: Failed to enqueue new render state. Queue might be full.");
+        log("[ModuleRouter] ERROR: Failed to enqueue new render state.");
     }
-}
-
-void ModuleRouter::topologicalSort() {
-    _process_order.clear();
-    if (_plugin_instances.empty()) {
-        log("[ModuleRouter] No plugin instances to sort.");
-        return;
-    }
-
-    std::unordered_map<uint32_t, int> in_degree;
-    std::unordered_map<uint32_t, std::vector<uint32_t>> adj;
-
-    for (const auto& pair : _plugin_instances) {
-        in_degree[pair.first] = 0;
-    }
-    in_degree[constants::kAudioOutputNoteId] = 0;
-
-    for (const auto& conn : _connections) {
-        bool from_is_plugin = _plugin_instances.count(conn.from_node);
-        bool to_is_plugin = _plugin_instances.count(conn.to_node);
-        bool to_is_audio_out = (conn.to_node == constants::kAudioOutputNoteId);
-
-        if (from_is_plugin && (to_is_plugin || to_is_audio_out)) {
-            adj[conn.from_node].push_back(conn.to_node);
-            in_degree[conn.to_node]++;
-        }
-    }
-
-    std::queue<uint32_t> q;
-    for (const auto& pair : in_degree) {
-        if (pair.second == 0 && _plugin_instances.count(pair.first)) {
-            q.push(pair.first);
-        }
-    }
-
-    for (const auto& pair : _plugin_instances) {
-        if (in_degree.find(pair.first) == in_degree.end()) {
-            q.push(pair.first);
-        }
-    }
-
-    while (!q.empty()) {
-        uint32_t u = q.front();
-        q.pop();
-        _process_order.push_back(u);
-
-        if (adj.count(u)) {
-            for (uint32_t v : adj[u]) {
-                in_degree[v]--;
-                if (in_degree[v] == 0) {
-                    q.push(v);
-                }
-            }
-        }
-    }
-
-    if (_process_order.size() < _plugin_instances.size()) {
-        log("[ModuleRouter] Cycle detected or unconnected nodes exist in the graph. Process order "
-            "might be incomplete.");
-        for (const auto& pair : _plugin_instances) {
-            bool found = false;
-            for (uint32_t processed_id : _process_order) {
-                if (pair.first == processed_id) {
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
-                _process_order.push_back(pair.first);
-                log("[ModuleRouter] Added plugin ID ", pair.first,
-                    " to process order after cycle detection.");
-            }
-        }
-    }
-    log("[ModuleRouter] Topological sort complete. Process order size: ", _process_order.size());
 }
 
 void ModuleRouter::connectNodes(uint32_t from_node, uint32_t from_port, uint32_t to_node,
                                 uint32_t to_port, ConnectionType type) {
-    log("[ModuleRouter] Connecting ", from_node, ":", from_port, " -> ", to_node, ":", to_port,
-        " (Type: ", (type == ConnectionType::kAudio ? "Audio" : "Event"), ")");
-    _connections.push_back({from_node, from_port, to_node, to_port, type});
-    topologicalSort();
+    log("[ModuleRouter] Connecting ", from_node, " -> ", to_node);
+    _graph_processor.connect({.from_node = from_node,
+                              .from_port = from_port,
+                              .to_node = to_node,
+                              .to_port = to_port,
+                              .type = type});
     pushNewState();
 }
 
 void ModuleRouter::disconnectNodes(uint32_t from_node, uint32_t from_port, uint32_t to_node,
                                    uint32_t to_port, ConnectionType type) {
-    log("[ModuleRouter] Disconnecting ", from_node, ":", from_port, " -> ", to_node, ":", to_port,
-        " (Type: ", (type == ConnectionType::kAudio ? "Audio" : "Event"), ")");
-    for (auto it = _connections.begin(); it != _connections.end();) {
-        if (it->from_node == from_node && it->from_port == from_port && it->to_node == to_node &&
-            it->to_port == to_port && it->type == type) {
-            it = _connections.erase(it);
-            log("[ModuleRouter] Connection removed.");
-        } else {
-            ++it;
-        }
-    }
-    topologicalSort();
+    log("[ModuleRouter] Disconnecting ", from_node, " -> ", to_node);
+    _graph_processor.disconnect({.from_node = from_node,
+                                 .from_port = from_port,
+                                 .to_node = to_node,
+                                 .to_port = to_port,
+                                 .type = type});
     pushNewState();
 }
 
-void ModuleRouter::activatePlugin(uint32_t instance_id, int32_t sample_rate,
-                                  int32_t frames_per_block) {
-    if (auto* host = getPluginInstance(instance_id)) {
-        if (!host->isPluginActive()) {
-            host->activate(sample_rate, frames_per_block);
-            log("[ModuleRouter] Plugin ", instance_id, " activated.");
-        } else {
-            log("[ModuleRouter] Plugin ", instance_id, " already active.");
+void ModuleRouter::activateNode(uint32_t instance_id, int32_t sample_rate,
+                                int32_t frames_per_block) {
+    if (auto* node = _graph_processor.getNode(instance_id)) {
+        if (!node->isActive()) {
+            node->activate(sample_rate, frames_per_block);
         }
-    } else {
-        log("[ModuleRouter] Attempted to activate non-existent plugin ID: ", instance_id);
     }
 }
 
-void ModuleRouter::deactivatePlugin(uint32_t instance_id) {
-    if (auto* host = getPluginInstance(instance_id)) {
-        if (host->isPluginActive()) {
-            host->deactivate();
-            log("[ModuleRouter] Plugin ", instance_id, " deactivated.");
-        } else {
-            log("[ModuleRouter] Plugin ", instance_id, " already inactive.");
+void ModuleRouter::deactivateNode(uint32_t instance_id) {
+    if (auto* node = _graph_processor.getNode(instance_id)) {
+        if (node->isActive()) {
+            node->deactivate();
         }
-    } else {
-        log("[ModuleRouter] Attempted to deactivate non-existent plugin ID: ", instance_id);
     }
 }
 

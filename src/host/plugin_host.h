@@ -13,8 +13,11 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #include "constants.h"
+#include "graph_types.h"
+#include "processing_node.h"
 #include "readerwriterqueue.h"
 
 namespace synth_canvas::host {
@@ -31,7 +34,9 @@ using PluginProxy = clap::helpers::PluginProxy<kPluginHostMh, kPluginHostCl>;
 extern template class clap::helpers::PluginProxy<kPluginHostMh, kPluginHostCl>;
 
 namespace synth_canvas::host {
-class PluginHost final : public BaseHost {
+
+// Host for a single CLAP plugin instance, implementing the ProcessingNode interface.
+class PluginHost final : public ProcessingNode, public BaseHost {
    public:
     enum PluginState {
         kInactive,
@@ -45,93 +50,79 @@ class PluginHost final : public BaseHost {
     PluginHost();
     ~PluginHost() override;
 
+    // --- ProcessingNode Lifecycle ---
+    void activate(int32_t sample_rate, int32_t block_size) override;
+    void deactivate() override;
+    void setProcessingEnabled(bool enabled) override;
+
+    // --- ProcessingNode Audio / Event Processing ---
+    void setPorts(uint32_t num_inputs, clap_audio_buffer* inputs, uint32_t num_outputs,
+                  clap_audio_buffer* outputs) override;
+    void processBegin(int num_frames) override;
+    void process() override;
+    void processEnd(int num_frames) override;
+
+    // --- ProcessingNode Parameters & External Events ---
+    void setParameterValue(clap_id param_id, double value) override;
+    void queueEvent(const PluginEvent& event) override;
+    void pollMainThread() override;
+
+    // --- ProcessingNode Metadata Accessors ---
+    void setInstanceId(uint32_t id) override { _instance_id = id; }
+    [[nodiscard]] auto getInstanceId() const -> uint32_t override { return _instance_id; }
+    [[nodiscard]] auto getAudioPorts(bool is_input) const
+        -> const std::vector<AudioPortInfo>& override {
+        return is_input ? _audio_input_ports : _audio_output_ports;
+    }
+    [[nodiscard]] auto getParameters() const
+        -> const std::vector<std::unique_ptr<ParameterSlot>>& override {
+        return _params;
+    }
+
+    // --- ProcessingNode State Check ---
+    [[nodiscard]] auto isActive() const -> bool override;
+
+    // --- Plugin Loading ---
     auto load(const std::string& path, int plugin_index) -> bool;
     void unload();
 
-    auto canActivate() const -> bool;
-    void activate(int32_t sample_rate, int32_t block_size);
-    void deactivate();
-    void setProcessingEnabled(bool enabled);
-
-    void setParameterValue(clap_id param_id, double value);
-    void pollMainThread();
-
-    void setPorts(uint32_t num_inputs, clap_audio_buffer* inputs, uint32_t num_outputs,
-                  clap_audio_buffer* outputs);
-
-    void processBegin(int nframes);
+    // --- MIDI Helpers (Specific to PluginHost) ---
     void processNoteOn(int sample_offset, int channel, int key, double velocity,
                        int32_t note_id = constants::kClapInvalidId);
     void processNoteOff(int sample_offset, int channel, int key, double velocity,
                         int32_t note_id = constants::kClapInvalidId);
     void processParamModulation(clap_id param_id, double value, uint32_t sample_offset);
-    void process();
-    void processEnd(int nframes);
 
-    std::function<void(uint32_t, clap_id, double)> on_parameter_changed;
-
-    struct AudioPortInfo {
-        uint32_t index;
-        bool is_input;
-        clap_audio_port_info clap_info;
-        bool is_modulation;
-    };
-
-    auto getAudioPorts(bool is_input) const -> const std::vector<AudioPortInfo>& {
-        return is_input ? _audio_input_ports : _audio_output_ports;
-    }
-
-    auto isPluginActive() const -> bool;
-    auto isPluginProcessing() const -> bool;
-    auto isPluginSleeping() const -> bool;
-    void setPluginState(PluginState state);
-
-    void setInstanceId(uint32_t id) { _instance_id = id; }
-    auto getInstanceId() const -> uint32_t { return _instance_id; }
-
-    struct ParameterSlot {
-        clap_param_info info;
-        std::atomic<double> base_value{0.0};
-        std::atomic<double> current_value{0.0};
-        std::atomic<double> modulation_value{0.0};
-        bool has_modulation = false;
-    };
-
-    auto getParameters() const -> const std::vector<std::unique_ptr<ParameterSlot>>& {
-        return _params;
-    }
+    // --- Internal Getters ---
+    [[nodiscard]] auto isPluginProcessing() const -> bool;
+    [[nodiscard]] auto isPluginSleeping() const -> bool;
     auto getParameterSlot(clap_id param_id) -> ParameterSlot*;
-
-    struct PluginEvent {
-        union {
-            clap_event_header_t header;
-            clap_event_note_t note;
-            clap_event_midi_t midi;
-            clap_event_param_value_t param_value;
-        } event;
-    };
-
     auto getAudioThreadOutputQueue() -> moodycamel::ReaderWriterQueue<PluginEvent>& {
         return _output_events_to_audio;
     }
 
-    void queueEvent(const PluginEvent& event) { _input_events.try_enqueue(event); }
+    std::function<void(uint32_t, clap_id, double)> on_parameter_changed;
 
    protected:
+    // --- CLAP Host Overrides ---
     void requestRestart() noexcept override;
     void requestProcess() noexcept override;
     void requestCallback() noexcept override;
     auto implementsGui() const noexcept -> bool override { return false; }
-
     auto implementsLog() const noexcept -> bool override { return true; }
     void logLog(clap_log_severity severity, const char* message) const noexcept override;
     auto implementsParams() const noexcept -> bool override { return true; }
     void paramsRescan(clap_param_rescan_flags flags) noexcept override;
     void paramsClear(clap_id param_id, clap_param_clear_flags flags) noexcept override;
     void paramsRequestFlush() noexcept override;
+    void stateMarkDirty() noexcept override;
+    auto threadCheckIsMainThread() const noexcept -> bool override;
+    auto threadCheckIsAudioThread() const noexcept -> bool override;
 
     void scanParameters();
     void scanAudioPorts();
+
+    // Not implemented extensions
     auto implementsPosixFdSupport() const noexcept -> bool override { return false; }
     auto posixFdSupportRegisterFd(int fd, clap_posix_fd_flags_t flags) noexcept -> bool override {
         return false;
@@ -144,21 +135,19 @@ class PluginHost final : public BaseHost {
     void remoteControlsChanged() noexcept override {}
     void remoteControlsSuggestPage(clap_id page_id) noexcept override {}
     auto implementsState() const noexcept -> bool override { return false; }
-    void stateMarkDirty() noexcept override;
     auto implementsTimerSupport() const noexcept -> bool override { return false; }
     auto timerSupportRegisterTimer(uint32_t period_ms, clap_id* timer_id) noexcept
         -> bool override {
         return false;
     }
     auto timerSupportUnregisterTimer(clap_id timer_id) noexcept -> bool override { return false; }
-    auto threadCheckIsMainThread() const noexcept -> bool override;
-    auto threadCheckIsAudioThread() const noexcept -> bool override;
     auto implementsThreadPool() const noexcept -> bool override { return false; }
     auto threadPoolRequestExec(uint32_t num_tasks) noexcept -> bool override { return false; }
 
    private:
     void checkForMainThread();
     void checkForAudioThread();
+    void setPluginState(PluginState state);
 
     void generatePluginInputEvents();
     void handlePluginOutputEvents();

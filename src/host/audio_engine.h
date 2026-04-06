@@ -12,6 +12,7 @@
 
 namespace synth_canvas::host {
 
+// Main audio rendering engine using Oboe.
 class AudioEngine : public oboe::AudioStreamDataCallback {
    public:
     explicit AudioEngine(ModuleRouter* router);
@@ -37,8 +38,8 @@ class AudioEngine : public oboe::AudioStreamDataCallback {
     auto openStream() -> bool;
 
     void updateRenderState();
-    void processSinglePlugin(PluginHost* host, int32_t num_frames);
-    void routePluginOutputs(PluginHost* host);
+    void processSingleNode(ProcessingNode* node, int32_t num_frames);
+    void routeNodeEvents(ProcessingNode* node);
 
     std::shared_ptr<oboe::AudioStream> _stream;
     ModuleRouter* _module_router;

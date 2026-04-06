@@ -139,7 +139,7 @@ void PluginHost::scanParameters() {
                ("Scanned " + std::to_string(_params.size()) + " parameters.").c_str());
 }
 
-auto PluginHost::getParameterSlot(clap_id param_id) -> PluginHost::ParameterSlot* {
+auto PluginHost::getParameterSlot(clap_id param_id) -> ParameterSlot* {
     auto it = _param_id_to_index.find(param_id);
     if (it != _param_id_to_index.end()) {
         return _params[it->second].get();
@@ -397,7 +397,6 @@ void PluginHost::unload() {
     setPluginState(kInactive);
     logMessage(CLAP_LOG_INFO, "Plugin unloaded.");
 }
-auto PluginHost::canActivate() const -> bool { return _plugin != nullptr && !isPluginActive(); }
 
 void PluginHost::activate(int32_t sample_rate, int32_t block_size) {
     if (!_plugin) {
@@ -417,7 +416,7 @@ void PluginHost::activate(int32_t sample_rate, int32_t block_size) {
 }
 
 void PluginHost::deactivate() {
-    if (!isPluginActive()) {
+    if (!isActive()) {
         return;
     }
 
@@ -469,6 +468,8 @@ void PluginHost::setParameterValue(clap_id param_id, double value) {
     _input_events.try_enqueue(ev);
 }
 
+void PluginHost::queueEvent(const PluginEvent& event) { _input_events.try_enqueue(event); }
+
 void PluginHost::pollMainThread() {
     checkForMainThread();
 
@@ -481,7 +482,8 @@ void PluginHost::pollMainThread() {
             }
 
             if (on_parameter_changed) {
-                on_parameter_changed(_instance_id, ev.event.param_value.param_id, ev.event.param_value.value);
+                on_parameter_changed(_instance_id, ev.event.param_value.param_id,
+                                     ev.event.param_value.value);
             }
         }
     }
@@ -502,7 +504,6 @@ void PluginHost::processBegin(int nframes) {
 
 void PluginHost::processEnd(int nframes) {
     g_thread_type = ThreadType::kUnknown;
-    _process.frames_count = nframes;
 }
 
 void PluginHost::processNoteOn(int sample_offset, int channel, int key, double velocity,
@@ -574,7 +575,7 @@ void PluginHost::process() {
 
     if (!_plugin) return;
 
-    if (!isPluginActive()) return;
+    if (!isActive()) return;
 
     bool should_process = _schedule_processing.load(std::memory_order_acquire);
     bool is_currently_processing = _is_processing_active.load(std::memory_order_relaxed);
@@ -606,10 +607,6 @@ void PluginHost::process() {
     _process.in_events = _ev_in.clapInputEvents();
     _process.out_events = _ev_out.clapOutputEvents();
 
-    // Note: Audio inputs/outputs are set via setPorts() called by AudioEngine before process().
-    // We should NOT override them here based on potentially outdated member variables like
-    // _audio_in/_audio_out.
-
     _ev_out.clear();
     generatePluginInputEvents();
 
@@ -619,8 +616,6 @@ void PluginHost::process() {
 
     _ev_out.clear();
     _ev_in.clear();
-
-    g_thread_type = ThreadType::kUnknown;
 }
 
 void PluginHost::generatePluginInputEvents() {
@@ -662,7 +657,7 @@ void PluginHost::handlePluginOutputEvents() {
 
 void PluginHost::setPluginState(PluginState state) { _state = state; }
 
-auto PluginHost::isPluginActive() const -> bool {
+auto PluginHost::isActive() const -> bool {
     return _state != kInactive && _state != kInactiveWithError;
 }
 
