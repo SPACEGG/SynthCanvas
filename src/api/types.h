@@ -1,18 +1,14 @@
 #ifndef SYNTH_CANVAS_API_TYPES_H
 #define SYNTH_CANVAS_API_TYPES_H
 
-#include <cstdint>
-#include <string>
-#include <vector>
+#include "../host/graph_types.h"
 
 namespace synth_canvas {
 
-enum class ConnectionType : int {
-    kAudio = 0,
-    kEvent = 1,
-    kModulation = 2,
-};
+// Re-export common types for external API users
+using ConnectionType = host::ConnectionType;
 
+// Metadata for a single parameter
 struct ParameterInfo {
     uint32_t id;
     std::string name;
@@ -24,6 +20,13 @@ struct ParameterInfo {
 };
 
 using ParameterList = std::vector<ParameterInfo>;
+
+// --- Composite Module Configurations ---
+using InternalPluginConfig = host::InternalPluginConfig;
+using InternalRoutingConfig = host::InternalRoutingConfig;
+using ParameterMappingConfig = host::ParameterMappingConfig;
+using PortProxyConfig = host::PortProxyConfig;
+using CompositeConfig = host::CompositeConfig;
 
 }  // namespace synth_canvas
 
