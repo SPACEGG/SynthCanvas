@@ -73,11 +73,11 @@ auto System::createPluginInstance(const std::string& path) -> uint32_t {
 #endif
 }
 
-void System::destroyPluginInstance(uint32_t instance_id) {
+void System::destroyInstance(uint32_t instance_id) {
 #if defined(__ANDROID__)
     if (_pimpl->module_router) {
         _pimpl->module_router->deactivateNode(instance_id);
-        _pimpl->module_router->destroyPluginInstance(instance_id);
+        _pimpl->module_router->destroyInstance(instance_id);
     }
 #endif
 }

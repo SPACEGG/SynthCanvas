@@ -29,7 +29,7 @@ class ModuleRouter {
     // Node Lifecycle
     auto createPluginInstance(const std::string& path) -> uint32_t;
     auto createCompositeInstance(const CompositeConfig& config) -> uint32_t;
-    void destroyPluginInstance(uint32_t instance_id);
+    void destroyInstance(uint32_t instance_id);
     auto registerSpecialNode() -> uint32_t;
 
     // Connectivity

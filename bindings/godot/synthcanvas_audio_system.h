@@ -31,7 +31,7 @@ class SynthCanvasAudioSystem : public godot::Node {
     void _process(double delta) override;
 
     auto createPluginInstance(const godot::String& path) -> uint32_t;
-    void destroyPluginInstance(uint32_t instance_id);
+    void destroyInstance(uint32_t instance_id);
     auto registerSpecialNode(const godot::String& type) -> uint32_t;
     void connectNodes(uint32_t from_node, uint32_t from_port, uint32_t to_node, uint32_t to_port,
                       int type = 0);

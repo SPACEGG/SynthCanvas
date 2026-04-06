@@ -25,7 +25,7 @@ class System {
 
     // Plugin & Node Management
     auto createPluginInstance(const std::string& path) -> uint32_t;
-    void destroyPluginInstance(uint32_t instance_id);
+    void destroyInstance(uint32_t instance_id);
     auto registerSpecialNode(const std::string& type) -> uint32_t;
 
     // Composite Node Management

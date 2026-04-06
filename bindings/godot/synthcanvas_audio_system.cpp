@@ -6,8 +6,8 @@
 void SynthCanvasAudioSystem::_bind_methods() {
     godot::ClassDB::bind_method(godot::D_METHOD("create_plugin_instance", "path"),
                                 &SynthCanvasAudioSystem::createPluginInstance);
-    godot::ClassDB::bind_method(godot::D_METHOD("destroy_plugin_instance", "instance_id"),
-                                &SynthCanvasAudioSystem::destroyPluginInstance);
+    godot::ClassDB::bind_method(godot::D_METHOD("destroy_instance", "instance_id"),
+                                &SynthCanvasAudioSystem::destroyInstance);
     godot::ClassDB::bind_method(godot::D_METHOD("register_special_node", "type"),
                                 &SynthCanvasAudioSystem::registerSpecialNode);
     godot::ClassDB::bind_method(
@@ -87,9 +87,9 @@ auto SynthCanvasAudioSystem::createPluginInstance(const godot::String& path) -> 
     return _system->createPluginInstance(path.utf8().get_data());
 }
 
-void SynthCanvasAudioSystem::destroyPluginInstance(uint32_t instance_id) {
+void SynthCanvasAudioSystem::destroyInstance(uint32_t instance_id) {
     if (_system) {
-        _system->destroyPluginInstance(instance_id);
+        _system->destroyInstance(instance_id);
     }
 }
 

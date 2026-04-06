@@ -57,7 +57,7 @@ auto ModuleRouter::createCompositeInstance(const CompositeConfig& config) -> uin
     return id;
 }
 
-void ModuleRouter::destroyPluginInstance(uint32_t instance_id) {
+void ModuleRouter::destroyInstance(uint32_t instance_id) {
     log("[ModuleRouter] Destroying instance: ", instance_id);
     auto node = _graph_processor.removeNode(instance_id);
     if (node) {
