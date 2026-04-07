@@ -220,9 +220,21 @@ void AudioEngine::routeNodeEvents(ProcessingNode* node) {
 void AudioEngine::playNote(uint32_t instance_id, int note, double velocity, int32_t note_id) {
     if (_module_router) {
         if (auto* node = _module_router->getProcessingNode(instance_id)) {
-            if (auto* host = dynamic_cast<PluginHost*>(node)) {
-                host->processNoteOn(0, 0, note, velocity, note_id);
-            }
+            PluginEvent ev;
+            ev.event.header.size = sizeof(clap_event_note);
+            ev.event.header.time = 0;
+            ev.event.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+            ev.event.header.type = CLAP_EVENT_NOTE_ON;
+            ev.event.header.flags = 0;
+
+            // FIXME: Support multiple event ports
+            ev.event.note.port_index = 0;
+            ev.event.note.key = static_cast<int16_t>(note);
+            ev.event.note.channel = 0;
+            ev.event.note.note_id = note_id;
+            ev.event.note.velocity = velocity;
+
+            node->queueEvent(ev);
         }
     }
 }
@@ -230,9 +242,21 @@ void AudioEngine::playNote(uint32_t instance_id, int note, double velocity, int3
 void AudioEngine::stopNote(uint32_t instance_id, int note, double velocity, int32_t note_id) {
     if (_module_router) {
         if (auto* node = _module_router->getProcessingNode(instance_id)) {
-            if (auto* host = dynamic_cast<PluginHost*>(node)) {
-                host->processNoteOff(0, 0, note, velocity, note_id);
-            }
+            PluginEvent ev;
+            ev.event.header.size = sizeof(clap_event_note);
+            ev.event.header.time = 0;
+            ev.event.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+            ev.event.header.type = CLAP_EVENT_NOTE_OFF;
+            ev.event.header.flags = 0;
+
+            // FIXME: Support multiple event ports
+            ev.event.note.port_index = 0;
+            ev.event.note.key = static_cast<int16_t>(note);
+            ev.event.note.channel = 0;
+            ev.event.note.note_id = note_id;
+            ev.event.note.velocity = velocity;
+
+            node->queueEvent(ev);
         }
     }
 }

@@ -1,5 +1,6 @@
 #include "composite_node.h"
 
+#include <cstring>
 #include <map>
 
 #include "constants.h"
@@ -173,7 +174,10 @@ void CompositeNode::updateInternalRenderState() {
 }
 
 void CompositeNode::setParameterValue(clap_id param_id, double value) {
-    // Handle fallback or numeric-based parameter control if needed
+    // Numeric fallback: treat param_id as index into our exposed parameter list
+    if (param_id < _external_params.size()) {
+        setParameterValue(_external_params[param_id]->info.name, value);
+    }
 }
 
 void CompositeNode::setParameterValue(const std::string& param_id, double value) {
@@ -189,8 +193,8 @@ void CompositeNode::setParameterValue(const std::string& param_id, double value)
 }
 
 void CompositeNode::queueEvent(const PluginEvent& event) {
-    // Default implementation: Route events based on internal graph logic
-    // For simple cases, we can route note events to all internal instrument nodes
+    // FIXME: Implement precise event routing based on external-to-internal event port mapping.
+    // For now, we broadcast to all internal nodes (Omni-mode).
     for (uint32_t id : _internal_processor.getProcessOrder()) {
         if (auto* node = _internal_processor.getNode(id)) {
             node->queueEvent(event);
@@ -214,6 +218,11 @@ void CompositeNode::pollMainThread() {
 auto CompositeNode::load(const CompositeConfig& config) -> bool {
     log("[CompositeNode] Loading configuration.");
     std::map<std::string, uint32_t> alias_to_id;
+
+    // Clear existing external interface
+    _external_inputs.clear();
+    _external_outputs.clear();
+    _external_params.clear();
 
     // 1. Create internal plugins
     uint32_t next_internal_id = 1;
@@ -241,31 +250,75 @@ auto CompositeNode::load(const CompositeConfig& config) -> bool {
         }
     }
 
-    // 3. Setup parameter mappings
+    // 3. Setup parameter mappings and expose them
+    uint32_t external_param_idx = 0;
     for (const auto& m_cfg : config.parameter_mappings) {
         if (alias_to_id.count(m_cfg.target_node)) {
-            setParameterMapping(m_cfg.param_id, alias_to_id[m_cfg.target_node],
-                                m_cfg.target_param_index);
+            uint32_t internal_id = alias_to_id[m_cfg.target_node];
+            setParameterMapping(m_cfg.param_id, internal_id, m_cfg.target_param_index);
+
+            // Expose metadata
+            if (auto* target_node = _internal_processor.getNode(internal_id)) {
+                const auto& internal_params = target_node->getParameters();
+                if (m_cfg.target_param_index < internal_params.size()) {
+                    const auto& src_slot = internal_params[m_cfg.target_param_index];
+                    auto ext_slot = std::make_unique<ParameterSlot>();
+                    ext_slot->info = src_slot->info;
+                    // Override with alias name and sequential ID
+                    std::strncpy(ext_slot->info.name, m_cfg.param_id.c_str(), CLAP_NAME_SIZE);
+                    ext_slot->info.id = external_param_idx++;
+                    ext_slot->base_value.store(src_slot->base_value.load());
+
+                    _external_params.push_back(std::move(ext_slot));
+                }
+            }
         }
     }
 
-    // 4. Setup port proxies
+    // 4. Setup port proxies and expose ports
     for (const auto& i_cfg : config.input_proxies) {
         if (alias_to_id.count(i_cfg.internal_node)) {
-            setInputProxy(i_cfg.external_port_index, alias_to_id[i_cfg.internal_node],
-                          i_cfg.internal_port_index);
+            uint32_t internal_id = alias_to_id[i_cfg.internal_node];
+            setInputProxy(i_cfg.external_port_index, internal_id, i_cfg.internal_port_index);
+
+            // Expose metadata
+            if (auto* target_node = _internal_processor.getNode(internal_id)) {
+                const auto& internal_ports = target_node->getAudioPorts(true);
+                for (const auto& p : internal_ports) {
+                    if (p.index == i_cfg.internal_port_index) {
+                        AudioPortInfo ext_info = p;
+                        ext_info.index = i_cfg.external_port_index;
+                        _external_inputs.push_back(ext_info);
+                        break;
+                    }
+                }
+            }
         }
     }
     for (const auto& o_cfg : config.output_proxies) {
         if (alias_to_id.count(o_cfg.internal_node)) {
-            setOutputProxy(o_cfg.external_port_index, alias_to_id[o_cfg.internal_node],
-                           o_cfg.internal_port_index);
+            uint32_t internal_id = alias_to_id[o_cfg.internal_node];
+            setOutputProxy(o_cfg.external_port_index, internal_id, o_cfg.internal_port_index);
+
+            // Expose metadata
+            if (auto* target_node = _internal_processor.getNode(internal_id)) {
+                const auto& internal_ports = target_node->getAudioPorts(false);
+                for (const auto& p : internal_ports) {
+                    if (p.index == o_cfg.internal_port_index) {
+                        AudioPortInfo ext_info = p;
+                        ext_info.index = o_cfg.external_port_index;
+                        _external_outputs.push_back(ext_info);
+                        break;
+                    }
+                }
+            }
         }
     }
 
     // 5. Finalize
     pushInternalState();
-    log("[CompositeNode] Configuration loaded successfully.");
+    log("[CompositeNode] Configuration loaded successfully. Exposed ", _external_params.size(),
+        " params.");
     return true;
 }
 
