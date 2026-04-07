@@ -4,6 +4,7 @@
 #include <clap/clap.h>
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "graph_types.h"
@@ -28,6 +29,7 @@ class ProcessingNode {
 
     // --- Parameters & External Events ---
     virtual void setParameterValue(clap_id param_id, double value) = 0;
+    virtual void setParameterValue(const std::string& param_id, double value) = 0;
     virtual void queueEvent(const PluginEvent& event) = 0;
     virtual void pollMainThread() = 0;
 

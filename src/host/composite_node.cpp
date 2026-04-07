@@ -176,7 +176,7 @@ void CompositeNode::setParameterValue(clap_id param_id, double value) {
     // Handle fallback or numeric-based parameter control if needed
 }
 
-void CompositeNode::setCompositeParameter(const std::string& param_id, double value) {
+void CompositeNode::setParameterValue(const std::string& param_id, double value) {
     // Use the authoritative mapping on the main thread
     // The AudioThread uses its own snapshot via _current_state
     // However, for immediate UI-triggered changes, we look up the internal target

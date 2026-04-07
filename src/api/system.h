@@ -30,7 +30,6 @@ class System {
 
     // Composite Node Management
     auto createCompositeInstance(const CompositeConfig& config) -> uint32_t;
-    void setCompositeParameter(uint32_t instance_id, const std::string& param_id, double value);
 
     // Connectivity
     void connectNodes(uint32_t from_node, uint32_t from_port, uint32_t to_node, uint32_t to_port,
@@ -46,6 +45,7 @@ class System {
     void playNote(uint32_t instance_id, int note, double velocity, int32_t note_id = -1);
     void stopNote(uint32_t instance_id, int note, double velocity = 0.0, int32_t note_id = -1);
     void setParameterValue(uint32_t instance_id, uint32_t param_id, double value);
+    void setParameterValue(uint32_t instance_id, const std::string& param_id, double value);
 
     auto getPluginParameters(uint32_t instance_id) -> ParameterList;
 

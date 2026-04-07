@@ -8,8 +8,6 @@
 #include "host/plugin_host.h"
 #endif
 
-#include <map>
-
 namespace synth_canvas {
 
 #if defined(__ANDROID__)
@@ -114,13 +112,11 @@ auto System::createCompositeInstance(const CompositeConfig& config) -> uint32_t 
 #endif
 }
 
-void System::setCompositeParameter(uint32_t instance_id, const std::string& param_id,
-                                   double value) {
+void System::setParameterValue(uint32_t instance_id, const std::string& param_id, double value) {
 #if defined(__ANDROID__)
     if (_pimpl->module_router) {
-        auto* node = _pimpl->module_router->getProcessingNode(instance_id);
-        if (auto* composite = dynamic_cast<synth_canvas::host::CompositeNode*>(node)) {
-            composite->setCompositeParameter(param_id, value);
+        if (auto* node = _pimpl->module_router->getProcessingNode(instance_id)) {
+            node->setParameterValue(param_id, value);
         }
     }
 #endif
@@ -130,8 +126,7 @@ void System::connectNodes(uint32_t from_node, uint32_t from_port, uint32_t to_no
                           uint32_t to_port, ConnectionType type) {
 #if defined(__ANDROID__)
     if (_pimpl->module_router) {
-        _pimpl->module_router->connectNodes(from_node, from_port, to_node, to_port,
-                                            type);
+        _pimpl->module_router->connectNodes(from_node, from_port, to_node, to_port, type);
     }
 #endif
 }
@@ -140,9 +135,7 @@ void System::disconnectNodes(uint32_t from_node, uint32_t from_port, uint32_t to
                              uint32_t to_port, ConnectionType type) {
 #if defined(__ANDROID__)
     if (_pimpl->module_router) {
-        _pimpl->module_router->disconnectNodes(
-            from_node, from_port, to_node, to_port,
-            type);
+        _pimpl->module_router->disconnectNodes(from_node, from_port, to_node, to_port, type);
     }
 #endif
 }

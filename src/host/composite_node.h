@@ -31,6 +31,7 @@ class CompositeNode final : public ProcessingNode {
     void processEnd(int num_frames) override;
 
     void setParameterValue(clap_id param_id, double value) override;
+    void setParameterValue(const std::string& param_id, double value) override;
     void queueEvent(const PluginEvent& event) override;
     void pollMainThread() override;
 
@@ -50,9 +51,6 @@ class CompositeNode final : public ProcessingNode {
                              uint32_t internal_param_id);
     void setInputProxy(uint32_t external_port, uint32_t internal_node, uint32_t internal_port);
     void setOutputProxy(uint32_t external_port, uint32_t internal_node, uint32_t internal_port);
-
-    // High-level parameter control (called via string IDs)
-    void setCompositeParameter(const std::string& param_id, double value);
 
     // Commits changes to the internal graph state
     void pushInternalState();

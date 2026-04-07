@@ -27,7 +27,7 @@ void SynthCanvasAudioSystem::_bind_methods() {
         godot::D_METHOD("stop_note", "instance_id", "note", "velocity", "note_id"),
         &SynthCanvasAudioSystem::stopNote, DEFVAL(0.0), DEFVAL(-1));
     godot::ClassDB::bind_method(
-        godot::D_METHOD("set_parameter_value", "instance_id", "param_id", "value"),
+        godot::D_METHOD("set_parameter_value", "instance_id", "param", "value"),
         &SynthCanvasAudioSystem::setParameterValue);
     godot::ClassDB::bind_method(godot::D_METHOD("get_plugin_parameters", "instance_id"),
                                 &SynthCanvasAudioSystem::getPluginParameters);
@@ -140,10 +140,16 @@ void SynthCanvasAudioSystem::stopNote(uint32_t instance_id, int note, double vel
     }
 }
 
-void SynthCanvasAudioSystem::setParameterValue(uint32_t instance_id, uint32_t param_id,
+void SynthCanvasAudioSystem::setParameterValue(uint32_t instance_id, const godot::Variant& p_param,
                                                double value) {
-    if (_system) {
+    if (!_system) return;
+
+    if (p_param.get_type() == godot::Variant::INT) {
+        uint32_t param_id = p_param;
         _system->setParameterValue(instance_id, param_id, value);
+    } else if (p_param.get_type() == godot::Variant::STRING) {
+        godot::String s = p_param;
+        _system->setParameterValue(instance_id, s.utf8().get_data(), value);
     }
 }
 

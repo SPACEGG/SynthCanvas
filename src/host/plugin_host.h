@@ -64,6 +64,7 @@ class PluginHost final : public ProcessingNode, public BaseHost {
 
     // --- ProcessingNode Parameters & External Events ---
     void setParameterValue(clap_id param_id, double value) override;
+    void setParameterValue(const std::string& param_id, double value) override;
     void queueEvent(const PluginEvent& event) override;
     void pollMainThread() override;
 

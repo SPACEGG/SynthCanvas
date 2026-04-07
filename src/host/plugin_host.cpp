@@ -14,6 +14,7 @@
 #include <dlfcn.h>
 #endif
 
+#include <charconv>
 #include <thread>
 #include <utility>
 
@@ -468,6 +469,19 @@ void PluginHost::setParameterValue(clap_id param_id, double value) {
     _input_events.try_enqueue(ev);
 }
 
+void PluginHost::setParameterValue(const std::string& param_id, double value) {
+    int32_t id = 0;
+    auto [ptr, ec] = std::from_chars(param_id.data(), param_id.data() + param_id.size(), id);
+
+    if (ec == std::errc()) {
+        setParameterValue(id, value);
+    } else if (ec == std::errc::invalid_argument) {
+        logMessage(CLAP_LOG_WARNING, "Param id not found.");
+    } else if (ec == std::errc::result_out_of_range) {
+        logMessage(CLAP_LOG_WARNING, "Param id out of range.");
+    }
+}
+
 void PluginHost::queueEvent(const PluginEvent& event) { _input_events.try_enqueue(event); }
 
 void PluginHost::pollMainThread() {
@@ -502,9 +516,7 @@ void PluginHost::processBegin(int nframes) {
     _process.frames_count = nframes;
 }
 
-void PluginHost::processEnd(int nframes) {
-    g_thread_type = ThreadType::kUnknown;
-}
+void PluginHost::processEnd(int nframes) { g_thread_type = ThreadType::kUnknown; }
 
 void PluginHost::processNoteOn(int sample_offset, int channel, int key, double velocity,
                                int32_t note_id) {
