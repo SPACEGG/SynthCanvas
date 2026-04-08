@@ -202,7 +202,7 @@ void CompositeNode::queueEvent(const PluginEvent& event) {
     }
 }
 
-bool CompositeNode::popOutputEvent(PluginEvent& out_event) {
+auto CompositeNode::popOutputEvent(PluginEvent& out_event) -> bool {
     // FIXME: Implement event output mapping.
     // For now, composite nodes do not output events to the external graph.
     return false;

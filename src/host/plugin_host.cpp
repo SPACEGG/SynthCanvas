@@ -484,7 +484,7 @@ void PluginHost::setParameterValue(const std::string& param_id, double value) {
 
 void PluginHost::queueEvent(const PluginEvent& event) { _input_events.try_enqueue(event); }
 
-bool PluginHost::popOutputEvent(PluginEvent& out_event) {
+auto PluginHost::popOutputEvent(PluginEvent& out_event) -> bool {
     return _output_events_to_audio.try_dequeue(out_event);
 }
 
