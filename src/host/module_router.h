@@ -66,6 +66,7 @@ class ModuleRouter {
     std::atomic<uint32_t> _next_instance_id{constants::kInitialPluginInstanceId};
 
     void pushNewState();
+    auto getConnectionCount(uint32_t to_node, uint32_t to_port, ConnectionType type) const -> size_t;
 };
 
 }  // namespace synth_canvas::host

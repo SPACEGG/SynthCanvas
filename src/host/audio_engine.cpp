@@ -9,6 +9,11 @@ namespace synth_canvas::host {
 
 AudioEngine::AudioEngine(ModuleRouter* router) : _module_router(router) {
     _sample_rate = constants::kUnspecifiedSampleRate;
+
+    _mod_sum_workspace.reserve(constants::kMaxConnectionsPerPort);
+    _inputs_workspace.reserve(constants::kMaxConnectionsPerPort);
+    _outputs_workspace.reserve(constants::kMaxConnectionsPerPort);
+
     log("[AudioEngine] Created.");
 }
 
@@ -128,39 +133,66 @@ void AudioEngine::updateRenderState() {
 }
 
 void AudioEngine::processSingleNode(ProcessingNode* node, int32_t num_frames) {
-    uint32_t node_id = node->getInstanceId();
+    applyParameterModulation(node, num_frames);
+    prepareAudioInputs(node, num_frames);
+    prepareAudioOutputs(node, num_frames);
+    executeNodeProcessing(node, num_frames, _inputs_workspace, _outputs_workspace);
+}
 
-    // 1. Process Parameter Modulation
+void AudioEngine::applyParameterModulation(ProcessingNode* node, int32_t num_frames) {
+    uint32_t node_id = node->getInstanceId();
     auto mod_it = _current_render_state->input_modulations.find(node_id);
-    if (mod_it != _current_render_state->input_modulations.end()) {
+    if (mod_it == _current_render_state->input_modulations.end()) return;
+
+    for (int t = 0; t < num_frames; t += constants::kModulationStepSize) {
+        _mod_sum_workspace.clear();
+
         for (const auto& mod : mod_it->second) {
             float** src_buffer =
                 _buffer_manager.getReadOnlyBuffer(mod.source_node_id, mod.source_port_index);
             if (!src_buffer) continue;
 
-            float mod_value = src_buffer[0][0];
-            if (mod.source_port_index < static_cast<uint32_t>(_channel_count)) {
-                mod_value = src_buffer[mod.source_port_index][0];
+            // TODO(): Support multi-channel modulated inputs
+            float mod_value = src_buffer[0][t];
+
+            bool found = false;
+            for (auto& entry : _mod_sum_workspace) {
+                if (entry.first == mod.target_param_id) {
+                    entry.second += static_cast<double>(mod_value);
+                    found = true;
+                    break;
+                }
             }
-            // Use the generic interface to set modulation
-            // TODO(): In the future, processParamModulation could be part of the interface
-            // For now, we assume setParameterValue or specialized note handling is enough
-            node->setParameterValue(mod.target_param_id, static_cast<double>(mod_value));
+
+            if (!found) {
+                _mod_sum_workspace.emplace_back(mod.target_param_id,
+                                                static_cast<double>(mod_value));
+            }
+        }
+
+        for (const auto& entry : _mod_sum_workspace) {
+            double last_offset = node->getParameterModulationOffset(entry.first);
+            if (t == 0 || std::abs(entry.second - last_offset) > constants::kModulationThreshold) {
+                node->applyModulation(entry.first, entry.second, t);
+            }
         }
     }
+}
 
-    // 2. Prepare Audio Inputs
+void AudioEngine::prepareAudioInputs(ProcessingNode* node, int32_t num_frames) {
+    uint32_t node_id = node->getInstanceId();
     const auto& input_ports = node->getAudioPorts(true);
-    std::vector<clap_audio_buffer> clap_inputs(input_ports.size());
+
+    _inputs_workspace.assign(input_ports.size(), clap_audio_buffer{});
 
     auto input_map_it = _current_render_state->input_audio_sources.find(node_id);
 
     for (size_t i = 0; i < input_ports.size(); ++i) {
         const auto& port_info = input_ports[i];
-        clap_inputs[i].channel_count = port_info.clap_info.channel_count;
-        clap_inputs[i].constant_mask = 0;
-        clap_inputs[i].latency = 0;
-        clap_inputs[i].data64 = nullptr;
+        _inputs_workspace[i].channel_count = port_info.clap_info.channel_count;
+        _inputs_workspace[i].constant_mask = 0;
+        _inputs_workspace[i].latency = 0;
+        _inputs_workspace[i].data64 = nullptr;
 
         std::vector<AudioBufferManager::PortSource> sources;
         if (input_map_it != _current_render_state->input_audio_sources.end()) {
@@ -169,26 +201,34 @@ void AudioEngine::processSingleNode(ProcessingNode* node, int32_t num_frames) {
                 sources = port_sources_it->second;
             }
         }
-        clap_inputs[i].data32 = _buffer_manager.getInputMix(port_info.index, sources, num_frames);
+        _inputs_workspace[i].data32 =
+            _buffer_manager.getInputMix(port_info.index, sources, num_frames);
     }
+}
 
-    // 3. Prepare Audio Outputs
+void AudioEngine::prepareAudioOutputs(ProcessingNode* node, int32_t num_frames) {
+    uint32_t node_id = node->getInstanceId();
     const auto& output_ports = node->getAudioPorts(false);
-    std::vector<clap_audio_buffer> clap_outputs(output_ports.size());
+
+    _outputs_workspace.assign(output_ports.size(), clap_audio_buffer{});
 
     for (size_t i = 0; i < output_ports.size(); ++i) {
         const auto& port_info = output_ports[i];
-        clap_outputs[i].channel_count = port_info.clap_info.channel_count;
-        clap_outputs[i].constant_mask = 0;
-        clap_outputs[i].latency = 0;
-        clap_outputs[i].data64 = nullptr;
-        clap_outputs[i].data32 = _buffer_manager.getBuffer(node_id, port_info.index, num_frames);
+        _outputs_workspace[i].channel_count = port_info.clap_info.channel_count;
+        _outputs_workspace[i].constant_mask = 0;
+        _outputs_workspace[i].latency = 0;
+        _outputs_workspace[i].data64 = nullptr;
+        _outputs_workspace[i].data32 =
+            _buffer_manager.getBuffer(node_id, port_info.index, num_frames);
     }
+}
 
-    // 4. Execute Processing
+void AudioEngine::executeNodeProcessing(ProcessingNode* node, int32_t num_frames,
+                                        std::vector<clap_audio_buffer>& inputs,
+                                        std::vector<clap_audio_buffer>& outputs) {
     node->processBegin(num_frames);
-    node->setPorts(static_cast<uint32_t>(clap_inputs.size()), clap_inputs.data(),
-                   static_cast<uint32_t>(clap_outputs.size()), clap_outputs.data());
+    node->setPorts(static_cast<uint32_t>(inputs.size()), inputs.data(),
+                   static_cast<uint32_t>(outputs.size()), outputs.data());
     node->process();
     node->processEnd(num_frames);
 }
@@ -222,7 +262,6 @@ void AudioEngine::playNote(uint32_t instance_id, int note, double velocity, int3
             ev.event.header.type = CLAP_EVENT_NOTE_ON;
             ev.event.header.flags = 0;
 
-            // FIXME: Support multiple event ports
             ev.event.note.port_index = 0;
             ev.event.note.key = static_cast<int16_t>(note);
             ev.event.note.channel = 0;
@@ -244,7 +283,6 @@ void AudioEngine::stopNote(uint32_t instance_id, int note, double velocity, int3
             ev.event.header.type = CLAP_EVENT_NOTE_OFF;
             ev.event.header.flags = 0;
 
-            // FIXME: Support multiple event ports
             ev.event.note.port_index = 0;
             ev.event.note.key = static_cast<int16_t>(note);
             ev.event.note.channel = 0;

@@ -26,6 +26,13 @@ constexpr int kMidiCcStatusByte = 0xB0;
 constexpr int16_t kDefaultEventPortIndex = 0;
 constexpr int32_t kClapInvalidId = -1;
 
+// Graph Constraints
+constexpr size_t kMaxConnectionsPerPort = 32;
+
+// Modulation Quantization Settings
+constexpr int32_t kModulationStepSize = 16;
+constexpr double kModulationThreshold = 0.0001;
+
 // Timing & Timeouts
 constexpr int kPluginDeactivateTimeoutMs = 200;
 constexpr int kPluginDeactivateSleepMs = 1;

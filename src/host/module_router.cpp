@@ -117,6 +117,12 @@ void ModuleRouter::pushNewState() {
 
 void ModuleRouter::connectNodes(uint32_t from_node, uint32_t from_port, uint32_t to_node,
                                 uint32_t to_port, ConnectionType type) {
+    // Enforce connection limit per input port
+    if (getConnectionCount(to_node, to_port, type) >= constants::kMaxConnectionsPerPort) {
+        log("[ModuleRouter] ERROR: Cannot connect. Max connections reached for target port.");
+        return;
+    }
+
     log("[ModuleRouter] Connecting ", from_node, " -> ", to_node);
     _graph_processor.connect({.from_node = from_node,
                               .from_port = from_port,
@@ -152,6 +158,18 @@ void ModuleRouter::deactivateNode(uint32_t instance_id) {
             node->deactivate();
         }
     }
+}
+
+auto ModuleRouter::getConnectionCount(uint32_t to_node, uint32_t to_port,
+                                      ConnectionType type) const -> size_t {
+    const auto& connections = _graph_processor.getConnections();
+    size_t count = 0;
+    for (const auto& conn : connections) {
+        if (conn.to_node == to_node && conn.to_port == to_port && conn.type == type) {
+            count++;
+        }
+    }
+    return count;
 }
 
 }  // namespace synth_canvas::host

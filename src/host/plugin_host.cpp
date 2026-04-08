@@ -192,9 +192,8 @@ void PluginHost::scanAudioPorts() {
         AudioPortInfo info;
         info.index = i;
         info.is_input = true;
-        info.is_modulation =
-            false;  // Audio inputs are for audio processing only. Modulation targets parameters.
         if (audio_ports_ext->get(_plugin->clapPlugin(), i, true, &info.clap_info)) {
+            info.is_modulation = false;
             _audio_input_ports.push_back(info);
         }
     }
@@ -203,9 +202,8 @@ void PluginHost::scanAudioPorts() {
         AudioPortInfo info;
         info.index = i;
         info.is_input = false;
-        info.is_modulation = false;  // Audio outputs can be sources for modulation, but we treat
-                                     // them as generic audio ports for now.
         if (audio_ports_ext->get(_plugin->clapPlugin(), i, false, &info.clap_info)) {
+            info.is_modulation = false;
             _audio_output_ports.push_back(info);
         }
     }
@@ -219,8 +217,8 @@ auto PluginHost::load(const std::string& path, int plugin_index) -> bool {
 #if defined(_WIN32)
     _library_handle = LoadLibraryA(path.c_str());
     if (!_library_handle) {
-        log_message(CLAP_LOG_ERROR,
-                    ("Failed to load plugin library: " + std::to_string(GetLastError())).c_str());
+        logMessage(CLAP_LOG_ERROR,
+                   ("Failed to load plugin library: " + std::to_string(GetLastError())).c_str());
         return false;
     }
     _plugin_entry = reinterpret_cast<const struct clap_plugin_entry*>(
@@ -238,7 +236,7 @@ auto PluginHost::load(const std::string& path, int plugin_index) -> bool {
 
     if (!_plugin_entry) {
 #if defined(_WIN32)
-        log_message(CLAP_LOG_ERROR, "Unable to resolve entry point 'clap_entry'");
+        logMessage(CLAP_LOG_ERROR, "Unable to resolve entry point 'clap_entry'");
         FreeLibrary((HMODULE)_library_handle);
 #else
         logMessage(
@@ -340,10 +338,7 @@ auto PluginHost::load(const std::string& path, int plugin_index) -> bool {
         return false;
     }
 
-    // Initial parameter scan
     scanParameters();
-
-    // Initial audio port scan
     scanAudioPorts();
 
     auto note_ports_ext = static_cast<const clap_plugin_note_ports_t*>(
@@ -446,9 +441,9 @@ void PluginHost::setProcessingEnabled(bool enabled) {
 }
 
 void PluginHost::setParameterValue(clap_id param_id, double value) {
-    // Update local parameter slot
     if (auto* slot = getParameterSlot(param_id)) {
         slot->base_value.store(value, std::memory_order_relaxed);
+        slot->current_value.store(value, std::memory_order_relaxed);
     }
 
     PluginEvent ev;
@@ -482,6 +477,47 @@ void PluginHost::setParameterValue(const std::string& param_id, double value) {
     }
 }
 
+void PluginHost::applyModulation(clap_id param_id, double value, uint32_t sample_offset) {
+    if (auto* slot = getParameterSlot(param_id)) {
+        double base = slot->base_value.load(std::memory_order_relaxed);
+        slot->modulation_value.store(value, std::memory_order_relaxed);
+        slot->current_value.store(base + value, std::memory_order_relaxed);
+    }
+
+    PluginEvent ev;
+    ev.event.header.size = sizeof(clap_event_param_mod);
+    ev.event.header.time = sample_offset;
+    ev.event.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+    ev.event.header.type = CLAP_EVENT_PARAM_MOD;
+    ev.event.header.flags = 0;
+
+    ev.event.param_mod.param_id = param_id;
+    ev.event.param_mod.amount = value;
+    ev.event.param_mod.cookie = nullptr;
+    ev.event.param_mod.note_id = constants::kClapInvalidId;
+    ev.event.param_mod.port_index = constants::kClapInvalidId;
+    ev.event.param_mod.key = constants::kClapInvalidId;
+    ev.event.param_mod.channel = constants::kClapInvalidId;
+
+    _input_events.try_enqueue(ev);
+}
+
+auto PluginHost::getParameterBaseValue(clap_id param_id) const -> double {
+    auto it = _param_id_to_index.find(param_id);
+    if (it != _param_id_to_index.end()) {
+        return _params[it->second]->base_value.load(std::memory_order_relaxed);
+    }
+    return 0.0;
+}
+
+auto PluginHost::getParameterModulationOffset(clap_id param_id) const -> double {
+    auto it = _param_id_to_index.find(param_id);
+    if (it != _param_id_to_index.end()) {
+        return _params[it->second]->modulation_value.load(std::memory_order_relaxed);
+    }
+    return 0.0;
+}
+
 void PluginHost::queueEvent(const PluginEvent& event) { _input_events.try_enqueue(event); }
 
 auto PluginHost::popOutputEvent(PluginEvent& out_event) -> bool {
@@ -494,9 +530,9 @@ void PluginHost::pollMainThread() {
     PluginEvent ev;
     while (_output_events_to_main.try_dequeue(ev)) {
         if (ev.event.header.type == CLAP_EVENT_PARAM_VALUE) {
-            // Update local parameter slot if value changed by plugin
             if (auto* slot = getParameterSlot(ev.event.param_value.param_id)) {
                 slot->base_value.store(ev.event.param_value.value, std::memory_order_relaxed);
+                slot->current_value.store(ev.event.param_value.value, std::memory_order_relaxed);
             }
 
             if (on_parameter_changed) {
@@ -521,30 +557,6 @@ void PluginHost::processBegin(int nframes) {
 }
 
 void PluginHost::processEnd(int nframes) { g_thread_type = ThreadType::kUnknown; }
-
-void PluginHost::processParamModulation(clap_id param_id, double value, uint32_t sample_offset) {
-    // Update visualization state (atomic)
-    if (auto* slot = getParameterSlot(param_id)) {
-        slot->current_value.store(value, std::memory_order_relaxed);
-    }
-
-    // Generate CLAP event for the plugin
-    PluginEvent ev;
-    ev.event.header.size = sizeof(clap_event_param_mod);
-    ev.event.header.time = sample_offset;
-    ev.event.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
-    ev.event.header.type = CLAP_EVENT_PARAM_MOD;
-    ev.event.header.flags = 0;
-    ev.event.param_value.param_id = param_id;
-    ev.event.param_value.value = value;
-    ev.event.param_value.cookie = nullptr;
-    ev.event.param_value.note_id = constants::kClapInvalidId;
-    ev.event.param_value.port_index = constants::kClapInvalidId;
-    ev.event.param_value.key = constants::kClapInvalidId;
-    ev.event.param_value.channel = constants::kClapInvalidId;
-
-    _input_events.try_enqueue(ev);
-}
 
 void PluginHost::process() {
     checkForAudioThread();

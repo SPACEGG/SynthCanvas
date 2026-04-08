@@ -47,6 +47,7 @@ class GraphProcessor {
 
         // New mapping tables for composite functionality
         std::unordered_map<std::string, ParameterMapping> parameter_mappings;
+        std::vector<ParameterMapping> direct_parameter_mappings;
         std::unordered_map<uint32_t, PortProxyMapping> input_proxies;
         std::unordered_map<uint32_t, PortProxyMapping> output_proxies;
     };
@@ -65,6 +66,7 @@ class GraphProcessor {
 
     // Composite Mapping (Main Thread side)
     void setParameterMapping(const std::string& param_id, uint32_t node_id, uint32_t clap_param_id);
+    void setDirectParameterMapping(uint32_t index, uint32_t node_id, uint32_t clap_param_id);
     void setInputProxy(uint32_t external_port, uint32_t internal_node, uint32_t internal_port);
     void setOutputProxy(uint32_t external_port, uint32_t internal_node, uint32_t internal_port);
 
@@ -87,6 +89,7 @@ class GraphProcessor {
 
     // Temporary storage for mappings before next RenderState creation
     std::unordered_map<std::string, RenderState::ParameterMapping> _parameter_mappings;
+    std::vector<RenderState::ParameterMapping> _direct_parameter_mappings;
     std::unordered_map<uint32_t, RenderState::PortProxyMapping> _input_proxies;
     std::unordered_map<uint32_t, RenderState::PortProxyMapping> _output_proxies;
 

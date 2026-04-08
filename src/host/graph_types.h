@@ -46,6 +46,7 @@ struct PortProxyConfig {
     uint32_t external_port_index;
     std::string internal_node; // alias of the internal node
     uint32_t internal_port_index;
+    ConnectionType type;
 };
 
 // Complete blueprint for instantiating a CompositeNode
@@ -90,6 +91,7 @@ struct PluginEvent {
         clap_event_note_t note;
         clap_event_midi_t midi;
         clap_event_param_value_t param_value;
+        clap_event_param_mod_t param_mod;
     } event;
 };
 

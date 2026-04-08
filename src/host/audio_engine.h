@@ -5,12 +5,15 @@
 #include <oboe/Oboe.h>
 
 #include <memory>
+#include <vector>
 
 #include "audio_buffer_manager.h"
 #include "constants.h"
 #include "module_router.h"
 
 namespace synth_canvas::host {
+
+class ProcessingNode;
 
 // Main audio rendering engine using Oboe.
 class AudioEngine : public oboe::AudioStreamDataCallback {
@@ -41,6 +44,14 @@ class AudioEngine : public oboe::AudioStreamDataCallback {
     void processSingleNode(ProcessingNode* node, int32_t num_frames);
     void routeNodeEvents(ProcessingNode* node);
 
+    // Processing steps
+    void applyParameterModulation(ProcessingNode* node, int32_t num_frames);
+    void prepareAudioInputs(ProcessingNode* node, int32_t num_frames);
+    void prepareAudioOutputs(ProcessingNode* node, int32_t num_frames);
+    void executeNodeProcessing(ProcessingNode* node, int32_t num_frames,
+                               std::vector<clap_audio_buffer>& inputs,
+                               std::vector<clap_audio_buffer>& outputs);
+
     std::shared_ptr<oboe::AudioStream> _stream;
     ModuleRouter* _module_router;
     AudioBufferManager _buffer_manager;
@@ -50,6 +61,13 @@ class AudioEngine : public oboe::AudioStreamDataCallback {
     int32_t _channel_count = constants::kDefaultChannelCount;
     int32_t _sample_rate = constants::kDefaultSampleRate;
     int32_t _frames_per_block = 0;
+
+    // Real-time safe workspace for modulation summing
+    std::vector<std::pair<clap_id, double>> _mod_sum_workspace;
+
+    // Real-time safe workspaces for port buffers
+    std::vector<clap_audio_buffer> _inputs_workspace;
+    std::vector<clap_audio_buffer> _outputs_workspace;
 };
 
 }  // namespace synth_canvas::host

@@ -11,6 +11,7 @@
 
 namespace synth_canvas::host {
 
+// Interface for anything that can process audio and events in the graph.
 class ProcessingNode {
    public:
     virtual ~ProcessingNode() = default;
@@ -30,6 +31,16 @@ class ProcessingNode {
     // --- Parameters & External Events ---
     virtual void setParameterValue(clap_id param_id, double value) = 0;
     virtual void setParameterValue(const std::string& param_id, double value) = 0;
+    
+    // Audio-thread safe modulation injection (additive)
+    virtual void applyModulation(clap_id param_id, double value, uint32_t sample_offset) = 0;
+    
+    // Returns the baseline value (user-set) for a parameter
+    [[nodiscard]] virtual auto getParameterBaseValue(clap_id param_id) const -> double = 0;
+
+    // Returns the current modulation offset applied to a parameter
+    [[nodiscard]] virtual auto getParameterModulationOffset(clap_id param_id) const -> double = 0;
+
     virtual void queueEvent(const PluginEvent& event) = 0;
     virtual auto popOutputEvent(PluginEvent& out_event) -> bool = 0;
     virtual void pollMainThread() = 0;

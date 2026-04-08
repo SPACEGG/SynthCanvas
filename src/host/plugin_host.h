@@ -65,9 +65,13 @@ class PluginHost final : public ProcessingNode, public BaseHost {
     // --- Parameters & External Events ---
     void setParameterValue(clap_id param_id, double value) override;
     void setParameterValue(const std::string& param_id, double value) override;
+    void applyModulation(clap_id param_id, double value, uint32_t sample_offset) override;
+    [[nodiscard]] auto getParameterBaseValue(clap_id param_id) const -> double override;
+    [[nodiscard]] auto getParameterModulationOffset(clap_id param_id) const -> double override;
     void queueEvent(const PluginEvent& event) override;
     auto popOutputEvent(PluginEvent& out_event) -> bool override;
     void pollMainThread() override;
+
 
     // --- ProcessingNode Metadata Accessors ---
     void setInstanceId(uint32_t id) override { _instance_id = id; }

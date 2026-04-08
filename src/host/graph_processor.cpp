@@ -74,6 +74,15 @@ void GraphProcessor::setOutputProxy(uint32_t external_port, uint32_t internal_no
                                       .internal_port_index = internal_port};
 }
 
+void GraphProcessor::setDirectParameterMapping(uint32_t index, uint32_t node_id,
+                                               uint32_t clap_param_id) {
+    if (index >= _direct_parameter_mappings.size()) {
+        _direct_parameter_mappings.resize(index + 1);
+    }
+    _direct_parameter_mappings[index] = {.target_node_id = node_id,
+                                         .target_param_id = clap_param_id};
+}
+
 void GraphProcessor::sort() { topologicalSort(); }
 
 void GraphProcessor::topologicalSort() {
@@ -138,6 +147,7 @@ auto GraphProcessor::createRenderState(uint32_t master_node_id) -> std::unique_p
 
     state->connections = _connections;
     state->parameter_mappings = _parameter_mappings;
+    state->direct_parameter_mappings = _direct_parameter_mappings;
     state->input_proxies = _input_proxies;
     state->output_proxies = _output_proxies;
 
