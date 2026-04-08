@@ -5,58 +5,17 @@
 
 #include <atomic>
 #include <cstdint>
-#include <string>
-#include <vector>
+
+#include "../api/types.h"
 
 namespace synth_canvas::host {
 
-// Types of signals that can be routed between ports
-enum class ConnectionType : int {
-    kAudio = 0,
-    kEvent = 1,
-    kModulation = 2,
-};
-
-// --- Composite Module Configurations ---
-
-// Configuration for an internal plugin within a composite node
-struct InternalPluginConfig {
-    std::string alias;      // e.g., "osc", "filter"
-    std::string plugin_path; // Identifier or path to load the plugin
-};
-
-// Configuration for internal routing between nodes
-struct InternalRoutingConfig {
-    std::string from_node;  // alias of the source node
-    uint32_t from_port;
-    std::string to_node;    // alias of the target node
-    uint32_t to_port;
-    ConnectionType type;
-};
-
-// Mapping of a high-level parameter ID to an internal plugin parameter
-struct ParameterMappingConfig {
-    std::string param_id;    // e.g., "cutoff"
-    std::string target_node; // alias of the internal node
-    uint32_t target_param_index;
-};
-
-// Direct connection mapping between external ports and internal node ports
-struct PortProxyConfig {
-    uint32_t external_port_index;
-    std::string internal_node; // alias of the internal node
-    uint32_t internal_port_index;
-    ConnectionType type;
-};
-
-// Complete blueprint for instantiating a CompositeNode
-struct CompositeConfig {
-    std::vector<InternalPluginConfig> plugins;
-    std::vector<InternalRoutingConfig> routings;
-    std::vector<ParameterMappingConfig> parameter_mappings;
-    std::vector<PortProxyConfig> input_proxies;
-    std::vector<PortProxyConfig> output_proxies;
-};
+using ConnectionType = synth_canvas::ConnectionType;
+using InternalPluginConfig = synth_canvas::InternalPluginConfig;
+using InternalRoutingConfig = synth_canvas::InternalRoutingConfig;
+using ParameterMappingConfig = synth_canvas::ParameterMappingConfig;
+using PortProxyConfig = synth_canvas::PortProxyConfig;
+using CompositeConfig = synth_canvas::CompositeConfig;
 
 // Represents a connection from an output port to an input port
 struct PortConnection {
