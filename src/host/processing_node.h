@@ -31,7 +31,7 @@ class ProcessingNode {
     virtual void setParameterValue(clap_id param_id, double value) = 0;
     virtual void setParameterValue(const std::string& param_id, double value) = 0;
     virtual void queueEvent(const PluginEvent& event) = 0;
-    virtual bool popOutputEvent(PluginEvent& out_event) = 0;
+    virtual auto popOutputEvent(PluginEvent& out_event) -> bool = 0;
     virtual void pollMainThread() = 0;
 
     // --- Metadata Accessors ---
