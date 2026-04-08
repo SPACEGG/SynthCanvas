@@ -11,6 +11,8 @@ if(ANDROID)
     list(APPEND CORE_SOURCES
         host/audio_buffer_manager.cpp
         host/audio_engine.cpp
+        host/composite_node.cpp
+        host/graph_processor.cpp
         host/logger.cpp
         host/module_router.cpp
         host/plugin_host.cpp
