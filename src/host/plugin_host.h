@@ -66,9 +66,8 @@ class PluginHost final : public ProcessingNode, public BaseHost {
     void setParameterValue(clap_id param_id, double value) override;
     void setParameterValue(const std::string& param_id, double value) override;
     void queueEvent(const PluginEvent& event) override;
-    bool popOutputEvent(PluginEvent& out_event) override;
+    auto popOutputEvent(PluginEvent& out_event) -> bool override;
     void pollMainThread() override;
-
 
     // --- ProcessingNode Metadata Accessors ---
     void setInstanceId(uint32_t id) override { _instance_id = id; }
@@ -88,13 +87,6 @@ class PluginHost final : public ProcessingNode, public BaseHost {
     // --- Plugin Loading ---
     auto load(const std::string& path, int plugin_index) -> bool;
     void unload();
-
-    // --- MIDI Helpers (Specific to PluginHost) ---
-    void processNoteOn(int sample_offset, int channel, int key, double velocity,
-                       int32_t note_id = constants::kClapInvalidId);
-    void processNoteOff(int sample_offset, int channel, int key, double velocity,
-                        int32_t note_id = constants::kClapInvalidId);
-    void processParamModulation(clap_id param_id, double value, uint32_t sample_offset);
 
     // --- Internal Getters ---
     [[nodiscard]] auto isPluginProcessing() const -> bool;

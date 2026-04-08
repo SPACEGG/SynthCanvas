@@ -522,46 +522,6 @@ void PluginHost::processBegin(int nframes) {
 
 void PluginHost::processEnd(int nframes) { g_thread_type = ThreadType::kUnknown; }
 
-void PluginHost::processNoteOn(int sample_offset, int channel, int key, double velocity,
-                               int32_t note_id) {
-    if (!_plugin || !_has_note_input) return;
-
-    PluginEvent ev;
-    ev.event.header.size = sizeof(clap_event_note);
-    ev.event.header.time = sample_offset;
-    ev.event.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
-    ev.event.header.type = CLAP_EVENT_NOTE_ON;
-    ev.event.header.flags = 0;
-
-    ev.event.note.port_index = constants::kDefaultEventPortIndex;
-    ev.event.note.key = key;
-    ev.event.note.channel = channel;
-    ev.event.note.note_id = note_id;
-    ev.event.note.velocity = velocity;
-
-    _input_events.try_enqueue(ev);
-}
-
-void PluginHost::processNoteOff(int sample_offset, int channel, int key, double velocity,
-                                int32_t note_id) {
-    if (!_plugin || !_has_note_input) return;
-
-    PluginEvent ev;
-    ev.event.header.size = sizeof(clap_event_note);
-    ev.event.header.time = sample_offset;
-    ev.event.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
-    ev.event.header.type = CLAP_EVENT_NOTE_OFF;
-    ev.event.header.flags = 0;
-
-    ev.event.note.port_index = constants::kDefaultEventPortIndex;
-    ev.event.note.key = key;
-    ev.event.note.channel = channel;
-    ev.event.note.note_id = note_id;
-    ev.event.note.velocity = velocity;
-
-    _input_events.try_enqueue(ev);
-}
-
 void PluginHost::processParamModulation(clap_id param_id, double value, uint32_t sample_offset) {
     // Update visualization state (atomic)
     if (auto* slot = getParameterSlot(param_id)) {
