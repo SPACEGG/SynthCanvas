@@ -2,7 +2,6 @@
 
 #include <cstring>
 
-#include "host/plugin_host.h"
 #include "logger.h"
 #include "processing_node.h"
 
@@ -195,26 +194,22 @@ void AudioEngine::processSingleNode(ProcessingNode* node, int32_t num_frames) {
 }
 
 void AudioEngine::routeNodeEvents(ProcessingNode* node) {
-    if (auto* plugin_host = dynamic_cast<PluginHost*>(node)) {
-        auto& output_queue = plugin_host->getAudioThreadOutputQueue();
-        uint32_t source_node_id = node->getInstanceId();
+    uint32_t source_node_id = node->getInstanceId();
 
-        auto it = _current_render_state->output_event_targets.find(source_node_id);
-        if (it == _current_render_state->output_event_targets.end() || it->second.empty()) {
-            PluginEvent dummy;
-            while (output_queue.try_dequeue(dummy)) {
-            }
-            return;
+    auto it = _current_render_state->output_event_targets.find(source_node_id);
+    if (it == _current_render_state->output_event_targets.end() || it->second.empty()) {
+        PluginEvent dummy;
+        while (node->popOutputEvent(dummy)) {
         }
+        return;
+    }
 
-        PluginEvent ev;
-        while (output_queue.try_dequeue(ev)) {
-            for (ProcessingNode* target : it->second) {
-                target->queueEvent(ev);
-            }
+    PluginEvent ev;
+    while (node->popOutputEvent(ev)) {
+        for (ProcessingNode* target : it->second) {
+            target->queueEvent(ev);
         }
     }
-    // CompositeNodes will handle their own internal event routing during their process() call
 }
 
 void AudioEngine::playNote(uint32_t instance_id, int note, double velocity, int32_t note_id) {

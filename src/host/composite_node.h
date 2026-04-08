@@ -33,6 +33,7 @@ class CompositeNode final : public ProcessingNode {
     void setParameterValue(clap_id param_id, double value) override;
     void setParameterValue(const std::string& param_id, double value) override;
     void queueEvent(const PluginEvent& event) override;
+    bool popOutputEvent(PluginEvent& out_event) override;
     void pollMainThread() override;
 
     void setInstanceId(uint32_t id) override { _instance_id = id; }

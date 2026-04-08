@@ -202,6 +202,12 @@ void CompositeNode::queueEvent(const PluginEvent& event) {
     }
 }
 
+bool CompositeNode::popOutputEvent(PluginEvent& out_event) {
+    // FIXME: Implement event output mapping.
+    // For now, composite nodes do not output events to the external graph.
+    return false;
+}
+
 void CompositeNode::pollMainThread() {
     // Poll resources for the internal graph
     std::unique_ptr<GraphProcessor::RenderState> old_state;

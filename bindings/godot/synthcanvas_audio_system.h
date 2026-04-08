@@ -2,6 +2,7 @@
 #define SYNTHCANVAS_AUDIO_SYSTEM_H
 
 #include <godot_cpp/classes/node.hpp>
+#include <godot_cpp/variant/dictionary.hpp>
 
 #include "api/system.h"  // synth_canvas::System
 
@@ -31,6 +32,7 @@ class SynthCanvasAudioSystem : public godot::Node {
     void _process(double delta) override;
 
     auto createPluginInstance(const godot::String& path) -> uint32_t;
+    auto createCompositeInstance(const godot::Dictionary& config) -> uint32_t;
     void destroyInstance(uint32_t instance_id);
     auto registerSpecialNode(const godot::String& type) -> uint32_t;
     void connectNodes(uint32_t from_node, uint32_t from_port, uint32_t to_node, uint32_t to_port,
