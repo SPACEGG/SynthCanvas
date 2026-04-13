@@ -24,32 +24,39 @@ class GraphProcessor {
             uint32_t source_port_index;
         };
 
-        // Mapping for composite parameters: "string_id" -> {node, param}
         struct ParameterMapping {
             uint32_t target_node_id;
             uint32_t target_param_id;
         };
 
-        // Mapping for proxy ports: external_port -> {internal_node, internal_port}
         struct PortProxyMapping {
-            uint32_t internal_node_id;
-            uint32_t internal_port_index;
+            uint32_t node_id;
+            uint32_t port_index;
+        };
+
+        // Destination for an event produced by a node
+        struct EventTarget {
+            enum class Type { kNode, kExternalOutput };
+            Type type;
+            union {
+                ProcessingNode* node;
+                uint32_t port_index;
+            } destination;
         };
 
         std::unordered_map<
             uint32_t, std::unordered_map<uint32_t, std::vector<AudioBufferManager::PortSource>>>
             input_audio_sources;
         std::unordered_map<uint32_t, std::vector<ModulationSource>> input_modulations;
-        std::unordered_map<uint32_t, std::vector<ProcessingNode*>> output_event_targets;
+        std::unordered_map<uint32_t, std::vector<EventTarget>> output_event_targets;
         std::vector<ProcessingNode*> sorted_nodes;
         std::vector<AudioBufferManager::PortSource> master_output_sources;
         std::vector<PortConnection> connections;
 
-        // New mapping tables for composite functionality
         std::unordered_map<std::string, ParameterMapping> parameter_mappings;
         std::vector<ParameterMapping> direct_parameter_mappings;
-        std::unordered_map<uint32_t, PortProxyMapping> input_proxies;
-        std::unordered_map<uint32_t, PortProxyMapping> output_proxies;
+        std::unordered_map<uint32_t, std::vector<PortProxyMapping>> input_proxies;
+        std::unordered_map<uint32_t, std::vector<PortProxyMapping>> output_proxies;
     };
 
     GraphProcessor();
@@ -90,8 +97,8 @@ class GraphProcessor {
     // Temporary storage for mappings before next RenderState creation
     std::unordered_map<std::string, RenderState::ParameterMapping> _parameter_mappings;
     std::vector<RenderState::ParameterMapping> _direct_parameter_mappings;
-    std::unordered_map<uint32_t, RenderState::PortProxyMapping> _input_proxies;
-    std::unordered_map<uint32_t, RenderState::PortProxyMapping> _output_proxies;
+    std::unordered_map<uint32_t, std::vector<RenderState::PortProxyMapping>> _input_proxies;
+    std::unordered_map<uint32_t, std::vector<RenderState::PortProxyMapping>> _output_proxies;
 
     void topologicalSort();
 };

@@ -6,14 +6,14 @@
 #include <vector>
 
 #include "graph_processor.h"
+#include "graph_renderer.h"
 #include "graph_types.h"
 #include "processing_node.h"
 #include "readerwriterqueue.h"
 
 namespace synth_canvas::host {
 
-// Represents a group of interconnected ProcessingNodes, acting as a single node in the parent
-// graph.
+// Represents a group of interconnected ProcessingNodes, acting as a single node in the parent graph.
 class CompositeNode final : public ProcessingNode {
    public:
     CompositeNode();
@@ -70,11 +70,11 @@ class CompositeNode final : public ProcessingNode {
     };
 
     void updateInternalRenderState();
-    void processInternalNode(ProcessingNode* node, int32_t num_frames);
     [[nodiscard]] auto getInternalParameterTarget(clap_id external_id) const -> ParameterTarget;
 
     GraphProcessor _internal_processor;
     AudioBufferManager _internal_buffers;
+    GraphRenderer _renderer;
 
     // External Interface Cache (Metadata)
     std::vector<AudioPortInfo> _external_inputs;
@@ -97,9 +97,8 @@ class CompositeNode final : public ProcessingNode {
     moodycamel::ReaderWriterQueue<std::unique_ptr<GraphProcessor::RenderState>> _released_states;
     std::unique_ptr<GraphProcessor::RenderState> _current_state;
 
-    // Workspaces for internal node processing
-    std::vector<clap_audio_buffer> _inputs_workspace;
-    std::vector<clap_audio_buffer> _outputs_workspace;
+    // Events destined for the parent engine
+    moodycamel::ReaderWriterQueue<PluginEvent> _external_output_events;
 };
 
 }  // namespace synth_canvas::host

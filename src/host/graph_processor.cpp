@@ -19,16 +19,22 @@ auto GraphProcessor::removeNode(uint32_t id) -> std::unique_ptr<ProcessingNode> 
         auto node = std::move(it->second);
         _nodes.erase(it);
 
-        // Cleanly remove all connections associated with this node
         std::erase_if(_connections, [id](const PortConnection& c) {
             return c.from_node == id || c.to_node == id;
         });
 
-        // Clean up mapping tables for containers
-        std::erase_if(_input_proxies,
-                      [id](const auto& item) { return item.second.internal_node_id == id; });
-        std::erase_if(_output_proxies,
-                      [id](const auto& item) { return item.second.internal_node_id == id; });
+        std::erase_if(_input_proxies, [id](const auto& item) {
+            for (const auto& mapping : item.second) {
+                if (mapping.node_id == id) return true;
+            }
+            return false;
+        });
+        std::erase_if(_output_proxies, [id](const auto& item) {
+            for (const auto& mapping : item.second) {
+                if (mapping.node_id == id) return true;
+            }
+            return false;
+        });
         std::erase_if(_parameter_mappings,
                       [id](const auto& item) { return item.second.target_node_id == id; });
 
@@ -49,7 +55,6 @@ void GraphProcessor::connect(const PortConnection& conn) {
 }
 
 void GraphProcessor::disconnect(const PortConnection& conn) {
-    // Concise conditional removal from vector
     std::erase_if(_connections, [&conn](const PortConnection& c) {
         return c.from_node == conn.from_node && c.from_port == conn.from_port &&
                c.to_node == conn.to_node && c.to_port == conn.to_port && c.type == conn.type;
@@ -64,14 +69,12 @@ void GraphProcessor::setParameterMapping(const std::string& param_id, uint32_t n
 
 void GraphProcessor::setInputProxy(uint32_t external_port, uint32_t internal_node,
                                    uint32_t internal_port) {
-    _input_proxies[external_port] = {.internal_node_id = internal_node,
-                                     .internal_port_index = internal_port};
+    _input_proxies[external_port].push_back({.node_id = internal_node, .port_index = internal_port});
 }
 
 void GraphProcessor::setOutputProxy(uint32_t external_port, uint32_t internal_node,
                                     uint32_t internal_port) {
-    _output_proxies[external_port] = {.internal_node_id = internal_node,
-                                      .internal_port_index = internal_port};
+    _output_proxies[external_port].push_back({.node_id = internal_node, .port_index = internal_port});
 }
 
 void GraphProcessor::setDirectParameterMapping(uint32_t index, uint32_t node_id,
@@ -92,12 +95,10 @@ void GraphProcessor::topologicalSort() {
     std::unordered_map<uint32_t, int> in_degree;
     std::unordered_map<uint32_t, std::vector<uint32_t>> adj;
 
-    // Initialize in-degree for all existing nodes
     for (const auto& [id, node] : _nodes) {
         in_degree[id] = 0;
     }
 
-    // Build adjacency list and calculate in-degrees
     for (const auto& conn : _connections) {
         if (_nodes.count(conn.from_node) && _nodes.count(conn.to_node)) {
             adj[conn.from_node].push_back(conn.to_node);
@@ -105,7 +106,6 @@ void GraphProcessor::topologicalSort() {
         }
     }
 
-    // Kahn's Algorithm: Start with nodes having 0 in-degree
     std::queue<uint32_t> q;
     for (const auto& [id, degree] : in_degree) {
         if (degree == 0) {
@@ -125,7 +125,6 @@ void GraphProcessor::topologicalSort() {
         }
     }
 
-    // Safety fallback: Check for missing nodes (probably due to cycle connection)
     if (_process_order.size() < _nodes.size()) {
         for (const auto& [id, node] : _nodes) {
             if (std::ranges::find(_process_order, id) == _process_order.end()) {
@@ -138,7 +137,6 @@ void GraphProcessor::topologicalSort() {
 auto GraphProcessor::createRenderState(uint32_t master_node_id) -> std::unique_ptr<RenderState> {
     auto state = std::make_unique<RenderState>();
 
-    // Map sorted IDs to actual node pointers
     for (uint32_t id : _process_order) {
         if (auto* node = getNode(id)) {
             state->sorted_nodes.push_back(node);
@@ -151,7 +149,6 @@ auto GraphProcessor::createRenderState(uint32_t master_node_id) -> std::unique_p
     state->input_proxies = _input_proxies;
     state->output_proxies = _output_proxies;
 
-    // Build lookup tables for audio processing
     for (const auto& conn : _connections) {
         if (conn.type == ConnectionType::kAudio) {
             if (conn.to_node == master_node_id) {
@@ -161,12 +158,25 @@ auto GraphProcessor::createRenderState(uint32_t master_node_id) -> std::unique_p
                     {conn.from_node, conn.from_port});
             }
         } else if (conn.type == ConnectionType::kEvent) {
-            if (auto* target = getNode(conn.to_node)) {
+            if (auto* target_node = getNode(conn.to_node)) {
+                RenderState::EventTarget target;
+                target.type = RenderState::EventTarget::Type::kNode;
+                target.destination.node = target_node;
                 state->output_event_targets[conn.from_node].push_back(target);
             }
         } else if (conn.type == ConnectionType::kModulation) {
             state->input_modulations[conn.to_node].push_back(
                 {static_cast<clap_id>(conn.to_port), conn.from_node, conn.from_port});
+        }
+    }
+
+    // Register all external event outputs as EventTargets
+    for (const auto& [ext_port, mappings] : _output_proxies) {
+        for (const auto& mapping : mappings) {
+            RenderState::EventTarget target;
+            target.type = RenderState::EventTarget::Type::kExternalOutput;
+            target.destination.port_index = ext_port;
+            state->output_event_targets[mapping.node_id].push_back(target);
         }
     }
 

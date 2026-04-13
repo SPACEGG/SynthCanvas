@@ -11,11 +11,9 @@ namespace synth_canvas::host {
 
 CompositeNode::CompositeNode()
     : _pending_states(constants::kSnapshotQueueSize),
-      _released_states(constants::kSnapshotQueueSize) {
+      _released_states(constants::kSnapshotQueueSize),
+      _external_output_events(constants::kEventQueueSize) {
     _current_state = std::make_unique<GraphProcessor::RenderState>();
-
-    _inputs_workspace.reserve(constants::kMaxConnectionsPerPort);
-    _outputs_workspace.reserve(constants::kMaxConnectionsPerPort);
 }
 
 CompositeNode::~CompositeNode() {
@@ -76,80 +74,36 @@ void CompositeNode::process() {
     if (!_is_active || !_current_state) return;
     int32_t num_frames = _block_size;
 
-    for (ProcessingNode* node : _current_state->sorted_nodes) {
-        if (!node->isActive()) continue;
-        processInternalNode(node, num_frames);
-    }
+    _renderer.render(*_current_state, _internal_buffers, num_frames, 
+        [this](ProcessingNode* source, const PluginEvent& ev, uint32_t ext_port) {
+            PluginEvent proxy_ev = ev;
+            
+            switch (ev.event.header.type) {
+                case CLAP_EVENT_NOTE_ON:
+                case CLAP_EVENT_NOTE_OFF:
+                case CLAP_EVENT_NOTE_CHOKE:
+                case CLAP_EVENT_NOTE_EXPRESSION:
+                    proxy_ev.event.note.port_index = static_cast<int16_t>(ext_port);
+                    break;
+                case CLAP_EVENT_PARAM_VALUE:
+                    proxy_ev.event.param_value.port_index = static_cast<int16_t>(ext_port);
+                    break;
+                case CLAP_EVENT_PARAM_MOD:
+                    proxy_ev.event.param_mod.port_index = static_cast<int16_t>(ext_port);
+                    break;
+                case CLAP_EVENT_MIDI:
+                    proxy_ev.event.midi.port_index = static_cast<int16_t>(ext_port);
+                    break;
+            }
+            
+            this->_external_output_events.enqueue(proxy_ev);
+        });
 }
 
 void CompositeNode::processEnd(int num_frames) {
     for (ProcessingNode* node : _current_state->sorted_nodes) {
         node->processEnd(num_frames);
     }
-}
-
-void CompositeNode::processInternalNode(ProcessingNode* node, int32_t num_frames) {
-    uint32_t node_id = node->getInstanceId();
-
-    const auto& input_ports = node->getAudioPorts(true);
-    _inputs_workspace.assign(input_ports.size(), clap_audio_buffer{});
-
-    for (size_t i = 0; i < input_ports.size(); ++i) {
-        const auto& port_info = input_ports[i];
-        bool is_proxied = false;
-
-        for (const auto& [ext_idx, proxy] : _current_state->input_proxies) {
-            if (proxy.internal_node_id == node_id && proxy.internal_port_index == port_info.index) {
-                if (ext_idx < _ext_input_count) {
-                    _inputs_workspace[i] = _ext_inputs[ext_idx];
-                    is_proxied = true;
-                }
-                break;
-            }
-        }
-
-        if (!is_proxied) {
-            auto it = _current_state->input_audio_sources.find(node_id);
-            std::vector<AudioBufferManager::PortSource> sources;
-            if (it != _current_state->input_audio_sources.end()) {
-                auto port_sources_it = it->second.find(port_info.index);
-                if (port_sources_it != it->second.end()) {
-                    sources = port_sources_it->second;
-                }
-            }
-            _inputs_workspace[i].channel_count = port_info.clap_info.channel_count;
-            _inputs_workspace[i].data32 =
-                _internal_buffers.getInputMix(port_info.index, sources, num_frames);
-        }
-    }
-
-    const auto& output_ports = node->getAudioPorts(false);
-    _outputs_workspace.assign(output_ports.size(), clap_audio_buffer{});
-
-    for (size_t i = 0; i < output_ports.size(); ++i) {
-        const auto& port_info = output_ports[i];
-        bool is_proxied = false;
-
-        for (const auto& [ext_idx, proxy] : _current_state->output_proxies) {
-            if (proxy.internal_node_id == node_id && proxy.internal_port_index == port_info.index) {
-                if (ext_idx < _ext_output_count) {
-                    _outputs_workspace[i] = _ext_outputs[ext_idx];
-                    is_proxied = true;
-                }
-                break;
-            }
-        }
-
-        if (!is_proxied) {
-            _outputs_workspace[i].channel_count = port_info.clap_info.channel_count;
-            _outputs_workspace[i].data32 =
-                _internal_buffers.getBuffer(node_id, port_info.index, num_frames);
-        }
-    }
-
-    node->setPorts(static_cast<uint32_t>(_inputs_workspace.size()), _inputs_workspace.data(),
-                   static_cast<uint32_t>(_outputs_workspace.size()), _outputs_workspace.data());
-    node->process();
 }
 
 void CompositeNode::updateInternalRenderState() {
@@ -211,17 +165,62 @@ auto CompositeNode::getInternalParameterTarget(clap_id external_id) const
 }
 
 void CompositeNode::queueEvent(const PluginEvent& event) {
-    // FIXME: Implement precise event routing. Broadcast for now.
-    for (uint32_t id : _internal_processor.getProcessOrder()) {
-        if (auto* node = _internal_processor.getNode(id)) {
-            node->queueEvent(event);
+    uint32_t ext_port = 0;
+    
+    // Extract external port index based on event type
+    switch (event.event.header.type) {
+        case CLAP_EVENT_NOTE_ON:
+        case CLAP_EVENT_NOTE_OFF:
+        case CLAP_EVENT_NOTE_CHOKE:
+        case CLAP_EVENT_NOTE_EXPRESSION:
+            ext_port = event.event.note.port_index;
+            break;
+        case CLAP_EVENT_PARAM_VALUE:
+            ext_port = event.event.param_value.port_index;
+            break;
+        case CLAP_EVENT_PARAM_MOD:
+            ext_port = event.event.param_mod.port_index;
+            break;
+        case CLAP_EVENT_MIDI:
+            ext_port = event.event.midi.port_index;
+            break;
+        default:
+            return;
+    }
+
+    // Strict 1:N routing using input proxies
+    auto it = _current_state->input_proxies.find(ext_port);
+    if (it != _current_state->input_proxies.end()) {
+        for (const auto& mapping : it->second) {
+            if (auto* node = _internal_processor.getNode(mapping.node_id)) {
+                PluginEvent internal_ev = event;
+                
+                // Translate port index to internal port
+                switch (event.event.header.type) {
+                    case CLAP_EVENT_NOTE_ON:
+                    case CLAP_EVENT_NOTE_OFF:
+                    case CLAP_EVENT_NOTE_CHOKE:
+                    case CLAP_EVENT_NOTE_EXPRESSION:
+                        internal_ev.event.note.port_index = static_cast<int16_t>(mapping.port_index);
+                        break;
+                    case CLAP_EVENT_PARAM_VALUE:
+                        internal_ev.event.param_value.port_index = static_cast<int16_t>(mapping.port_index);
+                        break;
+                    case CLAP_EVENT_PARAM_MOD:
+                        internal_ev.event.param_mod.port_index = static_cast<int16_t>(mapping.port_index);
+                        break;
+                    case CLAP_EVENT_MIDI:
+                        internal_ev.event.midi.port_index = static_cast<int16_t>(mapping.port_index);
+                        break;
+                }
+                node->queueEvent(internal_ev);
+            }
         }
     }
 }
 
 auto CompositeNode::popOutputEvent(PluginEvent& out_event) -> bool {
-    // FIXME: Implement event output mapping.
-    return false;
+    return _external_output_events.try_dequeue(out_event);
 }
 
 void CompositeNode::pollMainThread() {
@@ -244,6 +243,7 @@ auto CompositeNode::load(const CompositeConfig& config) -> bool {
     _external_outputs.clear();
     _external_params.clear();
 
+    // 1. Create internal plugins
     uint32_t next_internal_id = 1;
     for (const auto& p_cfg : config.plugins) {
         auto host = std::make_unique<PluginHost>();
@@ -257,6 +257,7 @@ auto CompositeNode::load(const CompositeConfig& config) -> bool {
         }
     }
 
+    // 2. Setup internal routings
     for (const auto& r_cfg : config.routings) {
         if (alias_to_id.count(r_cfg.from_node) && alias_to_id.count(r_cfg.to_node)) {
             connectInternal({.from_node = alias_to_id[r_cfg.from_node],
@@ -267,13 +268,14 @@ auto CompositeNode::load(const CompositeConfig& config) -> bool {
         }
     }
 
+    // 3. Setup parameter mappings and direct lookup
     uint32_t external_param_idx = 0;
     for (const auto& m_cfg : config.parameter_mappings) {
         if (alias_to_id.count(m_cfg.target_node)) {
             uint32_t internal_id = alias_to_id[m_cfg.target_node];
             setParameterMapping(m_cfg.param_id, internal_id, m_cfg.target_param_index);
             _internal_processor.setDirectParameterMapping(external_param_idx, internal_id,
-                                                          m_cfg.target_param_index);
+                                                           m_cfg.target_param_index);
 
             if (auto* target_node = _internal_processor.getNode(internal_id)) {
                 const auto& internal_params = target_node->getParameters();
@@ -290,15 +292,14 @@ auto CompositeNode::load(const CompositeConfig& config) -> bool {
         }
     }
 
+    // 4. Setup port proxies
     for (const auto& i_cfg : config.input_proxies) {
         if (alias_to_id.count(i_cfg.internal_node)) {
-            if (i_cfg.type == ConnectionType::kEvent) continue;  // FIXME
-
             uint32_t internal_id = alias_to_id[i_cfg.internal_node];
             setInputProxy(i_cfg.external_port_index, internal_id, i_cfg.internal_port_index);
 
-            if (auto* target_node = _internal_processor.getNode(internal_id)) {
-                const auto& internal_ports = target_node->getAudioPorts(true);
+            if (auto* internal_node = _internal_processor.getNode(internal_id)) {
+                const auto& internal_ports = internal_node->getAudioPorts(true);
                 for (const auto& p : internal_ports) {
                     if (p.index == i_cfg.internal_port_index) {
                         AudioPortInfo ext_info = p;
@@ -313,13 +314,11 @@ auto CompositeNode::load(const CompositeConfig& config) -> bool {
     }
     for (const auto& o_cfg : config.output_proxies) {
         if (alias_to_id.count(o_cfg.internal_node)) {
-            if (o_cfg.type == ConnectionType::kEvent) continue;  // FIXME
-
             uint32_t internal_id = alias_to_id[o_cfg.internal_node];
             setOutputProxy(o_cfg.external_port_index, internal_id, o_cfg.internal_port_index);
 
-            if (auto* target_node = _internal_processor.getNode(internal_id)) {
-                const auto& internal_ports = target_node->getAudioPorts(false);
+            if (auto* internal_node = _internal_processor.getNode(internal_id)) {
+                const auto& internal_ports = internal_node->getAudioPorts(false);
                 for (const auto& p : internal_ports) {
                     if (p.index == o_cfg.internal_port_index) {
                         AudioPortInfo ext_info = p;
