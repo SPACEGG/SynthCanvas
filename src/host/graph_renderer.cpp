@@ -1,54 +1,56 @@
 #include "graph_renderer.h"
-#include "processing_node.h"
-#include "constants.h"
+
 #include <cmath>
+
+#include "constants.h"
+#include "processing_node.h"
 
 namespace synth_canvas::host {
 
-GraphRenderer::GraphRenderer() {
+void GraphRenderer::reserve() {
     _mod_sum_workspace.reserve(constants::kMaxConnectionsPerPort);
     _inputs_workspace.reserve(constants::kMaxConnectionsPerPort);
     _outputs_workspace.reserve(constants::kMaxConnectionsPerPort);
 }
 
-void GraphRenderer::render(const GraphProcessor::RenderState& state, 
-                           AudioBufferManager& buffers, 
-                           int32_t num_frames,
-                           const EventHandler& handler) {
-    for (ProcessingNode* node : state.sorted_nodes) {
+void GraphRenderer::render(const GraphProcessor::RenderState& state, AudioBufferManager& buffers,
+                           int32_t num_frames, const EventHandler& handler) {
+    // Execute nodes in pre-calculated topological order
+    for (size_t i = 0; i < state.sorted_nodes.size(); ++i) {
+        ProcessingNode* node = state.sorted_nodes[i];
         if (!node || !node->isActive()) continue;
 
-        processSingleNode(node, state, buffers, num_frames);
-        collectAndRouteEvents(node, state, handler);
+        processSingleNode(i, node, state, buffers, num_frames);
+        collectAndRouteEvents(i, node, state, handler);
     }
 }
 
-void GraphRenderer::processSingleNode(ProcessingNode* node, 
+void GraphRenderer::processSingleNode(size_t node_index, ProcessingNode* node,
                                       const GraphProcessor::RenderState& state,
-                                      AudioBufferManager& buffers,
-                                      int32_t num_frames) {
-    applyParameterModulation(node, state, buffers, num_frames);
-    prepareAudioInputs(node, state, buffers, num_frames);
+                                      AudioBufferManager& buffers, int32_t num_frames) {
+    applyParameterModulation(node_index, node, state, num_frames);
+    prepareAudioInputs(node_index, node, state, buffers, num_frames);
     prepareAudioOutputs(node, buffers, num_frames);
     executeNodeProcessing(node, num_frames);
 }
 
-void GraphRenderer::applyParameterModulation(ProcessingNode* node, 
+void GraphRenderer::applyParameterModulation(size_t node_index, ProcessingNode* node,
                                              const GraphProcessor::RenderState& state,
-                                             AudioBufferManager& buffers,
                                              int32_t num_frames) {
-    uint32_t node_id = node->getInstanceId();
-    auto mod_it = state.input_modulations.find(node_id);
-    if (mod_it == state.input_modulations.end()) return;
+    const auto& modulations = state.input_modulations[node_index];
+    if (modulations.empty()) return;
 
     for (int t = 0; t < num_frames; t += constants::kModulationStepSize) {
         _mod_sum_workspace.clear();
 
-        for (const auto& mod : mod_it->second) {
-            float** src_buffer = buffers.getReadOnlyBuffer(mod.source_node_id, mod.source_port_index);
-            if (!src_buffer) continue;
+        for (const auto& mod : modulations) {
+            ProcessingNode* src_node = state.sorted_nodes[mod.source_node_index];
+            if (!src_node) continue;
 
-            float mod_value = src_buffer[0][t];
+            auto* src_buf = src_node->getOutputBuffer(mod.source_port_index);
+            if (!src_buf || !src_buf->data32) continue;
+
+            float mod_value = src_buf->data32[0][t];
 
             bool found = false;
             for (auto& entry : _mod_sum_workspace) {
@@ -60,7 +62,8 @@ void GraphRenderer::applyParameterModulation(ProcessingNode* node,
             }
 
             if (!found) {
-                _mod_sum_workspace.emplace_back(mod.target_param_id, static_cast<double>(mod_value));
+                _mod_sum_workspace.emplace_back(mod.target_param_id,
+                                                static_cast<double>(mod_value));
             }
         }
 
@@ -73,48 +76,67 @@ void GraphRenderer::applyParameterModulation(ProcessingNode* node,
     }
 }
 
-void GraphRenderer::prepareAudioInputs(ProcessingNode* node, 
+void GraphRenderer::prepareAudioInputs(size_t node_index, ProcessingNode* node,
                                        const GraphProcessor::RenderState& state,
-                                       AudioBufferManager& buffers,
-                                       int32_t num_frames) {
-    uint32_t node_id = node->getInstanceId();
+                                       AudioBufferManager& buffers, int32_t num_frames) {
     const auto& input_ports = node->getAudioPorts(true);
     _inputs_workspace.assign(input_ports.size(), clap_audio_buffer{});
 
-    auto input_map_it = state.input_audio_sources.find(node_id);
+    const auto& port_map = state.input_audio_sources[node_index];
 
     for (size_t i = 0; i < input_ports.size(); ++i) {
         const auto& port_info = input_ports[i];
+
+        AudioBuffer* final_input = nullptr;
+        auto it = port_map.find(port_info.index);
+
+        if (it == port_map.end() || it->second.empty()) {
+            final_input = nullptr;
+        } else if (it->second.size() == 1) {
+            const auto& src = it->second[0];
+            ProcessingNode* src_node = state.sorted_nodes[src.node_index];
+            if (src_node) final_input = src_node->getOutputBuffer(src.port_index);
+        } else {
+            AudioBuffer* mix_buf = buffers.getMixBuffer(port_info.index);
+            if (mix_buf) {
+                mix_buf->clear();
+                for (const auto& src : it->second) {
+                    ProcessingNode* src_node = state.sorted_nodes[src.node_index];
+                    if (src_node) {
+                        AudioBuffer* src_buf = src_node->getOutputBuffer(src.port_index);
+                        mix_buf->accumulate(src_buf, num_frames);
+                    }
+                }
+                final_input = mix_buf;
+            }
+        }
+
         _inputs_workspace[i].channel_count = port_info.clap_info.channel_count;
+        _inputs_workspace[i].data32 = final_input ? final_input->data32 : nullptr;
         _inputs_workspace[i].constant_mask = 0;
         _inputs_workspace[i].latency = 0;
         _inputs_workspace[i].data64 = nullptr;
-
-        std::vector<AudioBufferManager::PortSource> sources;
-        if (input_map_it != state.input_audio_sources.end()) {
-            auto port_sources_it = input_map_it->second.find(port_info.index);
-            if (port_sources_it != input_map_it->second.end()) {
-                sources = port_sources_it->second;
-            }
-        }
-        _inputs_workspace[i].data32 = buffers.getInputMix(port_info.index, sources, num_frames);
     }
 }
 
-void GraphRenderer::prepareAudioOutputs(ProcessingNode* node, 
-                                        AudioBufferManager& buffers,
+void GraphRenderer::prepareAudioOutputs(ProcessingNode* node, AudioBufferManager& buffers,
                                         int32_t num_frames) {
-    uint32_t node_id = node->getInstanceId();
     const auto& output_ports = node->getAudioPorts(false);
     _outputs_workspace.assign(output_ports.size(), clap_audio_buffer{});
 
     for (size_t i = 0; i < output_ports.size(); ++i) {
         const auto& port_info = output_ports[i];
+
+        AudioBuffer* buf = node->getOutputBuffer(port_info.index);
+        if (buf && buf->owns_memory) {
+            buf->clear();
+        }
+
         _outputs_workspace[i].channel_count = port_info.clap_info.channel_count;
+        _outputs_workspace[i].data32 = buf ? buf->data32 : nullptr;
         _outputs_workspace[i].constant_mask = 0;
         _outputs_workspace[i].latency = 0;
         _outputs_workspace[i].data64 = nullptr;
-        _outputs_workspace[i].data32 = buffers.getBuffer(node_id, port_info.index, num_frames);
     }
 }
 
@@ -126,26 +148,30 @@ void GraphRenderer::executeNodeProcessing(ProcessingNode* node, int32_t num_fram
     node->processEnd(num_frames);
 }
 
-void GraphRenderer::collectAndRouteEvents(ProcessingNode* node, 
+void GraphRenderer::collectAndRouteEvents(size_t node_index, ProcessingNode* node,
                                           const GraphProcessor::RenderState& state,
                                           const EventHandler& handler) {
-    uint32_t source_node_id = node->getInstanceId();
-    auto it = state.output_event_targets.find(source_node_id);
-    
+    const auto& targets = state.output_event_targets[node_index];
+    if (targets.empty()) {
+        PluginEvent ev;
+        while (node->popOutputEvent(ev)) {
+        }
+        return;
+    }
+
     PluginEvent ev;
     while (node->popOutputEvent(ev)) {
-        if (it != state.output_event_targets.end()) {
-            for (const auto& target : it->second) {
-                if (target.type == GraphProcessor::RenderState::EventTarget::Type::kNode) {
-                    target.destination.node->queueEvent(ev);
-                } else if (target.type == GraphProcessor::RenderState::EventTarget::Type::kExternalOutput) {
-                    if (handler) {
-                        handler(node, ev, target.destination.port_index);
-                    }
+        for (const auto& target : targets) {
+            if (target.type == GraphProcessor::RenderState::EventTarget::Type::kNode) {
+                target.destination.node->queueEvent(ev);
+            } else if (target.type ==
+                       GraphProcessor::RenderState::EventTarget::Type::kExternalOutput) {
+                if (handler) {
+                    handler(node, ev, target.destination.port_index);
                 }
             }
         }
     }
 }
 
-} // namespace synth_canvas::host
+}  // namespace synth_canvas::host
