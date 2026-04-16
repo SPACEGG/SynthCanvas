@@ -89,18 +89,19 @@ void GraphRenderer::prepareAudioInputs(size_t node_index, ProcessingNode* node,
 
         AudioBuffer* final_input = nullptr;
         auto it = port_map.find(port_info.index);
+        const auto& sources = it->second;
 
-        if (it == port_map.end() || it->second.empty()) {
+        if (it == port_map.end() || sources.empty()) {
             final_input = nullptr;
-        } else if (it->second.size() == 1) {
-            const auto& src = it->second[0];
+        } else if (sources.size() == 1) {
+            const auto& src = sources[0];
             ProcessingNode* src_node = state.sorted_nodes[src.node_index];
             if (src_node) final_input = src_node->getOutputBuffer(src.port_index);
         } else {
-            AudioBuffer* mix_buf = buffers.getMixBuffer(port_info.index);
+            AudioBuffer* mix_buf = buffers.getMixBuffer(node_index, port_info.index);
             if (mix_buf) {
                 mix_buf->clear();
-                for (const auto& src : it->second) {
+                for (const auto& src : sources) {
                     ProcessingNode* src_node = state.sorted_nodes[src.node_index];
                     if (src_node) {
                         AudioBuffer* src_buf = src_node->getOutputBuffer(src.port_index);

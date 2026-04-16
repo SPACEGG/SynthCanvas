@@ -62,6 +62,9 @@ class PluginHost final : public ProcessingNode, public BaseHost {
     void process() override;
     void processEnd(int num_frames) override;
 
+    auto getOutputBuffer(uint32_t port_idx) -> AudioBuffer* override;
+    void reserveOutputBuffers(uint32_t count) override;
+
     // --- Parameters & External Events ---
     void setParameterValue(clap_id param_id, double value) override;
     void setParameterValue(const std::string& param_id, double value) override;
@@ -71,7 +74,6 @@ class PluginHost final : public ProcessingNode, public BaseHost {
     void queueEvent(const PluginEvent& event) override;
     auto popOutputEvent(PluginEvent& out_event) -> bool override;
     void pollMainThread() override;
-
 
     // --- ProcessingNode Metadata Accessors ---
     void setInstanceId(uint32_t id) override { _instance_id = id; }
@@ -181,6 +183,8 @@ class PluginHost final : public ProcessingNode, public BaseHost {
 
     std::vector<AudioPortInfo> _audio_input_ports;
     std::vector<AudioPortInfo> _audio_output_ports;
+
+    std::vector<AudioBuffer> _output_buffers;
 
     std::vector<std::unique_ptr<ParameterSlot>> _params;
     std::unordered_map<clap_id, size_t> _param_id_to_index;

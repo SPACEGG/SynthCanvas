@@ -341,6 +341,9 @@ auto PluginHost::load(const std::string& path, int plugin_index) -> bool {
     scanParameters();
     scanAudioPorts();
 
+    // Reserve owned output buffers based on scanned port count
+    reserveOutputBuffers(_audio_output_ports_count);
+
     auto note_ports_ext = static_cast<const clap_plugin_note_ports_t*>(
         _plugin->clapPlugin()->get_extension(_plugin->clapPlugin(), CLAP_EXT_NOTE_PORTS));
 
@@ -397,6 +400,10 @@ void PluginHost::unload() {
 void PluginHost::activate(int32_t sample_rate, int32_t block_size) {
     if (!_plugin) {
         return;
+    }
+
+    for (auto& buf : _output_buffers) {
+        buf.resize(constants::kDefaultChannelCount, block_size);
     }
 
     if (!_plugin->activate(sample_rate, 1, block_size)) {
@@ -522,6 +529,22 @@ void PluginHost::queueEvent(const PluginEvent& event) { _input_events.try_enqueu
 
 auto PluginHost::popOutputEvent(PluginEvent& out_event) -> bool {
     return _output_events_to_audio.try_dequeue(out_event);
+}
+
+auto PluginHost::getOutputBuffer(uint32_t port_idx) -> AudioBuffer* {
+    if (port_idx < _output_buffers.size()) {
+        return &_output_buffers[port_idx];
+    }
+    return nullptr;
+}
+
+void PluginHost::reserveOutputBuffers(uint32_t count) {
+    if (count > _output_buffers.size()) {
+        _output_buffers.resize(count);
+        for (auto& buf : _output_buffers) {
+            buf.owns_memory = true;
+        }
+    }
 }
 
 void PluginHost::pollMainThread() {

@@ -5,12 +5,11 @@
 #include <oboe/Oboe.h>
 
 #include <memory>
-#include <vector>
 
 #include "audio_buffer_manager.h"
 #include "constants.h"
-#include "module_router.h"
 #include "graph_renderer.h"
+#include "module_router.h"
 
 namespace synth_canvas::host {
 
@@ -43,6 +42,10 @@ class AudioEngine : public oboe::AudioStreamDataCallback {
 
     void updateRenderState();
     void handleEvent(ProcessingNode* source, const PluginEvent& ev, uint32_t port_index);
+
+    // Accumulates planar source buffer to interleaved destination buffer (for oboe output)
+    void accumulateToInterleaved(const AudioBuffer* src, float* dst_interleaved,
+                                 int32_t num_frames);
 
     std::shared_ptr<oboe::AudioStream> _stream;
     ModuleRouter* _module_router;

@@ -8,7 +8,6 @@
 #include <unordered_map>
 #include <vector>
 
-#include "audio_buffer_manager.h"
 #include "graph_types.h"
 #include "processing_node.h"
 
@@ -18,23 +17,27 @@ class GraphProcessor {
    public:
     // Snapshot of the graph state for the audio thread
     struct RenderState {
+        struct AudioSource {
+            uint32_t node_index;
+            uint32_t port_index;
+        };
+
         struct ModulationSource {
             clap_id target_param_id;
-            uint32_t source_node_id;
+            uint32_t source_node_index;
             uint32_t source_port_index;
         };
 
         struct ParameterMapping {
-            uint32_t target_node_id;
+            uint32_t target_node_index;
             uint32_t target_param_id;
         };
 
         struct PortProxyMapping {
-            uint32_t node_id;
+            uint32_t node_index;
             uint32_t port_index;
         };
 
-        // Destination for an event produced by a node
         struct EventTarget {
             enum class Type { kNode, kExternalOutput };
             Type type;
@@ -44,13 +47,13 @@ class GraphProcessor {
             } destination;
         };
 
-        std::unordered_map<
-            uint32_t, std::unordered_map<uint32_t, std::vector<AudioBufferManager::PortSource>>>
-            input_audio_sources;
-        std::unordered_map<uint32_t, std::vector<ModulationSource>> input_modulations;
-        std::unordered_map<uint32_t, std::vector<EventTarget>> output_event_targets;
+        // Indexed by target node_index
+        std::vector<std::unordered_map<uint32_t, std::vector<AudioSource>>> input_audio_sources;
+        std::vector<std::vector<ModulationSource>> input_modulations;
+        std::vector<std::vector<EventTarget>> output_event_targets;
+
         std::vector<ProcessingNode*> sorted_nodes;
-        std::vector<AudioBufferManager::PortSource> master_output_sources;
+        std::vector<AudioSource> master_output_sources;
         std::vector<PortConnection> connections;
 
         std::unordered_map<std::string, ParameterMapping> parameter_mappings;
@@ -90,15 +93,25 @@ class GraphProcessor {
     [[nodiscard]] auto hasNode(uint32_t id) const -> bool { return _nodes.count(id) > 0; }
 
    private:
+    struct ParameterMappingRequest {
+        uint32_t target_node_id;
+        uint32_t target_param_id;
+    };
+
+    struct PortProxyRequest {
+        uint32_t node_id;
+        uint32_t port_index;
+    };
+
     std::unordered_map<uint32_t, std::unique_ptr<ProcessingNode>> _nodes;
     std::vector<PortConnection> _connections;
     std::vector<uint32_t> _process_order;
 
     // Temporary storage for mappings before next RenderState creation
-    std::unordered_map<std::string, RenderState::ParameterMapping> _parameter_mappings;
-    std::vector<RenderState::ParameterMapping> _direct_parameter_mappings;
-    std::unordered_map<uint32_t, std::vector<RenderState::PortProxyMapping>> _input_proxies;
-    std::unordered_map<uint32_t, std::vector<RenderState::PortProxyMapping>> _output_proxies;
+    std::unordered_map<std::string, ParameterMappingRequest> _parameter_mappings;
+    std::vector<ParameterMappingRequest> _direct_parameter_mappings;
+    std::unordered_map<uint32_t, std::vector<PortProxyRequest>> _input_proxies;
+    std::unordered_map<uint32_t, std::vector<PortProxyRequest>> _output_proxies;
 
     void topologicalSort();
 };

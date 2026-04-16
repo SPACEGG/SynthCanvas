@@ -11,8 +11,10 @@ if(ANDROID)
     list(APPEND CORE_SOURCES
         host/audio_buffer_manager.cpp
         host/audio_engine.cpp
+        host/boundary_node.cpp
         host/composite_node.cpp
         host/graph_processor.cpp
+        host/graph_renderer.cpp
         host/logger.cpp
         host/module_router.cpp
         host/plugin_host.cpp

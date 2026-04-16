@@ -5,15 +5,18 @@
 #include <string>
 #include <vector>
 
+#include "boundary_node.h"
 #include "graph_processor.h"
 #include "graph_renderer.h"
 #include "graph_types.h"
 #include "processing_node.h"
 #include "readerwriterqueue.h"
 
+
 namespace synth_canvas::host {
 
-// Represents a group of interconnected ProcessingNodes, acting as a single node in the parent graph.
+// Represents a group of interconnected ProcessingNodes, acting as a single node in the parent
+// graph.
 class CompositeNode final : public ProcessingNode {
    public:
     CompositeNode();
@@ -30,6 +33,10 @@ class CompositeNode final : public ProcessingNode {
     void processBegin(int num_frames) override;
     void process() override;
     void processEnd(int num_frames) override;
+
+    // --- Node-Owned Output Buffers (RAII) ---
+    auto getOutputBuffer(uint32_t port_idx) -> AudioBuffer* override;
+    void reserveOutputBuffers(uint32_t count) override;
 
     // --- Parameters & External Events ---
     void setParameterValue(clap_id param_id, double value) override;
@@ -79,6 +86,9 @@ class CompositeNode final : public ProcessingNode {
     // External Interface Cache (Metadata)
     std::vector<AudioPortInfo> _external_inputs;
     std::vector<AudioPortInfo> _external_outputs;
+
+    std::vector<AudioBuffer> _output_buffers;
+
     std::vector<std::unique_ptr<ParameterSlot>> _external_params;
 
     // Current Buffers provided by parent
@@ -92,13 +102,14 @@ class CompositeNode final : public ProcessingNode {
     int32_t _block_size = 0;
     bool _is_active = false;
 
+    // Boundary Nodes
+    BoundaryNode* _input_proxy_node = nullptr;
+    BoundaryNode* _output_proxy_node = nullptr;
+
     // Snapshot mechanism for internal graph state
     moodycamel::ReaderWriterQueue<std::unique_ptr<GraphProcessor::RenderState>> _pending_states;
     moodycamel::ReaderWriterQueue<std::unique_ptr<GraphProcessor::RenderState>> _released_states;
     std::unique_ptr<GraphProcessor::RenderState> _current_state;
-
-    // Events destined for the parent engine
-    moodycamel::ReaderWriterQueue<PluginEvent> _external_output_events;
 };
 
 }  // namespace synth_canvas::host

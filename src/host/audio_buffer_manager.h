@@ -2,10 +2,11 @@
 #define AUDIO_BUFFER_MANAGER_H
 
 #include <cstdint>
-#include <unordered_map>
+#include <memory>
 #include <vector>
 
 #include "constants.h"
+#include "graph_types.h"
 
 namespace synth_canvas::host {
 
@@ -14,44 +15,25 @@ class AudioBufferManager {
     AudioBufferManager();
     ~AudioBufferManager();
 
-    // Get a zero-initialized buffer for a specific node and port
-    auto getBuffer(uint32_t node_id, uint32_t port_index, int num_frames) -> float**;
+    // Pre-allocation (Main Thread)
+    // Reserves memory for internal summing buffers.
+    void reserveInputMixBuffers(const std::vector<uint32_t>& port_counts);
 
-    // Get a read-only buffer for a specific node and port (does NOT clear)
-    auto getReadOnlyBuffer(uint32_t node_id, uint32_t port_index) -> float**;
+    // Mix Buffer Access (Audio Thread)
+    // Returns a pre-allocated mix buffer for internal summing at the specified node and port.
+    auto getMixBuffer(size_t node_index, uint32_t port_idx) -> AudioBuffer*;
 
-    // Get a mixed input buffer for a specific target port from multiple source (node, port) pairs
-    struct PortSource {
-        uint32_t node_id;
-        uint32_t port_index;
-    };
-    auto getInputMix(uint32_t target_port_index, const std::vector<PortSource>& sources,
-                     int num_frames) -> float**;
+    // Synchronization
+    // Prepares the manager for a new processing block (e.g., state resets).
+    void prepareBlock();
 
-    // Mix multiple sources into a single interleaved buffer (for final output)
-    void mixToInterleaved(const std::vector<PortSource>& sources, float* output_data,
-                          int num_frames);
-
+    // Utilities
+    // Resizes all managed mix buffers to match the current engine configuration.
     void resize(int channels, int max_frames);
 
    private:
-    struct Buffer {
-        std::vector<float> data;
-        std::vector<float*> ptrs;
-        int channels = 0;
-        int capacity = 0;
-
-        void resize(int ch, int caps);
-        void clear(int frames);
-    };
-
-    void ensureBuffer(Buffer& buf, int frames);
-
-    // Map: NodeID -> Vector of Output Port Buffers
-    std::unordered_map<uint32_t, std::vector<Buffer>> _node_outputs;
-
-    // Multiple mix buffers for multiple input ports
-    std::vector<Buffer> _input_mix_buffers;
+    // Pre-allocated owned buffers for mixing: [node_index][port_index]
+    std::vector<std::vector<std::unique_ptr<AudioBuffer>>> _input_mix_buffers;
 
     int _channels = 2;
     int _max_frames = constants::kDefaultFramesPerBlock;

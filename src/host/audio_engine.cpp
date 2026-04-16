@@ -104,20 +104,54 @@ auto AudioEngine::onAudioReady(oboe::AudioStream* oboe_stream, void* audio_data,
         return oboe::DataCallbackResult::Continue;
     }
 
+    _buffer_manager.prepareBlock();
+
     _renderer.render(*_current_render_state, _buffer_manager, num_frames,
                      [this](ProcessingNode* source, const PluginEvent& ev, uint32_t port_index) {
                          this->handleEvent(source, ev, port_index);
                      });
 
-    _buffer_manager.mixToInterleaved(_current_render_state->master_output_sources,
-                                     static_cast<float*>(audio_data), num_frames);
+    // Clear output buffer
+    auto* output_ptr = static_cast<float*>(audio_data);
+    std::memset(output_ptr, 0, num_frames * _channel_count * sizeof(float));
+
+    // Sum master outputs directly to hardware buffer
+    for (const auto& src : _current_render_state->master_output_sources) {
+        ProcessingNode* node = _current_render_state->sorted_nodes[src.node_index];
+        if (auto* node_buf = node->getOutputBuffer(src.port_index)) {
+            accumulateToInterleaved(node_buf, output_ptr, num_frames);
+        }
+    }
 
     return oboe::DataCallbackResult::Continue;
+}
+
+void AudioEngine::accumulateToInterleaved(const AudioBuffer* src, float* dst_interleaved,
+                                          int32_t num_frames) {
+    if (!src || !src->data32) return;
+
+    int32_t src_channels = src->channels;
+    int32_t dst_channels = _channel_count;
+
+    for (int32_t f = 0; f < num_frames; ++f) {
+        for (int32_t c = 0; c < dst_channels; ++c) {
+            // Map source channels to destination channels (simple mono/stereo handling)
+            if (c < src_channels) {
+                dst_interleaved[f * dst_channels + c] += src->data32[c][f];
+            }
+        }
+    }
 }
 
 void AudioEngine::updateRenderState() {
     std::unique_ptr<ModuleRouter::AudioRenderState> new_state;
     while (_module_router->pending_states.try_dequeue(new_state)) {
+        std::vector<uint32_t> port_counts;
+        for (auto* node : new_state->sorted_nodes) {
+            port_counts.push_back(static_cast<uint32_t>(node->getAudioPorts(true).size()));
+        }
+        _buffer_manager.reserveInputMixBuffers(port_counts);
+
         if (_current_render_state) {
             _module_router->released_states.enqueue(std::move(_current_render_state));
         }
@@ -125,9 +159,7 @@ void AudioEngine::updateRenderState() {
     }
 }
 
-void AudioEngine::handleEvent(ProcessingNode* source, const PluginEvent& ev, uint32_t port_index) {
-    // TODO(): AudioEngine is the root. Events reaching here are for the system's MIDI output.
-}
+void AudioEngine::handleEvent(ProcessingNode* source, const PluginEvent& ev, uint32_t port_index) {}
 
 void AudioEngine::playNote(uint32_t instance_id, int note, double velocity, int32_t note_id) {
     if (_module_router) {
