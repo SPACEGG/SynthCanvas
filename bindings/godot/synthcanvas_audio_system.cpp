@@ -57,9 +57,10 @@ SynthCanvasAudioSystem::SynthCanvasAudioSystem() {
         godot::UtilityFunctions::print(godot::String(msg.c_str()));
     });
 
-    _system->setParameterChangedCallback([this](uint32_t instance_id, uint32_t param_id, double value) -> void {
-        emit_signal("parameter_changed", instance_id, param_id, value);
-    });
+    _system->setParameterChangedCallback(
+        [this](uint32_t instance_id, uint32_t param_id, double value) -> void {
+            emit_signal("parameter_changed", instance_id, param_id, value);
+        });
 }
 
 SynthCanvasAudioSystem::~SynthCanvasAudioSystem() {
@@ -97,66 +98,68 @@ auto SynthCanvasAudioSystem::createCompositeInstance(const godot::Dictionary& co
     // 1. Plugins
     if (config.has("plugins")) {
         godot::Array plugins = config["plugins"];
-        for (int i = 0; i < plugins.size(); ++i) {
-            godot::Dictionary p = plugins[i];
-            cpp_config.plugins.push_back({
-                .alias = std::string(godot::String(p["alias"]).utf8().get_data()),
-                .plugin_path = std::string(godot::String(p["plugin_path"]).utf8().get_data())
-            });
+        for (const auto& plugin : plugins) {
+            godot::Dictionary p = plugin;
+            cpp_config.plugins.push_back(
+                {.alias = std::string(godot::String(p["alias"]).utf8().get_data()),
+                 .plugin_path = std::string(godot::String(p["plugin_path"]).utf8().get_data())});
         }
     }
 
     // 2. Routings
     if (config.has("routings")) {
         godot::Array routings = config["routings"];
-        for (int i = 0; i < routings.size(); ++i) {
-            godot::Dictionary r = routings[i];
-            cpp_config.routings.push_back({
-                .from_node = std::string(godot::String(r["from_node"]).utf8().get_data()),
-                .from_port = static_cast<uint32_t>(static_cast<int>(r["from_port"])),
-                .to_node = std::string(godot::String(r["to_node"]).utf8().get_data()),
-                .to_port = static_cast<uint32_t>(static_cast<int>(r["to_port"])),
-                .type = static_cast<synth_canvas::ConnectionType>(static_cast<int>(r["type"]))
-            });
+        for (const auto& routing : routings) {
+            godot::Dictionary r = routing;
+            cpp_config.routings.push_back(
+                {.from_node = std::string(godot::String(r["from_node"]).utf8().get_data()),
+                 .from_port = static_cast<uint32_t>(static_cast<int>(r["from_port"])),
+                 .to_node = std::string(godot::String(r["to_node"]).utf8().get_data()),
+                 .to_port = static_cast<uint32_t>(static_cast<int>(r["to_port"])),
+                 .type = static_cast<synth_canvas::ConnectionType>(static_cast<int>(r["type"]))});
         }
     }
 
     // 3. Parameter Mappings
     if (config.has("parameter_mappings")) {
         godot::Array mappings = config["parameter_mappings"];
-        for (int i = 0; i < mappings.size(); ++i) {
-            godot::Dictionary m = mappings[i];
-            cpp_config.parameter_mappings.push_back({
-                .param_id = std::string(godot::String(m["param_id"]).utf8().get_data()),
-                .target_node = std::string(godot::String(m["target_node"]).utf8().get_data()),
-                .target_param_index = static_cast<uint32_t>(static_cast<int>(m["target_param_index"]))
-            });
+        for (const auto& mapping : mappings) {
+            godot::Dictionary m = mapping;
+            cpp_config.parameter_mappings.push_back(
+                {.param_id = std::string(godot::String(m["param_id"]).utf8().get_data()),
+                 .target_node = std::string(godot::String(m["target_node"]).utf8().get_data()),
+                 .target_param_index =
+                     static_cast<uint32_t>(static_cast<int>(m["target_param_index"]))});
         }
     }
 
     // 4. Input Proxies
     if (config.has("input_proxies")) {
         godot::Array proxies = config["input_proxies"];
-        for (int i = 0; i < proxies.size(); ++i) {
-            godot::Dictionary p = proxies[i];
-            cpp_config.input_proxies.push_back({
-                .external_port_index = static_cast<uint32_t>(static_cast<int>(p["external_port_index"])),
-                .internal_node = std::string(godot::String(p["internal_node"]).utf8().get_data()),
-                .internal_port_index = static_cast<uint32_t>(static_cast<int>(p["internal_port_index"]))
-            });
+        for (const auto& proxie : proxies) {
+            godot::Dictionary p = proxie;
+            cpp_config.input_proxies.push_back(
+                {.external_port_index =
+                     static_cast<uint32_t>(static_cast<int>(p["external_port_index"])),
+                 .internal_node = std::string(godot::String(p["internal_node"]).utf8().get_data()),
+                 .internal_port_index =
+                     static_cast<uint32_t>(static_cast<int>(p["internal_port_index"])),
+                 .type = static_cast<synth_canvas::ConnectionType>(static_cast<int>(p["type"]))});
         }
     }
 
     // 5. Output Proxies
     if (config.has("output_proxies")) {
         godot::Array proxies = config["output_proxies"];
-        for (int i = 0; i < proxies.size(); ++i) {
-            godot::Dictionary p = proxies[i];
-            cpp_config.output_proxies.push_back({
-                .external_port_index = static_cast<uint32_t>(static_cast<int>(p["external_port_index"])),
-                .internal_node = std::string(godot::String(p["internal_node"]).utf8().get_data()),
-                .internal_port_index = static_cast<uint32_t>(static_cast<int>(p["internal_port_index"]))
-            });
+        for (const auto& proxie : proxies) {
+            godot::Dictionary p = proxie;
+            cpp_config.output_proxies.push_back(
+                {.external_port_index =
+                     static_cast<uint32_t>(static_cast<int>(p["external_port_index"])),
+                 .internal_node = std::string(godot::String(p["internal_node"]).utf8().get_data()),
+                 .internal_port_index =
+                     static_cast<uint32_t>(static_cast<int>(p["internal_port_index"])),
+                 .type = static_cast<synth_canvas::ConnectionType>(static_cast<int>(p["type"]))});
         }
     }
 
