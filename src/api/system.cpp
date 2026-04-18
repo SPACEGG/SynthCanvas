@@ -72,6 +72,11 @@ struct System::Impl {
                 sev.data.parameter.key = ev.event.param_mod.key;
                 sev.data.parameter.channel = ev.event.param_mod.channel;
                 break;
+            case CLAP_EVENT_MIDI:
+                sev.type = SystemEventType::kMidi;
+                sev.data.midi.port_index = ev.event.midi.port_index;
+                std::memcpy(sev.data.midi.data.data(), ev.event.midi.data, 3);
+                break;
             default:
                 return;
         }

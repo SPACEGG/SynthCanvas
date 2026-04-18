@@ -3,6 +3,7 @@
 #include "composite_node.h"
 #include "constants.h"
 #include "logger.h"
+#include "midi_input_node.h"
 #include "plugin_host.h"
 
 namespace synth_canvas::host {
@@ -72,6 +73,14 @@ auto ModuleRouter::registerSpecialNode(const std::string& type) -> uint32_t {
         id = constants::kAudioOutputNoteId;
     } else {
         id = _next_instance_id++;
+    }
+
+    if (type == "midi_input") {
+        auto node = std::make_unique<MidiInputNode>();
+        node->setInstanceId(id);
+        node->on_event_occured = on_event_occured;
+        _graph_processor.addNode(id, std::move(node));
+        pushNewState();
     }
 
     log("[ModuleRouter] Registered special node ID: ", id, " Type: ", type);
