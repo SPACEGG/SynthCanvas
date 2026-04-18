@@ -9,7 +9,6 @@
 #include <clap/helpers/event-list.hh>
 #include <clap/helpers/host.hh>
 #include <clap/helpers/plugin-proxy.hh>
-#include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>
