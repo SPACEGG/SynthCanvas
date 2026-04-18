@@ -48,7 +48,7 @@ struct SystemEvent {
 
         struct {
             int16_t port_index;
-            uint8_t data[3];
+            std::array<uint8_t, 3> data;
         } midi;
     } data;
 };

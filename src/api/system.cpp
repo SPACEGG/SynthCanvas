@@ -1,13 +1,14 @@
 #include "system.h"
 
 #if defined(__ANDROID__)
+#include <clap/clap.h>
+
 #include "host/audio_engine.h"
-#include "host/composite_node.h"
+#include "host/graph_types.h"
 #include "host/logger.h"
 #include "host/module_router.h"
 #include "host/plugin_host.h"
-#include "host/graph_types.h"
-#include <clap/clap.h>
+
 #endif
 
 namespace synth_canvas {
@@ -92,8 +93,8 @@ void System::initialize(LogCallback log_cb) {
     if (_pimpl->module_router) {
         _pimpl->module_router->on_event_occured =
             [this](uint32_t instance_id, const synth_canvas::host::PluginEvent& ev) {
-            _pimpl->handleInternalEvent(instance_id, ev);
-        };
+                _pimpl->handleInternalEvent(instance_id, ev);
+            };
     }
 #else
     if (log_cb) log_cb("[System] Initializing (Dummy/Windows)...");
@@ -264,8 +265,6 @@ void System::stopNoteFromNode(uint32_t from_node_id, int note) {
 #endif
 }
 
-void System::setEventOccuredCallback(EventOccuredCallback cb) {
-    _pimpl->on_event_occured = cb;
-}
+void System::setEventOccuredCallback(EventOccuredCallback cb) { _pimpl->on_event_occured = cb; }
 
 }  // namespace synth_canvas
