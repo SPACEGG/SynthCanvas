@@ -17,8 +17,20 @@ class SynthCanvasAudioSystem : public godot::Node {
         kConnectionTypeModulation = 2,
     };
 
+    enum SystemEventType {
+        kNoteOn,
+        kNoteOff,
+        kNoteChoke,
+        kNoteExpression,
+        kParameterValue,
+        kParameterMod,
+        kMidi,
+    };
+
    private:
     std::unique_ptr<synth_canvas::System> _system;
+
+    void emitEventSignal(const synth_canvas::SystemEvent& ev);
 
    protected:
     static void _bind_methods();

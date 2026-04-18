@@ -1,7 +1,9 @@
 #include "synthcanvas_audio_system.h"
 
 #include <godot_cpp/core/class_db.hpp>
+#include <godot_cpp/variant/packed_byte_array.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
+
 
 void SynthCanvasAudioSystem::_bind_methods() {
     godot::ClassDB::bind_method(godot::D_METHOD("create_plugin_instance", "path"),
@@ -54,6 +56,11 @@ void SynthCanvasAudioSystem::_bind_methods() {
                                  godot::PropertyInfo(godot::Variant::INT, "note"),
                                  godot::PropertyInfo(godot::Variant::FLOAT, "velocity"),
                                  godot::PropertyInfo(godot::Variant::BOOL, "is_on")));
+
+    ADD_SIGNAL(godot::MethodInfo(
+        "midi_event_received", godot::PropertyInfo(godot::Variant::INT, "instance_id"),
+        godot::PropertyInfo(godot::Variant::PACKED_BYTE_ARRAY, "midi_bytes"),
+        godot::PropertyInfo(godot::Variant::INT, "port_index")));
 }
 
 SynthCanvasAudioSystem::SynthCanvasAudioSystem() {
@@ -63,18 +70,23 @@ SynthCanvasAudioSystem::SynthCanvasAudioSystem() {
         godot::UtilityFunctions::print(godot::String(msg.c_str()));
     });
 
-    _system->setEventOccuredCallback(
-        [this](const synth_canvas::SystemEvent& ev) -> void {
-            if (ev.type == synth_canvas::SystemEventType::kParameterValue) {
-                emit_signal("parameter_changed", ev.instance_id, ev.data.parameter.param_id,
-                            ev.data.parameter.value);
-            } else if (ev.type == synth_canvas::SystemEventType::kNoteOn ||
-                       ev.type == synth_canvas::SystemEventType::kNoteOff) {
-                bool is_on = (ev.type == synth_canvas::SystemEventType::kNoteOn);
-                emit_signal("note_event_received", ev.instance_id, ev.data.note.key,
-                            ev.data.note.velocity, is_on);
-            }
-        });
+    _system->setEventOccuredCallback([this](const synth_canvas::SystemEvent& ev) -> void {
+        using synth_canvas::SystemEventType;
+        if (ev.type == SystemEventType::kParameterValue) {
+            emit_signal("parameter_changed", ev.instance_id, ev.data.parameter.param_id,
+                        ev.data.parameter.value);
+        } else if (ev.type == SystemEventType::kNoteOn || ev.type == SystemEventType::kNoteOff) {
+            bool is_on = (ev.type == SystemEventType::kNoteOn);
+            emit_signal("note_event_received", ev.instance_id, ev.data.note.key,
+                        ev.data.note.velocity, is_on);
+        } else if (ev.type == SystemEventType::kMidi) {
+            godot::PackedByteArray bytes;
+            bytes.push_back(ev.data.midi.data[0]);
+            bytes.push_back(ev.data.midi.data[1]);
+            bytes.push_back(ev.data.midi.data[2]);
+            emit_signal("midi_event_received", ev.instance_id, bytes, ev.data.midi.port_index);
+        }
+    });
 }
 
 SynthCanvasAudioSystem::~SynthCanvasAudioSystem() {
