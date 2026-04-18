@@ -14,7 +14,9 @@ namespace synth_canvas::host {
 
 class BoundaryNode : public ProcessingNode {
    public:
-    BoundaryNode();
+    enum class Type { kInputProxy, kOutputProxy };
+
+    explicit BoundaryNode(Type type);
     ~BoundaryNode() override = default;
 
     // ProcessingNode Interface
@@ -23,10 +25,10 @@ class BoundaryNode : public ProcessingNode {
     void setProcessingEnabled(bool enabled) override {}
 
     void setPorts(uint32_t num_inputs, clap_audio_buffer* inputs, uint32_t num_outputs,
-                  clap_audio_buffer* outputs) override {}
+                  clap_audio_buffer* outputs) override;
 
-    void processBegin(int num_frames) override {}
-    void process() override {}
+    void processBegin(int num_frames) override;
+    void process() override;
     void processEnd(int num_frames) override {}
 
     auto getOutputBuffer(uint32_t port_idx) -> AudioBuffer* override;
@@ -59,16 +61,24 @@ class BoundaryNode : public ProcessingNode {
 
     // Boundary Control
     void setAudioPorts(bool is_input, const std::vector<AudioPortInfo>& ports);
+    void setExternalBuffers(clap_audio_buffer* buffers, uint32_t count);
 
    private:
+    Type _type;
     uint32_t _instance_id = 0;
     bool _is_active = false;
     int32_t _sample_rate = constants::kDefaultSampleRate;
     int32_t _block_size = constants::kDefaultFramesPerBlock;
+    int32_t _current_num_frames = 0;
 
     std::vector<AudioPortInfo> _input_port_info;
     std::vector<AudioPortInfo> _output_port_info;
     std::vector<std::unique_ptr<AudioBuffer>> _output_buffers;
+
+    clap_audio_buffer* _current_inputs = nullptr;
+    uint32_t _current_num_inputs = 0;
+    clap_audio_buffer* _external_buffers = nullptr;
+    uint32_t _external_count = 0;
 
     moodycamel::ReaderWriterQueue<PluginEvent> _event_queue;
 

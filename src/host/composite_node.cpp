@@ -1,13 +1,11 @@
 #include "composite_node.h"
 
-#include <algorithm>
 #include <cstring>
 #include <map>
 
 #include "constants.h"
 #include "logger.h"
 #include "plugin_host.h"
-
 
 namespace synth_canvas::host {
 
@@ -18,6 +16,10 @@ CompositeNode::CompositeNode()
     : _pending_states(constants::kSnapshotQueueSize),
       _released_states(constants::kSnapshotQueueSize) {
     _current_state = std::make_unique<GraphProcessor::RenderState>();
+    _input_proxy_node_owned = std::make_unique<BoundaryNode>(BoundaryNode::Type::kInputProxy);
+    _input_proxy_node = _input_proxy_node_owned.get();
+    _output_proxy_node_owned = std::make_unique<BoundaryNode>(BoundaryNode::Type::kOutputProxy);
+    _output_proxy_node = _output_proxy_node_owned.get();
 }
 
 CompositeNode::~CompositeNode() {
@@ -44,6 +46,8 @@ void CompositeNode::activate(int32_t sample_rate, int32_t block_size) {
 
     _internal_buffers.resize(constants::kDefaultChannelCount, block_size);
     _is_active = true;
+
+    reserveOutputBuffers(static_cast<uint32_t>(_external_outputs.size()));
 }
 
 void CompositeNode::deactivate() {
@@ -75,63 +79,27 @@ void CompositeNode::setPorts(uint32_t num_inputs, clap_audio_buffer* inputs, uin
 
 void CompositeNode::processBegin(int num_frames) {
     updateInternalRenderState();
+    _current_num_frames = num_frames;
     if (_input_proxy_node) _input_proxy_node->processBegin(num_frames);
     if (_output_proxy_node) _output_proxy_node->processBegin(num_frames);
 }
 
 void CompositeNode::process() {
     if (!_is_active || !_current_state) return;
-    int32_t num_frames = _block_size;
+    int32_t num_frames = _current_num_frames;
 
     _internal_buffers.prepareBlock();
 
-    // Feed External Inputs to InputProxyNode's OUTPUT buffers
+    // 1. Prepare Proxies with current block's external buffers
     if (_input_proxy_node) {
-        for (uint32_t i = 0; i < _ext_input_count; ++i) {
-            AudioBuffer* internal_buf = _input_proxy_node->getOutputBuffer(i);
-            if (internal_buf && _ext_inputs[i].data32) {
-                int32_t ch_to_copy = std::min(internal_buf->channels,
-                                              static_cast<int32_t>(_ext_inputs[i].channel_count));
-                for (int32_t c = 0; c < ch_to_copy; ++c) {
-                    std::memcpy(internal_buf->data32[c], _ext_inputs[i].data32[c],
-                                num_frames * sizeof(float));
-                }
-            }
-        }
+        _input_proxy_node->setExternalBuffers(_ext_inputs, _ext_input_count);
     }
-
-    // Render Internal Graph
-    _renderer.render(*_current_state, _internal_buffers, num_frames, nullptr);
-
-    // Collect Results from OutputProxyNode's INPUT (via Mix Buffers)
     if (_output_proxy_node) {
-        // Clear external outputs
-        for (uint32_t i = 0; i < _ext_output_count; ++i) {
-            if (_ext_outputs[i].data32) {
-                for (uint32_t c = 0; c < _ext_outputs[i].channel_count; ++c) {
-                    std::memset(_ext_outputs[i].data32[c], 0, num_frames * sizeof(float));
-                }
-            }
-        }
-
-        // OutputProxyNode is in sorted_nodes. Find its index once per state update
-        auto it = std::find(_current_state->sorted_nodes.begin(),
-                            _current_state->sorted_nodes.end(), _output_proxy_node);
-        if (it != _current_state->sorted_nodes.end()) {
-            size_t node_idx = std::distance(_current_state->sorted_nodes.begin(), it);
-            for (uint32_t i = 0; i < _ext_output_count; ++i) {
-                AudioBuffer* mix_buf = _internal_buffers.getMixBuffer(node_idx, i);
-                if (mix_buf && _ext_outputs[i].data32) {
-                    int32_t ch_to_copy = std::min(
-                        mix_buf->channels, static_cast<int32_t>(_ext_outputs[i].channel_count));
-                    for (int32_t c = 0; c < ch_to_copy; ++c) {
-                        std::memcpy(_ext_outputs[i].data32[c], mix_buf->data32[c],
-                                    num_frames * sizeof(float));
-                    }
-                }
-            }
-        }
+        _output_proxy_node->setExternalBuffers(_ext_outputs, _ext_output_count);
     }
+
+    // 2. Render Internal Graph (Proxies will handle data movement during process())
+    _renderer.render(*_current_state, _internal_buffers, num_frames, nullptr);
 }
 
 void CompositeNode::processEnd(int num_frames) {
@@ -206,7 +174,9 @@ auto CompositeNode::getInternalParameterTarget(clap_id external_id) const
 }
 
 void CompositeNode::queueEvent(const PluginEvent& event) {
-    if (_input_proxy_node) _input_proxy_node->queueEvent(event);
+    if (_input_proxy_node) {
+        _input_proxy_node->queueEvent(event);
+    }
 }
 
 auto CompositeNode::popOutputEvent(PluginEvent& out_event) -> bool {
@@ -228,14 +198,13 @@ void CompositeNode::pollMainThread() {
 auto CompositeNode::load(const CompositeConfig& config) -> bool {
     log("[CompositeNode] Loading configuration.");
 
-    // Create and Register Proxy Nodes
-    auto input_proxy = std::make_unique<BoundaryNode>();
-    _input_proxy_node = input_proxy.get();
-    _internal_processor.addNode(kInputProxyId, std::move(input_proxy));
-
-    auto output_proxy = std::make_unique<BoundaryNode>();
-    _output_proxy_node = output_proxy.get();
-    _internal_processor.addNode(kOutputProxyId, std::move(output_proxy));
+    // 1. Register Proxy Nodes (Ownership is moved to processor)
+    if (_input_proxy_node_owned) {
+        _internal_processor.addNode(kInputProxyId, std::move(_input_proxy_node_owned));
+    }
+    if (_output_proxy_node_owned) {
+        _internal_processor.addNode(kOutputProxyId, std::move(_output_proxy_node_owned));
+    }
 
     std::map<std::string, uint32_t> alias_to_id;
     _external_inputs.clear();
@@ -282,6 +251,7 @@ auto CompositeNode::load(const CompositeConfig& config) -> bool {
             info.index = i_cfg.external_port_index;
             info.is_input = true;
             info.is_modulation = (i_cfg.type == ConnectionType::kModulation);
+            info.clap_info.channel_count = constants::kDefaultChannelCount;
             _external_inputs.push_back(info);
 
             AudioPortInfo out_info = info;
@@ -305,6 +275,7 @@ auto CompositeNode::load(const CompositeConfig& config) -> bool {
             info.index = o_cfg.external_port_index;
             info.is_input = false;
             info.is_modulation = (o_cfg.type == ConnectionType::kModulation);
+            info.clap_info.channel_count = constants::kDefaultChannelCount;
             _external_outputs.push_back(info);
 
             AudioPortInfo in_info = info;
@@ -355,12 +326,6 @@ void CompositeNode::setParameterMapping(const std::string& param_id, uint32_t in
                                         uint32_t internal_param_id) {
     _internal_processor.setParameterMapping(param_id, internal_node_id, internal_param_id);
 }
-
-void CompositeNode::setInputProxy(uint32_t external_port, uint32_t internal_node,
-                                  uint32_t internal_port) {}
-
-void CompositeNode::setOutputProxy(uint32_t external_port, uint32_t internal_node,
-                                   uint32_t internal_port) {}
 
 void CompositeNode::pushInternalState() {
     auto new_state = _internal_processor.createRenderState(0);

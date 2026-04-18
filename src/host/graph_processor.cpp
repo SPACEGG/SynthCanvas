@@ -23,18 +23,6 @@ auto GraphProcessor::removeNode(uint32_t id) -> std::unique_ptr<ProcessingNode> 
             return c.from_node == id || c.to_node == id;
         });
 
-        std::erase_if(_input_proxies, [id](const auto& item) {
-            for (const auto& mapping : item.second) {
-                if (mapping.node_id == id) return true;
-            }
-            return false;
-        });
-        std::erase_if(_output_proxies, [id](const auto& item) {
-            for (const auto& mapping : item.second) {
-                if (mapping.node_id == id) return true;
-            }
-            return false;
-        });
         std::erase_if(_parameter_mappings,
                       [id](const auto& item) { return item.second.target_node_id == id; });
 
@@ -65,18 +53,6 @@ void GraphProcessor::disconnect(const PortConnection& conn) {
 void GraphProcessor::setParameterMapping(const std::string& param_id, uint32_t node_id,
                                          uint32_t clap_param_id) {
     _parameter_mappings[param_id] = {.target_node_id = node_id, .target_param_id = clap_param_id};
-}
-
-void GraphProcessor::setInputProxy(uint32_t external_port, uint32_t internal_node,
-                                   uint32_t internal_port) {
-    _input_proxies[external_port].push_back(
-        {.node_id = internal_node, .port_index = internal_port});
-}
-
-void GraphProcessor::setOutputProxy(uint32_t external_port, uint32_t internal_node,
-                                    uint32_t internal_port) {
-    _output_proxies[external_port].push_back(
-        {.node_id = internal_node, .port_index = internal_port});
 }
 
 void GraphProcessor::setDirectParameterMapping(uint32_t index, uint32_t node_id,
@@ -197,30 +173,6 @@ auto GraphProcessor::createRenderState(uint32_t master_node_id) -> std::unique_p
                 state->input_modulations[id_to_index[conn.to_node]].push_back(
                     {static_cast<clap_id>(conn.to_port), id_to_index[conn.from_node],
                      conn.from_port});
-            }
-        }
-    }
-
-    // Convert Proxies (ID to Index)
-    for (const auto& [ext_port, mappings] : _input_proxies) {
-        for (const auto& mapping : mappings) {
-            if (id_to_index.count(mapping.node_id)) {
-                state->input_proxies[ext_port].push_back(
-                    {id_to_index[mapping.node_id], mapping.port_index});
-            }
-        }
-    }
-
-    for (const auto& [ext_port, mappings] : _output_proxies) {
-        for (const auto& mapping : mappings) {
-            if (id_to_index.count(mapping.node_id)) {
-                uint32_t src_idx = id_to_index[mapping.node_id];
-                state->output_proxies[ext_port].push_back({src_idx, mapping.port_index});
-
-                RenderState::EventTarget target;
-                target.type = RenderState::EventTarget::Type::kExternalOutput;
-                target.destination.port_index = ext_port;
-                state->output_event_targets[src_idx].push_back(target);
             }
         }
     }
