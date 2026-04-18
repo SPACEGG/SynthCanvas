@@ -21,6 +21,17 @@ constexpr size_t kSnapshotQueueSize = 32;
 constexpr size_t kEventQueueSize = 4096;
 
 // MIDI & Protocol
+namespace midi_status {
+constexpr uint8_t kNoteOff = 0x80;
+constexpr uint8_t kNoteOn = 0x90;
+constexpr uint8_t kPolyPressure = 0xA0;
+constexpr uint8_t kControlChange = 0xB0;
+constexpr uint8_t kProgramChange = 0xC0;
+constexpr uint8_t kAftertouch = 0xD0;
+constexpr uint8_t kPitchBend = 0xE0;
+constexpr uint8_t kSystem = 0xF0;
+}  // namespace midi_status
+
 constexpr double kMidiMaxVelocity = 127.0;
 constexpr int kMidiCcStatusByte = 0xB0;
 constexpr int16_t kDefaultEventPortIndex = 0;
