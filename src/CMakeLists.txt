@@ -39,6 +39,7 @@ if(ANDROID)
         ${CORE_DIR}/libs/clap/include
         ${CORE_DIR}/libs/clap-helpers/include
         ${CORE_DIR}/libs/readerwriterqueue
+        ${CORE_DIR}/libs/rtmidi
     )
 
     target_link_libraries(synth_canvas_core PRIVATE
