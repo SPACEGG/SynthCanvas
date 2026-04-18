@@ -29,7 +29,7 @@ auto ModuleRouter::createPluginInstance(const std::string& path) -> uint32_t {
 
     uint32_t id = _next_instance_id++;
     host->setInstanceId(id);
-    host->on_parameter_changed = on_parameter_changed;
+    host->on_event_occured = on_event_occured;
 
     _graph_processor.addNode(id, std::move(host));
     pushNewState();

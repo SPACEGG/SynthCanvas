@@ -121,6 +121,41 @@ void CompositeNode::updateInternalRenderState() {
     }
 }
 
+void CompositeNode::handleInternalEvent(uint32_t internal_id, const PluginEvent& ev) {
+    if (!_current_state) return;
+
+    PluginEvent mapped_ev = ev;
+
+    if (ev.event.header.type == CLAP_EVENT_PARAM_VALUE) {
+        for (const auto& [ext_id, mapping] : _current_state->parameter_mappings) {
+            if (mapping.target_param_id == ev.event.param_value.param_id) {
+                ProcessingNode* target_node =
+                    _current_state->sorted_nodes[mapping.target_node_index];
+                if (target_node && target_node->getInstanceId() == internal_id) {
+                    for (size_t i = 0; i < _current_state->direct_parameter_mappings.size(); ++i) {
+                        const auto& d_mapping = _current_state->direct_parameter_mappings[i];
+                        if (d_mapping.target_param_id == ev.event.param_value.param_id) {
+                            ProcessingNode* d_node =
+                                _current_state->sorted_nodes[d_mapping.target_node_index];
+                            if (d_node && d_node->getInstanceId() == internal_id) {
+                                mapped_ev.event.param_value.param_id = static_cast<clap_id>(i);
+                                goto dispatch;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // Ignore unmapped(private internal) event
+        return;
+    }
+
+dispatch:
+    if (on_event_occured) {
+        on_event_occured(_instance_id, mapped_ev);
+    }
+}
+
 void CompositeNode::setParameterValue(clap_id param_id, double value) {
     auto target = getInternalParameterTarget(param_id);
     if (target.node) {
@@ -219,6 +254,12 @@ auto CompositeNode::load(const CompositeConfig& config) -> bool {
             uint32_t id = next_internal_id++;
             host->setInstanceId(id);
             alias_to_id[p_cfg.alias] = id;
+
+            // Intercept internal events for bubbling up and parameter ID translation
+            host->on_event_occured = [this](uint32_t internal_id, const PluginEvent& ev) {
+                this->handleInternalEvent(internal_id, ev);
+            };
+
             addInternalNode(id, std::move(host));
         } else {
             return false;

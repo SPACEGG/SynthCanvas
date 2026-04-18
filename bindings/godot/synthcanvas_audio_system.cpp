@@ -48,6 +48,12 @@ void SynthCanvasAudioSystem::_bind_methods() {
                                  godot::PropertyInfo(godot::Variant::INT, "instance_id"),
                                  godot::PropertyInfo(godot::Variant::INT, "param_id"),
                                  godot::PropertyInfo(godot::Variant::FLOAT, "value")));
+
+    ADD_SIGNAL(godot::MethodInfo("note_event_received",
+                                 godot::PropertyInfo(godot::Variant::INT, "instance_id"),
+                                 godot::PropertyInfo(godot::Variant::INT, "note"),
+                                 godot::PropertyInfo(godot::Variant::FLOAT, "velocity"),
+                                 godot::PropertyInfo(godot::Variant::BOOL, "is_on")));
 }
 
 SynthCanvasAudioSystem::SynthCanvasAudioSystem() {
@@ -57,9 +63,17 @@ SynthCanvasAudioSystem::SynthCanvasAudioSystem() {
         godot::UtilityFunctions::print(godot::String(msg.c_str()));
     });
 
-    _system->setParameterChangedCallback(
-        [this](uint32_t instance_id, uint32_t param_id, double value) -> void {
-            emit_signal("parameter_changed", instance_id, param_id, value);
+    _system->setEventOccuredCallback(
+        [this](const synth_canvas::SystemEvent& ev) -> void {
+            if (ev.type == synth_canvas::SystemEventType::kParameterValue) {
+                emit_signal("parameter_changed", ev.instance_id, ev.data.parameter.param_id,
+                            ev.data.parameter.value);
+            } else if (ev.type == synth_canvas::SystemEventType::kNoteOn ||
+                       ev.type == synth_canvas::SystemEventType::kNoteOff) {
+                bool is_on = (ev.type == synth_canvas::SystemEventType::kNoteOn);
+                emit_signal("note_event_received", ev.instance_id, ev.data.note.key,
+                            ev.data.note.velocity, is_on);
+            }
         });
 }
 

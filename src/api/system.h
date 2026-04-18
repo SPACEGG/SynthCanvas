@@ -11,8 +11,7 @@ namespace synth_canvas {
 
 class System {
    public:
-    using ParameterChangedCallback =
-        std::function<void(uint32_t instance_id, uint32_t param_id, double value)>;
+    using EventOccuredCallback = std::function<void(const SystemEvent& ev)>;
     using LogCallback = std::function<void(const std::string& msg)>;
 
     System();
@@ -53,8 +52,8 @@ class System {
     void playNoteFromNode(uint32_t from_node_id, int note, double velocity);
     void stopNoteFromNode(uint32_t from_node_id, int note);
 
-    // Parameter Callbacks
-    void setParameterChangedCallback(ParameterChangedCallback cb);
+    // Event Callbacks
+    void setEventOccuredCallback(EventOccuredCallback cb);
 
    private:
     struct Impl;
