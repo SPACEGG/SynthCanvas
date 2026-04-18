@@ -4,6 +4,7 @@
 #include <clap/clap.h>
 
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -62,6 +63,9 @@ class ProcessingNode {
 
     // State Check
     [[nodiscard]] virtual auto isActive() const -> bool = 0;
+
+    // Universal Event Callback (invoked during pollMainThread)
+    std::function<void(uint32_t, const PluginEvent&)> on_event_occured;
 };
 
 }  // namespace synth_canvas::host

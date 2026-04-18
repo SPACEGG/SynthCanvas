@@ -557,11 +557,10 @@ void PluginHost::pollMainThread() {
                 slot->base_value.store(ev.event.param_value.value, std::memory_order_relaxed);
                 slot->current_value.store(ev.event.param_value.value, std::memory_order_relaxed);
             }
+        }
 
-            if (on_parameter_changed) {
-                on_parameter_changed(_instance_id, ev.event.param_value.param_id,
-                                     ev.event.param_value.value);
-            }
+        if (on_event_occured) {
+            on_event_occured(_instance_id, ev);
         }
     }
 }
@@ -659,6 +658,7 @@ void PluginHost::handlePluginOutputEvents() {
 
                 PluginEvent out_ev;
                 out_ev.event.note = *nev;
+                _output_events_to_main.try_enqueue(out_ev);
                 _output_events_to_audio.try_enqueue(out_ev);
                 break;
             }

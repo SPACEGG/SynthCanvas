@@ -14,6 +14,45 @@ enum class ConnectionType : int {
     kModulation = 2,
 };
 
+// --- Abstracted Events for GUI/External API (No CLAP dependency) ---
+
+enum class SystemEventType : uint32_t {
+    kNoteOn,
+    kNoteOff,
+    kNoteChoke,
+    kNoteExpression,
+    kParameterValue,
+    kParameterMod,
+    kMidi,
+};
+
+struct SystemEvent {
+    SystemEventType type;
+    uint32_t instance_id;
+
+    union {
+        struct {
+            int16_t port_index;
+            int16_t key;
+            int16_t channel;
+            double velocity;
+            int32_t note_id;
+        } note;
+
+        struct {
+            uint32_t param_id;
+            double value;
+            int16_t key;
+            int16_t channel;
+        } parameter;
+
+        struct {
+            int16_t port_index;
+            uint8_t data[3];
+        } midi;
+    } data;
+};
+
 // --- Composite Module Configurations ---
 
 struct InternalPluginConfig {

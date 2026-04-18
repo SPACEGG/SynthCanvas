@@ -6,6 +6,8 @@
 #include "host/logger.h"
 #include "host/module_router.h"
 #include "host/plugin_host.h"
+#include "host/graph_types.h"
+#include <clap/clap.h>
 #endif
 
 namespace synth_canvas {
@@ -14,16 +16,70 @@ namespace synth_canvas {
 struct System::Impl {
     std::unique_ptr<synth_canvas::host::ModuleRouter> module_router;
     std::unique_ptr<synth_canvas::host::AudioEngine> audio_engine;
-    ParameterChangedCallback on_parameter_changed;
+    EventOccuredCallback on_event_occured;
 
     Impl() {
         module_router = std::make_unique<synth_canvas::host::ModuleRouter>();
         audio_engine = std::make_unique<synth_canvas::host::AudioEngine>(module_router.get());
     }
+
+    void handleInternalEvent(uint32_t instance_id, const synth_canvas::host::PluginEvent& ev) {
+        if (!on_event_occured) return;
+
+        SystemEvent sev;
+        sev.instance_id = instance_id;
+
+        switch (ev.event.header.type) {
+            case CLAP_EVENT_NOTE_ON:
+                sev.type = SystemEventType::kNoteOn;
+                sev.data.note.port_index = ev.event.note.port_index;
+                sev.data.note.key = ev.event.note.key;
+                sev.data.note.channel = ev.event.note.channel;
+                sev.data.note.velocity = ev.event.note.velocity;
+                sev.data.note.note_id = ev.event.note.note_id;
+                break;
+            case CLAP_EVENT_NOTE_OFF:
+                sev.type = SystemEventType::kNoteOff;
+                sev.data.note.port_index = ev.event.note.port_index;
+                sev.data.note.key = ev.event.note.key;
+                sev.data.note.channel = ev.event.note.channel;
+                sev.data.note.velocity = ev.event.note.velocity;
+                sev.data.note.note_id = ev.event.note.note_id;
+                break;
+            case CLAP_EVENT_NOTE_CHOKE:
+                sev.type = SystemEventType::kNoteChoke;
+                sev.data.note.port_index = ev.event.note.port_index;
+                sev.data.note.key = ev.event.note.key;
+                sev.data.note.channel = ev.event.note.channel;
+                break;
+            case CLAP_EVENT_NOTE_EXPRESSION:
+                sev.type = SystemEventType::kNoteExpression;
+                sev.data.note.key = ev.event.note.key;
+                sev.data.note.velocity = ev.event.note.velocity;
+                break;
+            case CLAP_EVENT_PARAM_VALUE:
+                sev.type = SystemEventType::kParameterValue;
+                sev.data.parameter.param_id = ev.event.param_value.param_id;
+                sev.data.parameter.value = ev.event.param_value.value;
+                sev.data.parameter.key = ev.event.param_value.key;
+                sev.data.parameter.channel = ev.event.param_value.channel;
+                break;
+            case CLAP_EVENT_PARAM_MOD:
+                sev.type = SystemEventType::kParameterMod;
+                sev.data.parameter.param_id = ev.event.param_mod.param_id;
+                sev.data.parameter.value = ev.event.param_mod.amount;
+                sev.data.parameter.key = ev.event.param_mod.key;
+                sev.data.parameter.channel = ev.event.param_mod.channel;
+                break;
+            default:
+                return;
+        }
+        on_event_occured(sev);
+    }
 };
 #else
 struct System::Impl {
-    ParameterChangedCallback on_parameter_changed;
+    EventOccuredCallback on_event_occured;
 };
 #endif
 
@@ -34,11 +90,9 @@ void System::initialize(LogCallback log_cb) {
 #if defined(__ANDROID__)
     synth_canvas::host::setLogCallback(log_cb);
     if (_pimpl->module_router) {
-        _pimpl->module_router->on_parameter_changed =
-            [this](uint32_t instance_id, uint32_t param_id, double value) -> void {
-            if (_pimpl->on_parameter_changed) {
-                _pimpl->on_parameter_changed(instance_id, param_id, value);
-            }
+        _pimpl->module_router->on_event_occured =
+            [this](uint32_t instance_id, const synth_canvas::host::PluginEvent& ev) {
+            _pimpl->handleInternalEvent(instance_id, ev);
         };
     }
 #else
@@ -210,8 +264,8 @@ void System::stopNoteFromNode(uint32_t from_node_id, int note) {
 #endif
 }
 
-void System::setParameterChangedCallback(ParameterChangedCallback cb) {
-    _pimpl->on_parameter_changed = cb;
+void System::setEventOccuredCallback(EventOccuredCallback cb) {
+    _pimpl->on_event_occured = cb;
 }
 
 }  // namespace synth_canvas

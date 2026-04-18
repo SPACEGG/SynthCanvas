@@ -102,8 +102,6 @@ class PluginHost final : public ProcessingNode, public BaseHost {
         return _output_events_to_audio;
     }
 
-    std::function<void(uint32_t, clap_id, double)> on_parameter_changed;
-
    protected:
     // --- CLAP Host Overrides ---
     void requestRestart() noexcept override;
