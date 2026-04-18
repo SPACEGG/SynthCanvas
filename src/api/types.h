@@ -1,6 +1,7 @@
 #ifndef SYNTH_CANVAS_API_TYPES_H
 #define SYNTH_CANVAS_API_TYPES_H
 
+#include <array>
 #include <cstdint>
 #include <string>
 #include <vector>
