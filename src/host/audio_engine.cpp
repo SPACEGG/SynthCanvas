@@ -133,14 +133,11 @@ void AudioEngine::accumulateToInterleaved(const AudioBuffer* src, float* dst_int
     int32_t src_channels = src->channels;
     int32_t dst_channels = _channel_count;
 
-    bool has_sound = false;
-
     for (int32_t f = 0; f < num_frames; ++f) {
         for (int32_t c = 0; c < dst_channels; ++c) {
             // Map source channels to destination channels (simple mono/stereo handling)
             if (c < src_channels) {
                 float sample = src->data32[c][f];
-                if (sample != 0.0f) has_sound = true;
                 dst_interleaved[f * dst_channels + c] += sample;
             }
         }

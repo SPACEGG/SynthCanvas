@@ -51,18 +51,8 @@ void BoundaryNode::process() {
 
             if (src.data32 && dst.data32) {
                 uint32_t ch_to_copy = std::min(src.channel_count, dst.channel_count);
-                bool has_sound = false;
                 for (uint32_t c = 0; c < ch_to_copy; ++c) {
                     std::memcpy(dst.data32[c], src.data32[c], _current_num_frames * sizeof(float));
-
-                    if (!has_sound) {
-                        for (int32_t f = 0; f < _current_num_frames; ++f) {
-                            if (src.data32[c][f] != 0.0f) {
-                                has_sound = true;
-                                break;
-                            }
-                        }
-                    }
                 }
             }
         }
