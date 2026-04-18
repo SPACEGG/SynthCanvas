@@ -22,6 +22,7 @@ file(MAKE_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
 add_subdirectory(libs/clap)
 add_subdirectory(libs/clap-helpers)
 add_subdirectory(libs/readerwriterqueue)
+set(RTMIDI_BUILD_STATIC_LIBS ON CACHE BOOL "" FORCE)
 add_subdirectory(libs/rtmidi)
 
 # Engine & Plugins

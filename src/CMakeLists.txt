@@ -49,12 +49,24 @@ if(ANDROID)
         readerwriterqueue
     )
     
+    target_link_libraries(synth_canvas_core PUBLIC rtmidi)
+    
     if(NOT TARGET oboe)
         add_subdirectory(${CORE_DIR}/libs/oboe ${CMAKE_CURRENT_BINARY_DIR}/oboe)
     endif()
     target_include_directories(synth_canvas_core SYSTEM PRIVATE ${CORE_DIR}/libs/oboe/include)
-    target_link_libraries(synth_canvas_core PRIVATE oboe dl)
     
     find_library(log-lib log)
-    target_link_libraries(synth_canvas_core PRIVATE ${log-lib})
+    find_library(amidi-lib amidi)
+    find_library(android-lib android)
+    find_library(nativehelper-lib nativehelper)
+    
+    target_link_libraries(synth_canvas_core PRIVATE 
+        oboe 
+        dl 
+        ${log-lib}
+        ${amidi-lib}
+        ${android-lib}
+        ${nativehelper-lib}
+    )
 endif()
