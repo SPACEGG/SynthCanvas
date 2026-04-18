@@ -138,10 +138,7 @@ void System::destroyInstance(uint32_t instance_id) {
 auto System::registerSpecialNode(const std::string& type) -> uint32_t {
 #if defined(__ANDROID__)
     if (_pimpl->module_router) {
-        if (type == "audio_out") {
-            return synth_canvas::host::constants::kAudioOutputNoteId;
-        }
-        return _pimpl->module_router->registerSpecialNode();
+        return _pimpl->module_router->registerSpecialNode(type);
     }
     return 0;
 #else

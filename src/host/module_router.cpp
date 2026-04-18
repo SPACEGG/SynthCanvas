@@ -66,10 +66,15 @@ void ModuleRouter::destroyInstance(uint32_t instance_id) {
     }
 }
 
-auto ModuleRouter::registerSpecialNode() -> uint32_t {
-    uint32_t id = _next_instance_id++;
-    // Special nodes (like custom audio IO) can be registered as ProcessingNodes here if needed
-    log("[ModuleRouter] Registered special node ID: ", id);
+auto ModuleRouter::registerSpecialNode(const std::string& type) -> uint32_t {
+    uint32_t id;
+    if (type == "audio_out") {
+        id = constants::kAudioOutputNoteId;
+    } else {
+        id = _next_instance_id++;
+    }
+
+    log("[ModuleRouter] Registered special node ID: ", id, " Type: ", type);
     return id;
 }
 
@@ -160,8 +165,8 @@ void ModuleRouter::deactivateNode(uint32_t instance_id) {
     }
 }
 
-auto ModuleRouter::getConnectionCount(uint32_t to_node, uint32_t to_port,
-                                      ConnectionType type) const -> size_t {
+auto ModuleRouter::getConnectionCount(uint32_t to_node, uint32_t to_port, ConnectionType type) const
+    -> size_t {
     const auto& connections = _graph_processor.getConnections();
     size_t count = 0;
     for (const auto& conn : connections) {
