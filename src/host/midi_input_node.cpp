@@ -17,7 +17,7 @@ MidiInputNode::MidiInputNode() {
         log("[MidiInputNode] Error creating RtMidiIn: ", error.getMessage());
     }
 
-    // Initialize parameters (e.g., Port Index)
+    // Initialize parameters
     auto port_param = std::make_unique<ParameterSlot>();
     port_param->info.id = 0;
     std::strncpy(port_param->info.name, "Port Index", sizeof(port_param->info.name));
@@ -46,14 +46,24 @@ void MidiInputNode::openPort(uint32_t port_index) {
 
     closePort();
     try {
-        if (port_index < _midi_in->getPortCount()) {
-            _midi_in->openPort(port_index);
+        unsigned int port_count = _midi_in->getPortCount();
+
+        uint32_t target_index = port_index;
+        bool found_valid = false;
+
+        for (unsigned int i = 0; i < port_count; ++i) {
+            std::string name = _midi_in->getPortName(i);
+        }
+
+        if (port_count > 0) {
+            std::string final_name = _midi_in->getPortName(target_index);
+
+            _midi_in->openPort(target_index);
             _midi_in->setCallback(&midiCallback, this);
-            _port_index = port_index;
-            log("[MidiInputNode] Opened MIDI port: ", _midi_in->getPortName(port_index));
+            _port_index = target_index;
         }
     } catch (const rt::midi::RtMidiError& error) {
-        log("[MidiInputNode] Error opening MIDI port: ", error.getMessage());
+        log("[MidiInputNode] EXCEPTION during openPort: ", error.getMessage());
     }
 }
 
@@ -67,10 +77,14 @@ void MidiInputNode::closePort() {
 void MidiInputNode::midiCallback(double time_stamp, std::vector<unsigned char>* message,
                                  void* user_data) {
     auto* node = static_cast<MidiInputNode*>(user_data);
-    if (message->empty()) return;
+    if (!message || message->empty()) return;
 
-    // Capture message to the queue for audio thread processing
-    node->_message_queue.enqueue({.time_stamp = 0.0, .data = *message});
+    RawMidiMessage raw;
+    raw.time_stamp = time_stamp;
+    raw.size = std::min(static_cast<size_t>(4), message->size());
+    std::copy(message->begin(), message->begin() + raw.size, raw.data.begin());
+
+    node->_message_queue.enqueue(raw);
 }
 
 void MidiInputNode::processBegin(int num_frames) {
@@ -85,18 +99,22 @@ void MidiInputNode::process() {
 
     RawMidiMessage raw;
     while (_message_queue.try_dequeue(raw)) {
-        if (raw.data.empty()) continue;
+        if (raw.size < 3) continue;
 
         PluginEvent ev = {};
         ev.event.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
         ev.event.header.flags = 0;
 
-        // Calculate sample offset relative to the block start time
         auto now = std::chrono::high_resolution_clock::now();
         auto duration =
             std::chrono::duration_cast<std::chrono::microseconds>(now - _block_start_time);
         auto offset = static_cast<int32_t>((duration.count() * _sample_rate) / 1000000);
-        ev.event.header.time = std::clamp(offset, 0, _current_num_frames - 1);
+
+        if (_current_num_frames > 0) {
+            ev.event.header.time = std::clamp(offset, 0, _current_num_frames - 1);
+        } else {
+            ev.event.header.time = 0;
+        }
 
         uint8_t status = raw.data[0];
         auto type = static_cast<uint8_t>(status & constants::midi_status::kSystem);
@@ -111,16 +129,15 @@ void MidiInputNode::process() {
             ev.event.note.key = static_cast<int16_t>(raw.data[1]);
             ev.event.note.velocity = static_cast<double>(raw.data[2]) / 127.0;
         } else {
-            // All other MIDI messages (CC, Pitch Bend, etc.)
             ev.event.header.type = CLAP_EVENT_MIDI;
             ev.event.header.size = sizeof(clap_event_midi);
             ev.event.midi.port_index = 0;
             std::memcpy(ev.event.midi.data, raw.data.data(),
-                        std::min(static_cast<size_t>(3), raw.data.size()));
+                        std::min(static_cast<size_t>(3), raw.size));
         }
 
         _output_events.push_back(ev);
-        _output_events_to_main.enqueue(ev);  // Queue for GUI feedback
+        _output_events_to_main.enqueue(ev);
     }
 }
 

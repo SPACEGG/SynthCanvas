@@ -47,9 +47,8 @@ if(ANDROID)
         clap
         clap-helpers
         readerwriterqueue
+        rtmidi
     )
-    
-    target_link_libraries(synth_canvas_core PUBLIC rtmidi)
     
     if(NOT TARGET oboe)
         add_subdirectory(${CORE_DIR}/libs/oboe ${CMAKE_CURRENT_BINARY_DIR}/oboe)

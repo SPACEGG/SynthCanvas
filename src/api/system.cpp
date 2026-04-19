@@ -143,7 +143,13 @@ void System::destroyInstance(uint32_t instance_id) {
 auto System::registerSpecialNode(const std::string& type) -> uint32_t {
 #if defined(__ANDROID__)
     if (_pimpl->module_router) {
-        return _pimpl->module_router->registerSpecialNode(type);
+        uint32_t id = _pimpl->module_router->registerSpecialNode(type);
+        if (id != 0 && _pimpl->audio_engine && _pimpl->audio_engine->isRunning()) {
+            int32_t rate = _pimpl->audio_engine->getSampleRate();
+            int32_t frames = _pimpl->audio_engine->getFramesPerBlock();
+            _pimpl->module_router->activateNode(id, rate, frames);
+        }
+        return id;
     }
     return 0;
 #else

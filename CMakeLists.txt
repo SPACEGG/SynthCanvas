@@ -7,6 +7,14 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CORE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
+if(ANDROID)
+    # Enable Android MIDI (AMIDI) support in RtMidi submodule
+    set(RTMIDI_API_AMIDI ON CACHE BOOL "Force AMIDI support on Android" FORCE)
+endif()
+
+# Prevent external libraries from overriding global build settings
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "Force static libraries by default" FORCE)
+
 find_package(Threads REQUIRED)
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
@@ -22,7 +30,6 @@ file(MAKE_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
 add_subdirectory(libs/clap)
 add_subdirectory(libs/clap-helpers)
 add_subdirectory(libs/readerwriterqueue)
-set(RTMIDI_BUILD_STATIC_LIBS ON CACHE BOOL "" FORCE)
 add_subdirectory(libs/rtmidi)
 
 # Engine & Plugins

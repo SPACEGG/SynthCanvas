@@ -4,6 +4,7 @@
 #include <RtMidi.h>
 #include <readerwriterqueue.h>
 
+#include <array>
 #include <chrono>
 #include <memory>
 #include <vector>
@@ -71,13 +72,14 @@ class MidiInputNode : public ProcessingNode {
 
     struct RawMidiMessage {
         double time_stamp;
-        std::vector<unsigned char> data;
+        std::array<uint8_t, 4> data;
+        size_t size;
     };
 
     // Queue for passing MIDI messages from system thread to audio thread
     moodycamel::ReaderWriterQueue<RawMidiMessage> _message_queue{constants::kEventQueueSize};
 
-    // Queue for passing events from audio thread to main thread (GUI)
+    // Queue for passing events from audio thread to main thread (GUI feedback)
     moodycamel::ReaderWriterQueue<PluginEvent> _output_events_to_main{constants::kEventQueueSize};
 
     // Converted events for the current audio block
