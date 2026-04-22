@@ -47,6 +47,10 @@ class System {
     void setParameterValue(uint32_t instance_id, const std::string& param_id, double value);
 
     auto getPluginParameters(uint32_t instance_id) -> ParameterList;
+    [[nodiscard]] auto getParameterText(uint32_t instance_id, uint32_t param_id, double value) const
+        -> std::string;
+    [[nodiscard]] auto getParameterText(uint32_t instance_id, const std::string& param_id,
+                                        double value) const -> std::string;
 
     // Node-based Control
     void playNoteFromNode(uint32_t from_node_id, int note, double velocity);

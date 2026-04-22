@@ -34,6 +34,9 @@ void SynthCanvasAudioSystem::_bind_methods() {
         &SynthCanvasAudioSystem::setParameterValue);
     godot::ClassDB::bind_method(godot::D_METHOD("get_plugin_parameters", "instance_id"),
                                 &SynthCanvasAudioSystem::getPluginParameters);
+    godot::ClassDB::bind_method(
+        godot::D_METHOD("get_parameter_text", "instance_id", "param", "value"),
+        &SynthCanvasAudioSystem::getParameterText);
 
     godot::ClassDB::bind_method(
         godot::D_METHOD("play_note_from_node", "from_node_id", "note", "velocity"),
@@ -275,6 +278,20 @@ auto SynthCanvasAudioSystem::getPluginParameters(uint32_t instance_id) -> godot:
     }
 
     return result;
+}
+
+auto SynthCanvasAudioSystem::getParameterText(uint32_t instance_id, const godot::Variant& p_param,
+                                              double value) -> godot::String {
+    if (!_system) return {std::to_string(value).c_str()};
+
+    if (p_param.get_type() == godot::Variant::INT) {
+        uint32_t param_id = p_param;
+        return {_system->getParameterText(instance_id, param_id, value).c_str()};
+    } else if (p_param.get_type() == godot::Variant::STRING) {
+        godot::String s = p_param;
+        return {_system->getParameterText(instance_id, s.utf8().get_data(), value).c_str()};
+    }
+    return {std::to_string(value).c_str()};
 }
 
 void SynthCanvasAudioSystem::playNoteFromNode(uint32_t from_node_id, int note, double velocity) {

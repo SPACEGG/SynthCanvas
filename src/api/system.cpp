@@ -175,16 +175,6 @@ auto System::createCompositeInstance(const CompositeConfig& config) -> uint32_t 
 #endif
 }
 
-void System::setParameterValue(uint32_t instance_id, const std::string& param_id, double value) {
-#if defined(__ANDROID__)
-    if (_pimpl->module_router) {
-        if (auto* node = _pimpl->module_router->getProcessingNode(instance_id)) {
-            node->setParameterValue(param_id, value);
-        }
-    }
-#endif
-}
-
 void System::connectNodes(uint32_t from_node, uint32_t from_port, uint32_t to_node,
                           uint32_t to_port, ConnectionType type) {
 #if defined(__ANDROID__)
@@ -233,6 +223,14 @@ void System::setParameterValue(uint32_t instance_id, uint32_t param_id, double v
 #endif
 }
 
+void System::setParameterValue(uint32_t instance_id, const std::string& param_id, double value) {
+#if defined(__ANDROID__)
+    if (!_pimpl->module_router) return;
+    auto* node = _pimpl->module_router->getProcessingNode(instance_id);
+    if (node) node->setParameterValue(param_id, value);
+#endif
+}
+
 auto System::getPluginParameters(uint32_t instance_id) -> ParameterList {
     ParameterList result;
 #if defined(__ANDROID__)
@@ -243,10 +241,28 @@ auto System::getPluginParameters(uint32_t instance_id) -> ParameterList {
     for (const auto& param_slot : node->getParameters()) {
         result.push_back({param_slot->info.id, param_slot->info.name, param_slot->info.module,
                           param_slot->info.min_value, param_slot->info.max_value,
-                          param_slot->info.default_value, param_slot->base_value.load()});
+                          param_slot->info.default_value, node->getParameterBaseValue(param_slot->info.id)});
     }
 #endif
     return result;
+}
+
+auto System::getParameterText(uint32_t instance_id, uint32_t param_id, double value) const -> std::string {
+#if defined(__ANDROID__)
+    if (!_pimpl->module_router) return std::to_string(value);
+    auto* node = _pimpl->module_router->getProcessingNode(instance_id);
+    if (node) return node->getParameterText(param_id, value);
+#endif
+    return std::to_string(value);
+}
+
+auto System::getParameterText(uint32_t instance_id, const std::string& param_id, double value) const -> std::string {
+#if defined(__ANDROID__)
+    if (!_pimpl->module_router) return std::to_string(value);
+    auto* node = _pimpl->module_router->getProcessingNode(instance_id);
+    if (node) return node->getParameterText(param_id, value);
+#endif
+    return std::to_string(value);
 }
 
 void System::playNoteFromNode(uint32_t from_node_id, int note, double velocity) {

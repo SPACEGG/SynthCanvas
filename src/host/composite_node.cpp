@@ -219,18 +219,6 @@ auto CompositeNode::getParameterModulationOffset(clap_id param_id) const -> doub
     return 0.0;
 }
 
-auto CompositeNode::getInternalParameterTarget(clap_id external_id) const
-    -> CompositeNode::ParameterTarget {
-    if (external_id < _current_state->direct_parameter_mappings.size()) {
-        const auto& mapping = _current_state->direct_parameter_mappings[external_id];
-        auto* node = _current_state->sorted_nodes[mapping.target_node_index];
-        if (node) {
-            return {.node = node, .internal_id = mapping.target_param_id};
-        }
-    }
-    return {.node = nullptr, .internal_id = 0};
-}
-
 void CompositeNode::queueEvent(const PluginEvent& event) {
     if (_input_proxy_node) {
         _input_proxy_node->queueEvent(event);
@@ -352,6 +340,9 @@ auto CompositeNode::load(const CompositeConfig& config) -> bool {
 
     // Setup Parameter Mappings
     uint32_t external_param_idx = 0;
+    _external_id_to_target.clear();
+    _param_id_to_target.clear();
+
     for (const auto& m_cfg : config.parameter_mappings) {
         if (alias_to_id.count(m_cfg.target_node)) {
             uint32_t internal_id = alias_to_id[m_cfg.target_node];
@@ -360,6 +351,12 @@ auto CompositeNode::load(const CompositeConfig& config) -> bool {
                                                           m_cfg.target_param_index);
 
             if (auto* target_node = _internal_processor.getNode(internal_id)) {
+                // Populate thread-safe maps for metadata access
+                ParameterTarget target = {.node = target_node,
+                                          .internal_id = m_cfg.target_param_index};
+                _param_id_to_target[m_cfg.param_id] = target;
+                _external_id_to_target[external_param_idx] = target;
+
                 if (auto* src_slot = target_node->getParameterSlot(m_cfg.target_param_index)) {
                     auto ext_slot = std::make_unique<ParameterSlot>();
                     ext_slot->info = src_slot->info;
@@ -411,7 +408,35 @@ auto CompositeNode::getParameterSlot(clap_id param_id) const -> const ParameterS
     return nullptr;
 }
 
+auto CompositeNode::getParameterText(clap_id param_id, double value) const -> std::string {
+    auto target = getInternalParameterTarget(param_id);
+    if (target.node) {
+        return target.node->getParameterText(target.internal_id, value);
+    }
+    return std::to_string(value);
+}
+
+auto CompositeNode::getParameterText(const std::string& param_id, double value) const
+    -> std::string {
+    auto it = _param_id_to_target.find(param_id);
+    if (it != _param_id_to_target.end()) {
+        if (it->second.node) {
+            return it->second.node->getParameterText(it->second.internal_id, value);
+        }
+    }
+    return std::to_string(value);
+}
+
 auto CompositeNode::isActive() const -> bool { return _is_active; }
+
+auto CompositeNode::getInternalParameterTarget(clap_id external_id) const
+    -> CompositeNode::ParameterTarget {
+    auto it = _external_id_to_target.find(external_id);
+    if (it != _external_id_to_target.end()) {
+        return it->second;
+    }
+    return {.node = nullptr, .internal_id = 0};
+}
 
 auto CompositeNode::getOutputBuffer(uint32_t port_idx) -> AudioBuffer* {
     if (port_idx < _output_buffers.size()) {

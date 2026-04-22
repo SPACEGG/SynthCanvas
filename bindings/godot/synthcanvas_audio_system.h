@@ -58,6 +58,8 @@ class SynthCanvasAudioSystem : public godot::Node {
     void stopNote(uint32_t instance_id, int note, double velocity = 0.0, int32_t note_id = -1);
     void setParameterValue(uint32_t instance_id, const godot::Variant& p_param, double value);
     auto getPluginParameters(uint32_t instance_id) -> godot::Dictionary;
+    auto getParameterText(uint32_t instance_id, const godot::Variant& p_param, double value)
+        -> godot::String;
 
     void playNoteFromNode(uint32_t from_node_id, int note, double velocity);
     void stopNoteFromNode(uint32_t from_node_id, int note);

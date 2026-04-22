@@ -87,6 +87,8 @@ class PluginHost final : public ProcessingNode, public BaseHost {
     }
     [[nodiscard]] auto getParameterSlot(clap_id param_id) const
         -> const ParameterSlot* override;
+    [[nodiscard]] auto getParameterText(clap_id param_id, double value) const
+        -> std::string override;
 
     // --- ProcessingNode State Check ---
     [[nodiscard]] auto isActive() const -> bool override;

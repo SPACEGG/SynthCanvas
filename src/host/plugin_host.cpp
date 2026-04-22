@@ -156,6 +156,24 @@ auto PluginHost::getParameterSlot(clap_id param_id) const -> const ParameterSlot
     return nullptr;
 }
 
+auto PluginHost::getParameterText(clap_id param_id, double value) const -> std::string {
+    if (!_plugin) return std::to_string(value);
+
+    auto params_ext = static_cast<const clap_plugin_params_t*>(
+        _plugin->clapPlugin()->get_extension(_plugin->clapPlugin(), CLAP_EXT_PARAMS));
+
+    if (!params_ext) return std::to_string(value);
+
+    // NOLINTNEXTLINE(modernize-avoid-c-arrays)
+    char display[CLAP_NAME_SIZE];
+    if (params_ext->value_to_text(_plugin->clapPlugin(), param_id, value, display,
+                                  sizeof(display))) {
+        return {display};
+    }
+
+    return std::to_string(value);
+}
+
 void PluginHost::paramsRescan(clap_param_rescan_flags flags) noexcept {
     logMessage(CLAP_LOG_INFO,
                ("Plugin requested parameter rescan with flags: " + std::to_string(flags)).c_str());

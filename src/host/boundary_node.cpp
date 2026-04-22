@@ -99,6 +99,10 @@ auto BoundaryNode::getParameterSlot(clap_id param_id) const -> const ParameterSl
     return nullptr;
 }
 
+auto BoundaryNode::getParameterText(clap_id param_id, double value) const -> std::string {
+    return std::to_string(value);
+}
+
 void BoundaryNode::setAudioPorts(bool is_input, const std::vector<AudioPortInfo>& ports) {
 
     if (is_input) {

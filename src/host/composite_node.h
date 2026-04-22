@@ -55,8 +55,13 @@ class CompositeNode final : public ProcessingNode {
         -> const std::vector<std::unique_ptr<ParameterSlot>>& override;
     [[nodiscard]] auto getParameterSlot(clap_id param_id) const
         -> const ParameterSlot* override;
+    [[nodiscard]] auto getParameterText(clap_id param_id, double value) const
+        -> std::string override;
+    [[nodiscard]] auto getParameterText(const std::string& param_id, double value) const
+        -> std::string override;
 
-    // ProcessingNode State Check
+    // --- ProcessingNode State Check ---
+
     [[nodiscard]] auto isActive() const -> bool override;
 
     // Composite Specific Management
@@ -90,6 +95,10 @@ class CompositeNode final : public ProcessingNode {
 
     std::vector<std::unique_ptr<ParameterSlot>> _external_params;
     std::unordered_map<std::string, uint32_t> _param_id_to_external_index;
+    
+    // Thread-safe target maps for metadata access (Main Thread)
+    std::unordered_map<clap_id, ParameterTarget> _external_id_to_target;
+    std::unordered_map<std::string, ParameterTarget> _param_id_to_target;
 
     // Current Buffers provided by parent
     clap_audio_buffer* _ext_inputs = nullptr;

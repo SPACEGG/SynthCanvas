@@ -54,6 +54,8 @@ class MidiInputNode : public ProcessingNode {
         -> const std::vector<std::unique_ptr<ParameterSlot>>& override;
     [[nodiscard]] auto getParameterSlot(clap_id param_id) const
         -> const ParameterSlot* override;
+    [[nodiscard]] auto getParameterText(clap_id param_id, double value) const
+        -> std::string override;
 
     [[nodiscard]] auto isActive() const -> bool override { return _active; }
 
