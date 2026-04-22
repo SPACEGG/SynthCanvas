@@ -99,7 +99,7 @@ void MidiInputNode::process() {
 
     RawMidiMessage raw;
     while (_message_queue.try_dequeue(raw)) {
-        if (raw.size < 3) continue;
+        if (raw.size < 1) continue;
 
         PluginEvent ev = {};
         ev.event.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
@@ -117,17 +117,20 @@ void MidiInputNode::process() {
         }
 
         uint8_t status = raw.data[0];
-        auto type = static_cast<uint8_t>(status & constants::midi_status::kSystem);
+        auto type = static_cast<uint8_t>(status & 0xF0);
         auto channel = static_cast<uint8_t>(status & 0x0F);
 
         if (type == constants::midi_status::kNoteOn || type == constants::midi_status::kNoteOff) {
-            bool is_note_on = (type == constants::midi_status::kNoteOn && raw.data[2] > 0);
+            uint8_t key = (raw.size > 1) ? raw.data[1] : 0;
+            uint8_t vel = (raw.size > 2) ? raw.data[2] : 0;
+
+            bool is_note_on = (type == constants::midi_status::kNoteOn && vel > 0);
             ev.event.header.type = is_note_on ? CLAP_EVENT_NOTE_ON : CLAP_EVENT_NOTE_OFF;
             ev.event.header.size = sizeof(clap_event_note);
             ev.event.note.port_index = 0;
             ev.event.note.channel = channel;
-            ev.event.note.key = static_cast<int16_t>(raw.data[1]);
-            ev.event.note.velocity = static_cast<double>(raw.data[2]) / 127.0;
+            ev.event.note.key = static_cast<int16_t>(key);
+            ev.event.note.velocity = static_cast<double>(vel) / 127.0;
         } else {
             ev.event.header.type = CLAP_EVENT_MIDI;
             ev.event.header.size = sizeof(clap_event_midi);

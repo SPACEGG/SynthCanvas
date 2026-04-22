@@ -53,7 +53,7 @@ class ModuleRouter {
     moodycamel::ReaderWriterQueue<std::unique_ptr<AudioRenderState>> released_states;
 
     // Callbacks
-    std::function<void(uint32_t, const PluginEvent&)> on_event_occured;
+    void setEventCallback(std::function<void(uint32_t, const PluginEvent&)> cb);
 
     // Activation
     void activateNode(uint32_t instance_id, int32_t sample_rate, int32_t frames_per_block);
@@ -64,6 +64,7 @@ class ModuleRouter {
     std::vector<std::unique_ptr<ProcessingNode>> _pending_deletion_nodes;
 
     std::atomic<uint32_t> _next_instance_id{constants::kInitialPluginInstanceId};
+    std::function<void(uint32_t, const PluginEvent&)> _on_event_occured;
 
     void pushNewState();
     auto getConnectionCount(uint32_t to_node, uint32_t to_port, ConnectionType type) const -> size_t;

@@ -4,7 +4,6 @@
 #include <godot_cpp/variant/packed_byte_array.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 
-
 void SynthCanvasAudioSystem::_bind_methods() {
     godot::ClassDB::bind_method(godot::D_METHOD("create_plugin_instance", "path"),
                                 &SynthCanvasAudioSystem::createPluginInstance);

@@ -16,7 +16,6 @@ ModuleRouter::ModuleRouter()
 
 ModuleRouter::~ModuleRouter() {
     pollResources();
-    // ProcessingNodes are owned by _graph_processor via unique_ptr
     log("[ModuleRouter] Destroyed.");
 }
 
@@ -30,7 +29,7 @@ auto ModuleRouter::createPluginInstance(const std::string& path) -> uint32_t {
 
     uint32_t id = _next_instance_id++;
     host->setInstanceId(id);
-    host->on_event_occured = on_event_occured;
+    host->on_event_occured = _on_event_occured;
 
     _graph_processor.addNode(id, std::move(host));
     pushNewState();
@@ -50,6 +49,7 @@ auto ModuleRouter::createCompositeInstance(const CompositeConfig& config) -> uin
 
     uint32_t id = _next_instance_id++;
     composite->setInstanceId(id);
+    composite->on_event_occured = _on_event_occured;
 
     _graph_processor.addNode(id, std::move(composite));
     pushNewState();
@@ -78,7 +78,7 @@ auto ModuleRouter::registerSpecialNode(const std::string& type) -> uint32_t {
     if (type == "midi_input") {
         auto node = std::make_unique<MidiInputNode>();
         node->setInstanceId(id);
-        node->on_event_occured = on_event_occured;
+        node->on_event_occured = _on_event_occured;
         _graph_processor.addNode(id, std::move(node));
         pushNewState();
     }
@@ -120,10 +120,17 @@ void ModuleRouter::pollResources() {
     }
 }
 
-void ModuleRouter::pushNewState() {
-    // Delegate state creation to graph processor
-    auto new_state = _graph_processor.createRenderState(constants::kAudioOutputNoteId);
+void ModuleRouter::setEventCallback(std::function<void(uint32_t, const PluginEvent&)> cb) {
+    _on_event_occured = cb;
+    for (uint32_t id : _graph_processor.getProcessOrder()) {
+        if (auto* node = _graph_processor.getNode(id)) {
+            node->on_event_occured = cb;
+        }
+    }
+}
 
+void ModuleRouter::pushNewState() {
+    auto new_state = _graph_processor.createRenderState(constants::kAudioOutputNoteId);
     if (!pending_states.enqueue(std::move(new_state))) {
         log("[ModuleRouter] ERROR: Failed to enqueue new render state.");
     }
@@ -131,13 +138,11 @@ void ModuleRouter::pushNewState() {
 
 void ModuleRouter::connectNodes(uint32_t from_node, uint32_t from_port, uint32_t to_node,
                                 uint32_t to_port, ConnectionType type) {
-    // Enforce connection limit per input port
     if (getConnectionCount(to_node, to_port, type) >= constants::kMaxConnectionsPerPort) {
         log("[ModuleRouter] ERROR: Cannot connect. Max connections reached for target port.");
         return;
     }
 
-    log("[ModuleRouter] Connecting ", from_node, " -> ", to_node);
     _graph_processor.connect({.from_node = from_node,
                               .from_port = from_port,
                               .to_node = to_node,
@@ -148,7 +153,6 @@ void ModuleRouter::connectNodes(uint32_t from_node, uint32_t from_port, uint32_t
 
 void ModuleRouter::disconnectNodes(uint32_t from_node, uint32_t from_port, uint32_t to_node,
                                    uint32_t to_port, ConnectionType type) {
-    log("[ModuleRouter] Disconnecting ", from_node, " -> ", to_node);
     _graph_processor.disconnect({.from_node = from_node,
                                  .from_port = from_port,
                                  .to_node = to_node,

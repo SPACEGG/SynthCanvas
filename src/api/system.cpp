@@ -96,10 +96,10 @@ void System::initialize(LogCallback log_cb) {
 #if defined(__ANDROID__)
     synth_canvas::host::setLogCallback(log_cb);
     if (_pimpl->module_router) {
-        _pimpl->module_router->on_event_occured =
+        _pimpl->module_router->setEventCallback(
             [this](uint32_t instance_id, const synth_canvas::host::PluginEvent& ev) {
                 _pimpl->handleInternalEvent(instance_id, ev);
-            };
+            });
     }
 #else
     if (log_cb) log_cb("[System] Initializing (Dummy/Windows)...");
