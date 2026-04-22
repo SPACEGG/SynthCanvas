@@ -90,11 +90,17 @@ auto BoundaryNode::getAudioPorts(bool is_input) const -> const std::vector<Audio
     return is_input ? _input_port_info : _output_port_info;
 }
 
-auto BoundaryNode::getParameters() const -> const std::vector<std::unique_ptr<ParameterSlot>>& {
+auto BoundaryNode::getParameters() const
+    -> const std::vector<std::unique_ptr<ParameterSlot>>& {
     return _empty_params;
 }
 
+auto BoundaryNode::getParameterSlot(clap_id param_id) const -> const ParameterSlot* {
+    return nullptr;
+}
+
 void BoundaryNode::setAudioPorts(bool is_input, const std::vector<AudioPortInfo>& ports) {
+
     if (is_input) {
         _input_port_info = ports;
     } else {

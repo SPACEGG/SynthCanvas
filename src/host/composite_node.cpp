@@ -336,9 +336,7 @@ auto CompositeNode::load(const CompositeConfig& config) -> bool {
                                                           m_cfg.target_param_index);
 
             if (auto* target_node = _internal_processor.getNode(internal_id)) {
-                const auto& internal_params = target_node->getParameters();
-                if (m_cfg.target_param_index < internal_params.size()) {
-                    const auto& src_slot = internal_params[m_cfg.target_param_index];
+                if (auto* src_slot = target_node->getParameterSlot(m_cfg.target_param_index)) {
                     auto ext_slot = std::make_unique<ParameterSlot>();
                     ext_slot->info = src_slot->info;
                     std::strncpy(ext_slot->info.name, m_cfg.param_id.c_str(), CLAP_NAME_SIZE);
@@ -379,6 +377,13 @@ auto CompositeNode::getAudioPorts(bool is_input) const -> const std::vector<Audi
 
 auto CompositeNode::getParameters() const -> const std::vector<std::unique_ptr<ParameterSlot>>& {
     return _external_params;
+}
+
+auto CompositeNode::getParameterSlot(clap_id param_id) const -> const ParameterSlot* {
+    if (param_id < _external_params.size()) {
+        return _external_params[static_cast<int>(param_id)].get();
+    }
+    return nullptr;
 }
 
 auto CompositeNode::isActive() const -> bool { return _is_active; }

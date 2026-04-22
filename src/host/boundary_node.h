@@ -56,6 +56,8 @@ class BoundaryNode : public ProcessingNode {
         -> const std::vector<AudioPortInfo>& override;
     [[nodiscard]] auto getParameters() const
         -> const std::vector<std::unique_ptr<ParameterSlot>>& override;
+    [[nodiscard]] auto getParameterSlot(clap_id param_id) const
+        -> const ParameterSlot* override;
 
     [[nodiscard]] auto isActive() const -> bool override { return _is_active; }
 

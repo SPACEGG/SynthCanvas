@@ -52,6 +52,8 @@ class CompositeNode final : public ProcessingNode {
         -> const std::vector<AudioPortInfo>& override;
     [[nodiscard]] auto getParameters() const
         -> const std::vector<std::unique_ptr<ParameterSlot>>& override;
+    [[nodiscard]] auto getParameterSlot(clap_id param_id) const
+        -> const ParameterSlot* override;
 
     // ProcessingNode State Check
     [[nodiscard]] auto isActive() const -> bool override;

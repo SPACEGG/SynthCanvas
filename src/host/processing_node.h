@@ -60,6 +60,7 @@ class ProcessingNode {
         -> const std::vector<AudioPortInfo>& = 0;
     [[nodiscard]] virtual auto getParameters() const
         -> const std::vector<std::unique_ptr<ParameterSlot>>& = 0;
+    [[nodiscard]] virtual auto getParameterSlot(clap_id param_id) const -> const ParameterSlot* = 0;
 
     // State Check
     [[nodiscard]] virtual auto isActive() const -> bool = 0;

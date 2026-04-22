@@ -148,6 +148,14 @@ auto PluginHost::getParameterSlot(clap_id param_id) -> ParameterSlot* {
     return nullptr;
 }
 
+auto PluginHost::getParameterSlot(clap_id param_id) const -> const ParameterSlot* {
+    auto it = _param_id_to_index.find(param_id);
+    if (it != _param_id_to_index.end()) {
+        return _params[it->second].get();
+    }
+    return nullptr;
+}
+
 void PluginHost::paramsRescan(clap_param_rescan_flags flags) noexcept {
     logMessage(CLAP_LOG_INFO,
                ("Plugin requested parameter rescan with flags: " + std::to_string(flags)).c_str());

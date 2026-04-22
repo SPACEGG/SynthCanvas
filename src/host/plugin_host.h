@@ -85,6 +85,8 @@ class PluginHost final : public ProcessingNode, public BaseHost {
         -> const std::vector<std::unique_ptr<ParameterSlot>>& override {
         return _params;
     }
+    [[nodiscard]] auto getParameterSlot(clap_id param_id) const
+        -> const ParameterSlot* override;
 
     // --- ProcessingNode State Check ---
     [[nodiscard]] auto isActive() const -> bool override;

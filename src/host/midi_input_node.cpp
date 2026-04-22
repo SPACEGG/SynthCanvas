@@ -187,6 +187,10 @@ auto MidiInputNode::getParameters() const -> const std::vector<std::unique_ptr<P
     return _parameters;
 }
 
+auto MidiInputNode::getParameterSlot(clap_id param_id) const -> const ParameterSlot* {
+    return nullptr;
+}
+
 void MidiInputNode::setPorts(uint32_t num_inputs, clap_audio_buffer* inputs, uint32_t num_outputs,
                              clap_audio_buffer* outputs) {}
 
