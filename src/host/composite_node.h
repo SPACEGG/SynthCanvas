@@ -3,6 +3,7 @@
 
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "boundary_node.h"
@@ -88,6 +89,7 @@ class CompositeNode final : public ProcessingNode {
     std::vector<AudioBuffer> _output_buffers;
 
     std::vector<std::unique_ptr<ParameterSlot>> _external_params;
+    std::unordered_map<std::string, uint32_t> _param_id_to_external_index;
 
     // Current Buffers provided by parent
     clap_audio_buffer* _ext_inputs = nullptr;

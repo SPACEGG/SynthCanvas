@@ -139,6 +139,15 @@ void CompositeNode::handleInternalEvent(uint32_t internal_id, const PluginEvent&
                                 _current_state->sorted_nodes[d_mapping.target_node_index];
                             if (d_node && d_node->getInstanceId() == internal_id) {
                                 mapped_ev.event.param_value.param_id = static_cast<clap_id>(i);
+
+                                // Update cached external slot state
+                                if (i < _external_params.size()) {
+                                    _external_params[i]->base_value.store(
+                                        ev.event.param_value.value, std::memory_order_relaxed);
+                                    _external_params[i]->current_value.store(
+                                        ev.event.param_value.value, std::memory_order_relaxed);
+                                }
+
                                 goto dispatch;
                             }
                         }
@@ -157,6 +166,11 @@ dispatch:
 }
 
 void CompositeNode::setParameterValue(clap_id param_id, double value) {
+    if (param_id < _external_params.size()) {
+        _external_params[param_id]->base_value.store(value, std::memory_order_relaxed);
+        _external_params[param_id]->current_value.store(value, std::memory_order_relaxed);
+    }
+
     auto target = getInternalParameterTarget(param_id);
     if (target.node) {
         target.node->setParameterValue(target.internal_id, value);
@@ -166,6 +180,15 @@ void CompositeNode::setParameterValue(clap_id param_id, double value) {
 void CompositeNode::setParameterValue(const std::string& param_id, double value) {
     auto it = _current_state->parameter_mappings.find(param_id);
     if (it != _current_state->parameter_mappings.end()) {
+        auto ext_it = _param_id_to_external_index.find(param_id);
+        if (ext_it != _param_id_to_external_index.end()) {
+            uint32_t idx = ext_it->second;
+            if (idx < _external_params.size()) {
+                _external_params[idx]->base_value.store(value, std::memory_order_relaxed);
+                _external_params[idx]->current_value.store(value, std::memory_order_relaxed);
+            }
+        }
+
         auto* node = _current_state->sorted_nodes[it->second.target_node_index];
         if (node) {
             node->setParameterValue(it->second.target_param_id, value);
@@ -245,6 +268,7 @@ auto CompositeNode::load(const CompositeConfig& config) -> bool {
     _external_inputs.clear();
     _external_outputs.clear();
     _external_params.clear();
+    _param_id_to_external_index.clear();
 
     // Load Internal Plugins
     uint32_t next_internal_id = 1;
@@ -342,6 +366,7 @@ auto CompositeNode::load(const CompositeConfig& config) -> bool {
                     std::strncpy(ext_slot->info.name, m_cfg.param_id.c_str(), CLAP_NAME_SIZE);
                     ext_slot->info.id = external_param_idx++;
                     ext_slot->base_value.store(src_slot->base_value.load());
+                    _param_id_to_external_index[m_cfg.param_id] = ext_slot->info.id;
                     _external_params.push_back(std::move(ext_slot));
                 }
             }
