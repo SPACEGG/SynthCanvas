@@ -27,6 +27,8 @@ class InternalNodeBase : public ProcessingNode {
     void setTransport(const TransportState* transport) override { _transport = transport; }
 
     // Audio / Event Processing
+    void setPorts(uint32_t num_inputs, clap_audio_buffer* inputs, uint32_t num_outputs,
+                  clap_audio_buffer* outputs) override;
     void processBegin(int num_frames) override;
     void processEnd(int num_frames) override;
 
@@ -42,12 +44,15 @@ class InternalNodeBase : public ProcessingNode {
     [[nodiscard]] auto getParameterBaseValue(clap_id param_id) const -> double override;
     [[nodiscard]] auto getParameterModulationOffset(clap_id param_id) const -> double override;
 
+    void queueEvent(const PluginEvent& event) override;
     auto popOutputEvent(PluginEvent& out_event) -> bool override;
     void pollMainThread() override {}
 
     // Metadata
     void setInstanceId(uint32_t id) override { _instance_id = id; }
     [[nodiscard]] auto getInstanceId() const -> uint32_t override { return _instance_id; }
+    [[nodiscard]] auto getAudioPorts(bool is_input) const
+        -> const std::vector<AudioPortInfo>& override;
     [[nodiscard]] auto getParameters() const
         -> const std::vector<std::unique_ptr<ParameterSlot>>& override {
         return _parameters;
@@ -63,6 +68,8 @@ class InternalNodeBase : public ProcessingNode {
     auto getParameterSlot(clap_id param_id) -> ParameterSlot*;
     void addParameter(clap_id id, const std::string& name, const std::string& module,
                       double min_val, double max_val, double def_val, uint32_t flags = 0);
+    void addAudioPort(const std::string& name, bool is_input, uint32_t channel_count = 2,
+                      bool is_mod = false);
 
     // Derived classes must implement these
     virtual void onSampleRateChanged(int32_t sample_rate) {}
@@ -70,6 +77,8 @@ class InternalNodeBase : public ProcessingNode {
     AudioBuffer _output_buffer;
     const TransportState* _transport = nullptr;
     std::vector<std::unique_ptr<ParameterSlot>> _parameters;
+    std::vector<AudioPortInfo> _input_ports;
+    std::vector<AudioPortInfo> _output_ports;
     moodycamel::ReaderWriterQueue<PluginEvent> _output_events{constants::kEventQueueSize};
 
     uint32_t _instance_id = 0;

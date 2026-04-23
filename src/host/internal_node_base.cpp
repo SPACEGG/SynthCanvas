@@ -32,6 +32,13 @@ void InternalNodeBase::reserveOutputBuffers(uint32_t count) {
     // Already handled via _output_buffer resize in activate
 }
 
+void InternalNodeBase::setPorts(uint32_t num_inputs, clap_audio_buffer* inputs, uint32_t num_outputs,
+                                clap_audio_buffer* outputs) {
+    // Internal nodes usually manage their own buffers, 
+    // but we can map the framework's output pointers if needed.
+    // For now, we rely on getOutputBuffer() for internal routing.
+}
+
 void InternalNodeBase::setParameterValue(clap_id param_id, double value) {
     if (auto* slot = getParameterSlot(param_id)) {
         slot->base_value.store(value, std::memory_order_relaxed);
@@ -97,6 +104,14 @@ auto InternalNodeBase::getParameterText(clap_id param_id, double value) const ->
     return std::to_string(value);
 }
 
+void InternalNodeBase::queueEvent(const PluginEvent& event) {
+    // Default implementation: do nothing
+}
+
+auto InternalNodeBase::getAudioPorts(bool is_input) const -> const std::vector<AudioPortInfo>& {
+    return is_input ? _input_ports : _output_ports;
+}
+
 void InternalNodeBase::addParameter(clap_id id, const std::string& name, const std::string& module,
                                     double min_val, double max_val, double def_val,
                                     uint32_t flags) {
@@ -114,6 +129,25 @@ void InternalNodeBase::addParameter(clap_id id, const std::string& name, const s
     slot->modulation_value.store(0.0);
 
     _parameters.push_back(std::move(slot));
+}
+
+void InternalNodeBase::addAudioPort(const std::string& name, bool is_input, uint32_t channel_count,
+                                   bool is_mod) {
+    AudioPortInfo port;
+    port.index = static_cast<uint32_t>(is_input ? _input_ports.size() : _output_ports.size());
+    port.is_input = is_input;
+    port.is_modulation = is_mod;
+    port.clap_info.id = port.index;
+    std::strncpy(port.clap_info.name, name.c_str(), sizeof(port.clap_info.name) - 1);
+    port.clap_info.channel_count = channel_count;
+    port.clap_info.flags = CLAP_AUDIO_PORT_IS_MAIN;
+    port.clap_info.port_type = CLAP_PORT_STEREO;
+
+    if (is_input) {
+        _input_ports.push_back(port);
+    } else {
+        _output_ports.push_back(port);
+    }
 }
 
 }  // namespace synth_canvas::host
