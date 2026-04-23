@@ -53,6 +53,7 @@ class PluginHost final : public ProcessingNode, public BaseHost {
     void activate(int32_t sample_rate, int32_t block_size) override;
     void deactivate() override;
     void setProcessingEnabled(bool enabled) override;
+    void setTransport(const TransportState* transport) override;
 
     // --- ProcessingNode Audio / Event Processing ---
     void setPorts(uint32_t num_inputs, clap_audio_buffer* inputs, uint32_t num_outputs,
@@ -85,8 +86,7 @@ class PluginHost final : public ProcessingNode, public BaseHost {
         -> const std::vector<std::unique_ptr<ParameterSlot>>& override {
         return _params;
     }
-    [[nodiscard]] auto getParameterSlot(clap_id param_id) const
-        -> const ParameterSlot* override;
+    [[nodiscard]] auto getParameterSlot(clap_id param_id) const -> const ParameterSlot* override;
     [[nodiscard]] auto getParameterText(clap_id param_id, double value) const
         -> std::string override;
 
@@ -181,6 +181,7 @@ class PluginHost final : public ProcessingNode, public BaseHost {
     moodycamel::ReaderWriterQueue<PluginEvent> _output_events_to_audio{constants::kEventQueueSize};
 
     uint32_t _instance_id = 0;
+    const TransportState* _transport = nullptr;
 
     std::vector<AudioPortInfo> _audio_input_ports;
     std::vector<AudioPortInfo> _audio_output_ports;

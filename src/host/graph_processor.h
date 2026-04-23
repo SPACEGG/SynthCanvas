@@ -47,6 +47,9 @@ class GraphProcessor {
             } destination;
         };
 
+        // Global Transport State
+        TransportState transport;
+
         // Indexed by target node_index
         std::vector<std::unordered_map<uint32_t, std::vector<AudioSource>>> input_audio_sources;
         std::vector<std::vector<ModulationSource>> input_modulations;

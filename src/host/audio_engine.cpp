@@ -106,6 +106,13 @@ auto AudioEngine::onAudioReady(oboe::AudioStream* oboe_stream, void* audio_data,
 
     _buffer_manager.prepareBlock();
 
+    // Update Transport Beats
+    if (_current_render_state->transport.is_playing) {
+        double seconds = static_cast<double>(num_frames) / _sample_rate;
+        double beats = seconds * (_current_render_state->transport.tempo / 60.0);
+        _current_render_state->transport.song_pos_beats += beats;
+    }
+
     _renderer.render(*_current_render_state, _buffer_manager, num_frames,
                      [this](ProcessingNode* source, const PluginEvent& ev, uint32_t port_index) {
                          this->handleEvent(source, ev, port_index);

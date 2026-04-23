@@ -24,8 +24,10 @@ class CompositeNode final : public ProcessingNode {
     void activate(int32_t sample_rate, int32_t block_size) override;
     void deactivate() override;
     void setProcessingEnabled(bool enabled) override;
+    void setTransport(const TransportState* transport) override;
 
-    // ProcessingNode Audio / Event Processing
+    // Audio / Event Processing
+
     void setPorts(uint32_t num_inputs, clap_audio_buffer* inputs, uint32_t num_outputs,
                   clap_audio_buffer* outputs) override;
     void processBegin(int num_frames) override;
@@ -53,8 +55,7 @@ class CompositeNode final : public ProcessingNode {
         -> const std::vector<AudioPortInfo>& override;
     [[nodiscard]] auto getParameters() const
         -> const std::vector<std::unique_ptr<ParameterSlot>>& override;
-    [[nodiscard]] auto getParameterSlot(clap_id param_id) const
-        -> const ParameterSlot* override;
+    [[nodiscard]] auto getParameterSlot(clap_id param_id) const -> const ParameterSlot* override;
     [[nodiscard]] auto getParameterText(clap_id param_id, double value) const
         -> std::string override;
     [[nodiscard]] auto getParameterText(const std::string& param_id, double value) const
@@ -95,7 +96,7 @@ class CompositeNode final : public ProcessingNode {
 
     std::vector<std::unique_ptr<ParameterSlot>> _external_params;
     std::unordered_map<std::string, uint32_t> _param_id_to_external_index;
-    
+
     // Thread-safe target maps for metadata access (Main Thread)
     std::unordered_map<clap_id, ParameterTarget> _external_id_to_target;
     std::unordered_map<std::string, ParameterTarget> _param_id_to_target;
@@ -107,6 +108,7 @@ class CompositeNode final : public ProcessingNode {
     uint32_t _ext_output_count = 0;
 
     uint32_t _instance_id = 0;
+    const TransportState* _transport = nullptr;
     int32_t _sample_rate = 0;
     int32_t _block_size = 0;
     int32_t _current_num_frames = 0;

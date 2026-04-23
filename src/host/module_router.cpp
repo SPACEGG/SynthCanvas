@@ -131,6 +131,7 @@ void ModuleRouter::setEventCallback(std::function<void(uint32_t, const PluginEve
 
 void ModuleRouter::pushNewState() {
     auto new_state = _graph_processor.createRenderState(constants::kAudioOutputNoteId);
+    new_state->transport = _main_transport;
     if (!pending_states.enqueue(std::move(new_state))) {
         log("[ModuleRouter] ERROR: Failed to enqueue new render state.");
     }

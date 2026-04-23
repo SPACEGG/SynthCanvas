@@ -20,6 +20,7 @@ void GraphRenderer::render(const GraphProcessor::RenderState& state, AudioBuffer
         ProcessingNode* node = state.sorted_nodes[i];
         if (!node || !node->isActive()) continue;
 
+        node->setTransport(&(state.transport));
         processSingleNode(i, node, state, buffers, num_frames);
         collectAndRouteEvents(i, node, state, handler);
     }

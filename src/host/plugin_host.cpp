@@ -473,6 +473,8 @@ void PluginHost::setProcessingEnabled(bool enabled) {
     _schedule_processing.store(enabled, std::memory_order_release);
 }
 
+void PluginHost::setTransport(const TransportState* transport) { _transport = transport; }
+
 void PluginHost::setParameterValue(clap_id param_id, double value) {
     if (auto* slot = getParameterSlot(param_id)) {
         slot->base_value.store(value, std::memory_order_relaxed);
@@ -638,7 +640,42 @@ void PluginHost::process() {
         return;
     }
 
-    _process.transport = nullptr;
+    clap_event_transport_t clap_transport = {0};
+    if (_transport) {
+        clap_transport.header.size = sizeof(clap_event_transport_t);
+        clap_transport.header.time = 0;
+        clap_transport.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+        clap_transport.header.type = CLAP_EVENT_TRANSPORT;
+        clap_transport.header.flags = 0;
+
+        clap_transport.flags = 0;
+        if (_transport->is_playing) {
+            clap_transport.flags |= CLAP_TRANSPORT_IS_PLAYING;
+        }
+
+        // CLAP uses 64-bit fixed point with 31-bit fractional part (CLAP_BEATTIME_FACTOR)
+        const auto kFactor = static_cast<double>(1LL << 31);
+
+        clap_transport.song_pos_beats =
+            static_cast<int64_t>(std::round(_transport->song_pos_beats * kFactor));
+
+        // Convert beats to seconds: seconds = (beats * 60) / tempo
+        double song_pos_seconds = (_transport->song_pos_beats * 60.0) / _transport->tempo;
+        clap_transport.song_pos_seconds =
+            static_cast<int64_t>(std::round(song_pos_seconds * kFactor));
+
+        clap_transport.tempo = _transport->tempo;
+        clap_transport.tsig_num = static_cast<uint16_t>(_transport->ts_num);
+        clap_transport.tsig_denom = static_cast<uint16_t>(_transport->ts_denom);
+
+        clap_transport.flags |= CLAP_TRANSPORT_HAS_TEMPO | CLAP_TRANSPORT_HAS_BEATS_TIMELINE |
+                                CLAP_TRANSPORT_HAS_SECONDS_TIMELINE |
+                                CLAP_TRANSPORT_HAS_TIME_SIGNATURE;
+
+        _process.transport = &clap_transport;
+    } else {
+        _process.transport = nullptr;
+    }
 
     _process.in_events = _ev_in.clapInputEvents();
     _process.out_events = _ev_out.clapOutputEvents();

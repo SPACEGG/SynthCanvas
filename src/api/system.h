@@ -56,6 +56,10 @@ class System {
     void playNoteFromNode(uint32_t from_node_id, int note, double velocity);
     void stopNoteFromNode(uint32_t from_node_id, int note);
 
+    // Transport Control
+    void setTempo(double bpm);
+    void setTransportPlaying(bool playing);
+
     // Event Callbacks
     void setEventOccuredCallback(EventOccuredCallback cb);
 

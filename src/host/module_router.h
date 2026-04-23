@@ -59,15 +59,25 @@ class ModuleRouter {
     void activateNode(uint32_t instance_id, int32_t sample_rate, int32_t frames_per_block);
     void deactivateNode(uint32_t instance_id);
 
+    // Transport Control (Main Thread)
+    void setTempo(double bpm) { _main_transport.tempo = bpm; }
+    void setTransportPlaying(bool playing) { _main_transport.is_playing = playing; }
+    [[nodiscard]] auto getTransportState() const -> const TransportState& {
+        return _main_transport;
+    }
+
    private:
     GraphProcessor _graph_processor;
     std::vector<std::unique_ptr<ProcessingNode>> _pending_deletion_nodes;
+
+    TransportState _main_transport;
 
     std::atomic<uint32_t> _next_instance_id{constants::kInitialPluginInstanceId};
     std::function<void(uint32_t, const PluginEvent&)> _on_event_occured;
 
     void pushNewState();
-    auto getConnectionCount(uint32_t to_node, uint32_t to_port, ConnectionType type) const -> size_t;
+    auto getConnectionCount(uint32_t to_node, uint32_t to_port, ConnectionType type) const
+        -> size_t;
 };
 
 }  // namespace synth_canvas::host

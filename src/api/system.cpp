@@ -241,13 +241,15 @@ auto System::getPluginParameters(uint32_t instance_id) -> ParameterList {
     for (const auto& param_slot : node->getParameters()) {
         result.push_back({param_slot->info.id, param_slot->info.name, param_slot->info.module,
                           param_slot->info.min_value, param_slot->info.max_value,
-                          param_slot->info.default_value, node->getParameterBaseValue(param_slot->info.id)});
+                          param_slot->info.default_value,
+                          node->getParameterBaseValue(param_slot->info.id)});
     }
 #endif
     return result;
 }
 
-auto System::getParameterText(uint32_t instance_id, uint32_t param_id, double value) const -> std::string {
+auto System::getParameterText(uint32_t instance_id, uint32_t param_id, double value) const
+    -> std::string {
 #if defined(__ANDROID__)
     if (!_pimpl->module_router) return std::to_string(value);
     auto* node = _pimpl->module_router->getProcessingNode(instance_id);
@@ -256,7 +258,8 @@ auto System::getParameterText(uint32_t instance_id, uint32_t param_id, double va
     return std::to_string(value);
 }
 
-auto System::getParameterText(uint32_t instance_id, const std::string& param_id, double value) const -> std::string {
+auto System::getParameterText(uint32_t instance_id, const std::string& param_id, double value) const
+    -> std::string {
 #if defined(__ANDROID__)
     if (!_pimpl->module_router) return std::to_string(value);
     auto* node = _pimpl->module_router->getProcessingNode(instance_id);
@@ -286,6 +289,18 @@ void System::stopNoteFromNode(uint32_t from_node_id, int note) {
             }
         }
     }
+#endif
+}
+
+void System::setTempo(double bpm) {
+#if defined(__ANDROID__)
+    if (_pimpl->module_router) _pimpl->module_router->setTempo(bpm);
+#endif
+}
+
+void System::setTransportPlaying(bool playing) {
+#if defined(__ANDROID__)
+    if (_pimpl->module_router) _pimpl->module_router->setTransportPlaying(playing);
 #endif
 }
 

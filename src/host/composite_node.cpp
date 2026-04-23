@@ -69,6 +69,15 @@ void CompositeNode::setProcessingEnabled(bool enabled) {
     }
 }
 
+void CompositeNode::setTransport(const TransportState* transport) {
+    _transport = transport;
+    if (_current_state) {
+        for (auto* node : _current_state->sorted_nodes) {
+            if (node) node->setTransport(transport);
+        }
+    }
+}
+
 void CompositeNode::setPorts(uint32_t num_inputs, clap_audio_buffer* inputs, uint32_t num_outputs,
                              clap_audio_buffer* outputs) {
     _ext_inputs = inputs;

@@ -23,6 +23,10 @@ void SynthCanvasAudioSystem::_bind_methods() {
     godot::ClassDB::bind_method(godot::D_METHOD("start_audio"),
                                 &SynthCanvasAudioSystem::startAudio);
     godot::ClassDB::bind_method(godot::D_METHOD("stop_audio"), &SynthCanvasAudioSystem::stopAudio);
+    godot::ClassDB::bind_method(godot::D_METHOD("set_tempo", "bpm"),
+                                &SynthCanvasAudioSystem::setTempo);
+    godot::ClassDB::bind_method(godot::D_METHOD("set_transport_playing", "playing"),
+                                &SynthCanvasAudioSystem::setTransportPlaying);
     godot::ClassDB::bind_method(
         godot::D_METHOD("play_note", "instance_id", "note", "velocity", "note_id"),
         &SynthCanvasAudioSystem::playNote, DEFVAL(-1));
@@ -303,5 +307,17 @@ void SynthCanvasAudioSystem::playNoteFromNode(uint32_t from_node_id, int note, d
 void SynthCanvasAudioSystem::stopNoteFromNode(uint32_t from_node_id, int note) {
     if (_system) {
         _system->stopNoteFromNode(from_node_id, note);
+    }
+}
+
+void SynthCanvasAudioSystem::setTempo(double bpm) {
+    if (_system) {
+        _system->setTempo(bpm);
+    }
+}
+
+void SynthCanvasAudioSystem::setTransportPlaying(bool playing) {
+    if (_system) {
+        _system->setTransportPlaying(playing);
     }
 }

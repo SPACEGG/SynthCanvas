@@ -21,6 +21,7 @@ class ProcessingNode {
     virtual void activate(int32_t sample_rate, int32_t block_size) = 0;
     virtual void deactivate() = 0;
     virtual void setProcessingEnabled(bool enabled) = 0;
+    virtual void setTransport(const TransportState* transport) = 0;
 
     // Audio / Event Processing
     virtual void setPorts(uint32_t num_inputs, clap_audio_buffer* inputs, uint32_t num_outputs,
