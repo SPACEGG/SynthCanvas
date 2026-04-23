@@ -16,6 +16,7 @@ if(ANDROID)
         host/graph_processor.cpp
         host/graph_renderer.cpp
         host/internal_node_base.cpp
+        host/lfo_node.cpp
         host/logger.cpp
         host/midi_input_node.cpp
         host/module_router.cpp
