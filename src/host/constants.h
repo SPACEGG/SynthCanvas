@@ -40,6 +40,10 @@ constexpr int32_t kClapInvalidId = -1;
 // Graph Constraints
 constexpr size_t kMaxConnectionsPerPort = 32;
 
+// Envelope Settings
+constexpr size_t kMaxInternalPolyphony = 32;
+constexpr double kEnvelopeSilenceThreshold = 1e-5;
+
 // Modulation Quantization Settings
 constexpr int32_t kModulationStepSize = 16;
 constexpr double kModulationThreshold = 0.0001;

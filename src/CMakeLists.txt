@@ -13,6 +13,7 @@ if(ANDROID)
         host/audio_engine.cpp
         host/boundary_node.cpp
         host/composite_node.cpp
+        host/envelope_node.cpp
         host/graph_processor.cpp
         host/graph_renderer.cpp
         host/internal_node_base.cpp
