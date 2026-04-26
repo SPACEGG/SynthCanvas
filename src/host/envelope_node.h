@@ -26,7 +26,7 @@ class EnvelopeNode : public InternalNodeBase {
         kVelocityAmp = 7,   // 0.0 ~ 1.0 (Amount of velocity affecting peak amplitude)
         kVelocityTime = 8,  // 0.0 ~ 1.0 (Amount of velocity reducing attack time)
         kAmount = 9,        // -1.0 ~ 1.0
-        kBypass = 10,        // Gate mode
+        kBypass = 10,       // Gate mode
         kVoiceMaster = 11   // Send NOTE_CHOKE on completion
     };
 

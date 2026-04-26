@@ -99,7 +99,7 @@ void CompositeNode::process() {
 
     _internal_buffers.prepareBlock();
 
-    // 1. Prepare Proxies with current block's external buffers
+    // Prepare Proxies with current block's external buffers
     if (_input_proxy_node) {
         _input_proxy_node->setExternalBuffers(_ext_inputs, _ext_input_count);
     }
@@ -107,7 +107,7 @@ void CompositeNode::process() {
         _output_proxy_node->setExternalBuffers(_ext_outputs, _ext_output_count);
     }
 
-    // 2. Render Internal Graph (Proxies will handle data movement during process())
+    // Render Internal Graph (Proxies will handle data movement during process())
     _renderer.render(*_current_state, _internal_buffers, num_frames, nullptr);
 }
 

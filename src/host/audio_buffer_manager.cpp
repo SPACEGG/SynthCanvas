@@ -2,7 +2,6 @@
 
 #include <cstring>
 
-
 namespace synth_canvas::host {
 
 AudioBufferManager::AudioBufferManager() = default;

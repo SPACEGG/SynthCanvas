@@ -32,9 +32,9 @@ void InternalNodeBase::reserveOutputBuffers(uint32_t count) {
     // Already handled via _output_buffer resize in activate
 }
 
-void InternalNodeBase::setPorts(uint32_t num_inputs, clap_audio_buffer* inputs, uint32_t num_outputs,
-                                clap_audio_buffer* outputs) {
-    // Internal nodes usually manage their own buffers, 
+void InternalNodeBase::setPorts(uint32_t num_inputs, clap_audio_buffer* inputs,
+                                uint32_t num_outputs, clap_audio_buffer* outputs) {
+    // Internal nodes usually manage their own buffers,
     // but we can map the framework's output pointers if needed.
     // For now, we rely on getOutputBuffer() for internal routing.
 }
@@ -139,7 +139,7 @@ void InternalNodeBase::addParameter(clap_id id, const std::string& name, const s
 }
 
 void InternalNodeBase::addAudioPort(const std::string& name, bool is_input, uint32_t channel_count,
-                                   bool is_mod, clap_id target_param_id) {
+                                    bool is_mod, clap_id target_param_id) {
     AudioPortInfo port;
     port.index = static_cast<uint32_t>(is_input ? _input_ports.size() : _output_ports.size());
     port.is_input = is_input;
