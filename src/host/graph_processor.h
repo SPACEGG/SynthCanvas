@@ -45,6 +45,7 @@ class GraphProcessor {
                 ProcessingNode* node;
                 uint32_t port_index;
             } destination;
+            clap_id target_param_id = constants::kClapInvalidId;
         };
 
         // Global Transport State

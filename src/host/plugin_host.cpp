@@ -545,6 +545,14 @@ auto PluginHost::getParameterBaseValue(clap_id param_id) const -> double {
     return 0.0;
 }
 
+auto PluginHost::getParameterCurrentValue(clap_id param_id) const -> double {
+    auto it = _param_id_to_index.find(param_id);
+    if (it != _param_id_to_index.end()) {
+        return _params[it->second]->current_value.load(std::memory_order_relaxed);
+    }
+    return 0.0;
+}
+
 auto PluginHost::getParameterModulationOffset(clap_id param_id) const -> double {
     auto it = _param_id_to_index.find(param_id);
     if (it != _param_id_to_index.end()) {

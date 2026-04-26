@@ -36,14 +36,14 @@ void LFONode::process() {
     auto* out_buf = _output_buffer.data32[0];
     int frames = _output_buffer.frames;
 
-    // Get current parameter values (relaxed atomics from base class)
-    double freq = getParameterBaseValue(kFreq);
-    int waveform = static_cast<int>(getParameterBaseValue(kWaveform));
-    bool sync = getParameterBaseValue(kSync) > 0.5;
-    bool retrigger_enabled = getParameterBaseValue(kRetrigger) > 0.5;
-    auto amp = static_cast<float>(getParameterBaseValue(kAmplitude));
-    auto offset = static_cast<float>(getParameterBaseValue(kOffset));
-    auto smoothing_ms = static_cast<float>(getParameterBaseValue(kSmoothing));
+    // Get current parameter values (using current_value which includes modulation)
+    double freq = getParameterCurrentValue(kFreq);
+    int waveform = static_cast<int>(getParameterCurrentValue(kWaveform));
+    bool sync = getParameterCurrentValue(kSync) > 0.5;
+    bool retrigger_enabled = getParameterCurrentValue(kRetrigger) > 0.5;
+    auto amp = static_cast<float>(getParameterCurrentValue(kAmplitude));
+    auto offset = static_cast<float>(getParameterCurrentValue(kOffset));
+    auto smoothing_ms = static_cast<float>(getParameterCurrentValue(kSmoothing));
 
     // Update smoothing coefficient if parameter changed
     if (std::abs(smoothing_ms - _current_smoothing_ms) > 0.001f) {

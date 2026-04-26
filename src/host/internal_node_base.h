@@ -42,6 +42,7 @@ class InternalNodeBase : public ProcessingNode {
     void applyModulation(clap_id param_id, double value, uint32_t sample_offset) override;
 
     [[nodiscard]] auto getParameterBaseValue(clap_id param_id) const -> double override;
+    [[nodiscard]] auto getParameterCurrentValue(clap_id param_id) const -> double override;
     [[nodiscard]] auto getParameterModulationOffset(clap_id param_id) const -> double override;
 
     void queueEvent(const PluginEvent& event) override;

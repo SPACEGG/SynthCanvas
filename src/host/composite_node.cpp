@@ -220,6 +220,14 @@ auto CompositeNode::getParameterBaseValue(clap_id param_id) const -> double {
     return 0.0;
 }
 
+auto CompositeNode::getParameterCurrentValue(clap_id param_id) const -> double {
+    auto target = getInternalParameterTarget(param_id);
+    if (target.node) {
+        return target.node->getParameterCurrentValue(target.internal_id);
+    }
+    return 0.0;
+}
+
 auto CompositeNode::getParameterModulationOffset(clap_id param_id) const -> double {
     auto target = getInternalParameterTarget(param_id);
     if (target.node) {

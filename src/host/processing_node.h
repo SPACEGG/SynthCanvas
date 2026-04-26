@@ -47,6 +47,9 @@ class ProcessingNode {
     // Returns the baseline value (user-set) for a parameter
     [[nodiscard]] virtual auto getParameterBaseValue(clap_id param_id) const -> double = 0;
 
+    // Returns the current value (base + modulation) for a parameter
+    [[nodiscard]] virtual auto getParameterCurrentValue(clap_id param_id) const -> double = 0;
+
     // Returns the current modulation offset applied to a parameter
     [[nodiscard]] virtual auto getParameterModulationOffset(clap_id param_id) const -> double = 0;
 

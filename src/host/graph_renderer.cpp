@@ -165,7 +165,15 @@ void GraphRenderer::collectAndRouteEvents(size_t node_index, ProcessingNode* nod
     while (node->popOutputEvent(ev)) {
         for (const auto& target : targets) {
             if (target.type == GraphProcessor::RenderState::EventTarget::Type::kNode) {
-                target.destination.node->queueEvent(ev);
+                // If CLAP_EVENT_PARAM_MOD: Rewrite the param_id to the target port's id
+                if (ev.event.header.type == CLAP_EVENT_PARAM_MOD &&
+                    target.target_param_id != constants::kClapInvalidId) {
+                    PluginEvent rewritten_ev = ev;
+                    rewritten_ev.event.param_mod.param_id = target.target_param_id;
+                    target.destination.node->queueEvent(rewritten_ev);
+                } else {
+                    target.destination.node->queueEvent(ev);
+                }
             } else if (target.type ==
                        GraphProcessor::RenderState::EventTarget::Type::kExternalOutput) {
                 if (handler) {

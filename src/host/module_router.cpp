@@ -127,6 +127,8 @@ void ModuleRouter::pollResources() {
     bool state_returned = false;
     while (released_states.try_dequeue(old_state)) {
         state_returned = true;
+        // Sync transport state from the audio thread to main thread
+        _main_transport.song_pos_beats = old_state->transport.song_pos_beats;
     }
 
     if (state_returned && pending_states.size_approx() == 0) {
@@ -145,6 +147,7 @@ void ModuleRouter::setEventCallback(std::function<void(uint32_t, const PluginEve
 
 void ModuleRouter::pushNewState() {
     auto new_state = _graph_processor.createRenderState(constants::kAudioOutputNoteId);
+    // Sync transport state from the main thread to audio thread
     new_state->transport = _main_transport;
     if (!pending_states.enqueue(std::move(new_state))) {
         log("[ModuleRouter] ERROR: Failed to enqueue new render state.");

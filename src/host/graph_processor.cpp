@@ -166,13 +166,23 @@ auto GraphProcessor::createRenderState(uint32_t master_node_id) -> std::unique_p
                 RenderState::EventTarget target;
                 target.type = RenderState::EventTarget::Type::kNode;
                 target.destination.node = state->sorted_nodes[id_to_index[conn.to_node]];
+                target.target_param_id = static_cast<clap_id>(conn.to_port);
                 state->output_event_targets[id_to_index[conn.from_node]].push_back(target);
             }
         } else if (conn.type == ConnectionType::kModulation) {
             if (id_to_index.count(conn.to_node)) {
+                // Audio-rate modulation buffer routing
                 state->input_modulations[id_to_index[conn.to_node]].push_back(
                     {static_cast<clap_id>(conn.to_port), id_to_index[conn.from_node],
                      conn.from_port});
+
+                // Also add an event target for this modulation connection,
+                // so nodes that emit events (like EnvelopeNode) can also modulate.
+                RenderState::EventTarget target;
+                target.type = RenderState::EventTarget::Type::kNode;
+                target.destination.node = state->sorted_nodes[id_to_index[conn.to_node]];
+                target.target_param_id = static_cast<clap_id>(conn.to_port);
+                state->output_event_targets[id_to_index[conn.from_node]].push_back(target);
             }
         }
     }

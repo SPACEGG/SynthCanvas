@@ -35,18 +35,18 @@ void EnvelopeNode::activate(int32_t sample_rate, int32_t block_size) {
 void EnvelopeNode::process() {
     if (!_processing_enabled || !isActive()) return;
 
-    // 1. Update cached parameters
-    _cached_attack = getParameterBaseValue(kAttack);
-    _cached_decay = getParameterBaseValue(kDecay);
-    _cached_sustain = getParameterBaseValue(kSustain);
-    _cached_release = getParameterBaseValue(kRelease);
-    _cached_a_curve = getParameterBaseValue(kAttackCurve);
-    _cached_d_curve = getParameterBaseValue(kDecayCurve);
-    _cached_r_curve = getParameterBaseValue(kReleaseCurve);
-    _cached_vel_amp = getParameterBaseValue(kVelocityAmp);
-    _cached_vel_time = getParameterBaseValue(kVelocityTime);
-    _cached_amount = getParameterBaseValue(kAmount);
-    _cached_bypass = getParameterBaseValue(kBypass) > 0.5;
+    // 1. Update cached parameters (using current_value which includes modulation)
+    _cached_attack = getParameterCurrentValue(kAttack);
+    _cached_decay = getParameterCurrentValue(kDecay);
+    _cached_sustain = getParameterCurrentValue(kSustain);
+    _cached_release = getParameterCurrentValue(kRelease);
+    _cached_a_curve = getParameterCurrentValue(kAttackCurve);
+    _cached_d_curve = getParameterCurrentValue(kDecayCurve);
+    _cached_r_curve = getParameterCurrentValue(kReleaseCurve);
+    _cached_vel_amp = getParameterCurrentValue(kVelocityAmp);
+    _cached_vel_time = getParameterCurrentValue(kVelocityTime);
+    _cached_amount = getParameterCurrentValue(kAmount);
+    _cached_bypass = getParameterCurrentValue(kBypass) > 0.5;
 
     // 2. Process active voices
     for (auto& voice : _voices) {

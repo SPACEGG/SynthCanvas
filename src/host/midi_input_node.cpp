@@ -179,6 +179,11 @@ auto MidiInputNode::getParameterBaseValue(clap_id param_id) const -> double {
     return 0.0;
 }
 
+auto MidiInputNode::getParameterCurrentValue(clap_id param_id) const -> double {
+    if (param_id == 0) return static_cast<double>(_port_index);
+    return 0.0;
+}
+
 auto MidiInputNode::getAudioPorts(bool is_input) const -> const std::vector<AudioPortInfo>& {
     return is_input ? _audio_inputs : _audio_outputs;
 }

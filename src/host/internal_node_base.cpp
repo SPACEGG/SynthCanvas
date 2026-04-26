@@ -75,6 +75,13 @@ auto InternalNodeBase::getParameterBaseValue(clap_id param_id) const -> double {
     return 0.0;
 }
 
+auto InternalNodeBase::getParameterCurrentValue(clap_id param_id) const -> double {
+    if (const auto* slot = getParameterSlot(param_id)) {
+        return slot->current_value.load(std::memory_order_relaxed);
+    }
+    return 0.0;
+}
+
 auto InternalNodeBase::getParameterModulationOffset(clap_id param_id) const -> double {
     if (const auto* slot = getParameterSlot(param_id)) {
         return slot->modulation_value.load(std::memory_order_relaxed);

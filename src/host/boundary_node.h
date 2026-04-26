@@ -42,6 +42,9 @@ class BoundaryNode : public ProcessingNode {
     [[nodiscard]] auto getParameterBaseValue(clap_id param_id) const -> double override {
         return 0.0;
     }
+    [[nodiscard]] auto getParameterCurrentValue(clap_id param_id) const -> double override {
+        return 0.0;
+    }
     [[nodiscard]] auto getParameterModulationOffset(clap_id param_id) const -> double override {
         return 0.0;
     }
