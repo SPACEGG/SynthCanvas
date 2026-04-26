@@ -573,6 +573,12 @@ void ClapSawDemo::handleInboundEvent(const clap_event_header_t *evt)
         handleNoteOff(nevt->port_index, nevt->channel, nevt->key);
     }
     break;
+    case CLAP_EVENT_NOTE_CHOKE:
+    {
+        auto nevt = reinterpret_cast<const clap_event_note *>(evt);
+        handleNoteChoke(nevt->port_index, nevt->channel, nevt->key, nevt->note_id);
+    }
+    break;
     /*
      * CLAP_EVENT_PARAM_VALUE sets a value. What happens if you change a parameter
      * outside a modulation context. We simply update our engine value and, if an editor
@@ -847,6 +853,28 @@ void ClapSawDemo::handleNoteOff(int port_index, int channel, int n)
         toUiQ.try_enqueue(r);
     }
 #endif
+}
+
+void ClapSawDemo::handleNoteChoke(int port_index, int channel, int key, int noteid)
+{
+    for (auto &v : voices)
+    {
+        bool match = false;
+        if (noteid >= 0)
+        {
+            match = (v.note_id == noteid);
+        }
+        else if (key >= 0 && channel >= 0 && port_index >= 0)
+        {
+            match = (v.key == key && v.channel == channel && v.portid == port_index);
+        }
+
+        if (match && v.isPlaying())
+        {
+            // Immediately terminate the voice
+            v.state = SawDemoVoice::NEWLY_OFF;
+        }
+    }
 }
 
 void ClapSawDemo::activateVoice(SawDemoVoice &v, int port_index, int channel, int key, int noteid)

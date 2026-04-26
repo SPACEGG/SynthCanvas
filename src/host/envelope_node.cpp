@@ -18,6 +18,7 @@ EnvelopeNode::EnvelopeNode() {
     addParameter(kVelocityTime, "Vel->Atk", "env", 0.0, 1.0, 0.0);
     addParameter(kAmount, "Amount", "env", -1.0, 1.0, 1.0);
     addParameter(kBypass, "Bypass", "env", 0.0, 1.0, 0.0, CLAP_PARAM_IS_STEPPED);
+    addParameter(kVoiceMaster, "Voice Master", "env", 0.0, 1.0, 0.0, CLAP_PARAM_IS_STEPPED);
 
     addAudioPort("Note In", true, 0, false);
     addAudioPort("Attack Mod", true, 1, true, kAttack);
@@ -25,6 +26,7 @@ EnvelopeNode::EnvelopeNode() {
     addAudioPort("Sustain Mod", true, 1, true, kSustain);
     addAudioPort("Release Mod", true, 1, true, kRelease);
     addAudioPort("Amount Mod", true, 1, true, kAmount);
+    addAudioPort("Voice Mst Mod", true, 1, true, kVoiceMaster);
     addAudioPort("Signal Out", false, 0, true);  // No audio, just events
 }
 
@@ -52,6 +54,7 @@ void EnvelopeNode::process() {
     _cached_vel_time = getParameterCurrentValue(kVelocityTime);
     _cached_amount = getParameterCurrentValue(kAmount);
     _cached_bypass = getParameterCurrentValue(kBypass) > 0.5;
+    _cached_voice_master = getParameterCurrentValue(kVoiceMaster) > 0.5;
 
     // 2. Process active voices
     for (auto& voice : _voices) {
@@ -163,7 +166,7 @@ void EnvelopeNode::processVoice(VoiceState& voice, uint32_t frame_index) {
             adsr.current_value = 0.0;
             adsr.stage = ADSRState::kIdle;
             voice.active = false;
-            pushNoteEndEvent(voice, frame_index);
+            pushNoteChokeEvent(voice, frame_index);
         } else if (adsr.stage != ADSRState::kIdle) {
             adsr.current_value = 1.0;
         }
@@ -201,7 +204,7 @@ void EnvelopeNode::processVoice(VoiceState& voice, uint32_t frame_index) {
                 adsr.current_value = 0.0;
                 adsr.stage = ADSRState::kIdle;
                 voice.active = false;
-                pushNoteEndEvent(voice, frame_index);
+                pushNoteChokeEvent(voice, frame_index);
             }
             break;
         default:
@@ -228,21 +231,24 @@ void EnvelopeNode::pushModulationEvent(const VoiceState& voice, uint32_t frame_i
     _output_events.enqueue(ev);
 }
 
-void EnvelopeNode::pushNoteEndEvent(const VoiceState& voice, uint32_t frame_index) {
-    PluginEvent ev;
-    ev.event.header.size = sizeof(clap_event_note);
-    ev.event.header.time = frame_index;
-    ev.event.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
-    ev.event.header.type = CLAP_EVENT_NOTE_END;
-    ev.event.header.flags = 0;
+void EnvelopeNode::pushNoteChokeEvent(const VoiceState& voice, uint32_t frame_index) {
+    // If Voice Master is enabled: Send NOTE_CHOKE to target nodes.
+    if (_cached_voice_master) {
+        PluginEvent ev;
+        ev.event.header.size = sizeof(clap_event_note);
+        ev.event.header.time = frame_index;
+        ev.event.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+        ev.event.header.type = CLAP_EVENT_NOTE_CHOKE;
+        ev.event.header.flags = 0;
 
-    ev.event.note.port_index = 0;
-    ev.event.note.key = voice.key;
-    ev.event.note.channel = voice.channel;
-    ev.event.note.note_id = voice.note_id;
-    ev.event.note.velocity = 0.0;
+        ev.event.note.port_index = 0;
+        ev.event.note.key = voice.key;
+        ev.event.note.channel = voice.channel;
+        ev.event.note.note_id = voice.note_id;
+        ev.event.note.velocity = 0.0;
 
-    _output_events.enqueue(ev);
+        _output_events.enqueue(ev);
+    }
 }
 
 auto EnvelopeNode::getParameterText(clap_id param_id, double value) const -> std::string {
@@ -263,6 +269,8 @@ auto EnvelopeNode::getParameterText(clap_id param_id, double value) const -> std
         case kReleaseCurve:
             snprintf(buf.data(), buf.size(), "%.2f", value);
             break;
+        case kVoiceMaster:
+            return value > 0.5 ? "On" : "Off";
         default:
             return std::to_string(value);
     }

@@ -189,6 +189,7 @@ struct ClapSawDemo : public clap::helpers::Plugin<clap::helpers::MisbehaviourHan
     void pushParamsToVoices();
     void handleNoteOn(int port_index, int channel, int key, int noteid);
     void handleNoteOff(int port_index, int channel, int key);
+    void handleNoteChoke(int port_index, int channel, int key, int noteid);
     void activateVoice(SawDemoVoice &v, int port_index, int channel, int key, int noteid);
     void handleEventsFromUIQueue(const clap_output_events_t *);
 

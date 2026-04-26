@@ -26,7 +26,8 @@ class EnvelopeNode : public InternalNodeBase {
         kVelocityAmp = 7,   // 0.0 ~ 1.0 (Amount of velocity affecting peak amplitude)
         kVelocityTime = 8,  // 0.0 ~ 1.0 (Amount of velocity reducing attack time)
         kAmount = 9,        // -1.0 ~ 1.0
-        kBypass = 10        // Gate mode
+        kBypass = 10,        // Gate mode
+        kVoiceMaster = 11   // Send NOTE_CHOKE on completion
     };
 
     struct ADSRState {
@@ -71,7 +72,7 @@ class EnvelopeNode : public InternalNodeBase {
     [[nodiscard]] auto calculateCoeff(double time_ms, double curve) const -> double;
     void processVoice(VoiceState& voice, uint32_t frame_index);
     void pushModulationEvent(const VoiceState& voice, uint32_t frame_index);
-    void pushNoteEndEvent(const VoiceState& voice, uint32_t frame_index);
+    void pushNoteChokeEvent(const VoiceState& voice, uint32_t frame_index);
 
     std::array<VoiceState, constants::kMaxInternalPolyphony> _voices;
     uint32_t _voice_counter = 0;  // Incremented on each Note-ON for oldest-stealing
@@ -88,6 +89,7 @@ class EnvelopeNode : public InternalNodeBase {
     double _cached_vel_time = 0.0;
     double _cached_amount = 1.0;
     bool _cached_bypass = false;
+    bool _cached_voice_master = false;
 };
 
 }  // namespace synth_canvas::host
