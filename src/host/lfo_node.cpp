@@ -19,7 +19,11 @@ LFONode::LFONode() : _rng(std::random_device{}()) {
     addParameter(kSmoothing, "Smoothing", "lfo", 0.0, 100.0, 5.0);
 
     // Setup ports
-    addAudioPort("Note In", true, 0, false);     // Note input (0 channels)
+    addAudioPort("Note In", true, 0, false);  // Note input (0 channels)
+    addAudioPort("Freq Mod", true, 1, true, kFreq);
+    addAudioPort("Amp Mod", true, 1, true, kAmplitude);
+    addAudioPort("Offset Mod", true, 1, true, kOffset);
+    addAudioPort("Smoothing Mod", true, 1, true, kSmoothing);
     addAudioPort("Signal Out", false, 1, true);  // Mono signal output
 }
 

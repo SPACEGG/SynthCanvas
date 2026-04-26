@@ -208,29 +208,50 @@ void PluginHost::scanAudioPorts() {
     if (!audio_ports_ext) {
         logMessage(CLAP_LOG_WARNING,
                    "Plugin does not implement CLAP_EXT_AUDIO_PORTS. Assuming no audio ports.");
-        return;
-    }
+    } else {
+        _audio_input_ports_count = audio_ports_ext->count(_plugin->clapPlugin(), true);
+        _audio_output_ports_count = audio_ports_ext->count(_plugin->clapPlugin(), false);
 
-    _audio_input_ports_count = audio_ports_ext->count(_plugin->clapPlugin(), true);
-    _audio_output_ports_count = audio_ports_ext->count(_plugin->clapPlugin(), false);
+        for (uint32_t i = 0; i < _audio_input_ports_count; ++i) {
+            AudioPortInfo info;
+            info.index = i;
+            info.is_input = true;
+            if (audio_ports_ext->get(_plugin->clapPlugin(), i, true, &info.clap_info)) {
+                info.is_modulation = false;
+                info.target_param_id = -1;
+                _audio_input_ports.push_back(info);
+            }
+        }
 
-    for (uint32_t i = 0; i < _audio_input_ports_count; ++i) {
-        AudioPortInfo info;
-        info.index = i;
-        info.is_input = true;
-        if (audio_ports_ext->get(_plugin->clapPlugin(), i, true, &info.clap_info)) {
-            info.is_modulation = false;
-            _audio_input_ports.push_back(info);
+        for (uint32_t i = 0; i < _audio_output_ports_count; ++i) {
+            AudioPortInfo info;
+            info.index = i;
+            info.is_input = false;
+            if (audio_ports_ext->get(_plugin->clapPlugin(), i, false, &info.clap_info)) {
+                info.is_modulation = false;
+                info.target_param_id = -1;
+                _audio_output_ports.push_back(info);
+            }
         }
     }
 
-    for (uint32_t i = 0; i < _audio_output_ports_count; ++i) {
-        AudioPortInfo info;
-        info.index = i;
-        info.is_input = false;
-        if (audio_ports_ext->get(_plugin->clapPlugin(), i, false, &info.clap_info)) {
-            info.is_modulation = false;
-            _audio_output_ports.push_back(info);
+    // Now, add artificial modulation ports from modulatable parameters
+    for (const auto& slot : _params) {
+        if (slot->info.flags & CLAP_PARAM_IS_MODULATABLE) {
+            AudioPortInfo mod_port;
+            mod_port.index = static_cast<uint32_t>(_audio_input_ports.size());
+            mod_port.is_input = true;
+            mod_port.is_modulation = true;
+            mod_port.target_param_id = slot->info.id;
+            
+            // Fill clap_info for UI/metadata consistency
+            std::strncpy(mod_port.clap_info.name, slot->info.name, CLAP_NAME_SIZE);
+            mod_port.clap_info.id = mod_port.index;
+            mod_port.clap_info.channel_count = 1;
+            mod_port.clap_info.flags = CLAP_AUDIO_PORT_IS_MAIN;
+            mod_port.clap_info.port_type = CLAP_PORT_MONO;
+
+            _audio_input_ports.push_back(mod_port);
         }
     }
 }

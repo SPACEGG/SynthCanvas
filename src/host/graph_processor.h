@@ -8,8 +8,10 @@
 #include <unordered_map>
 #include <vector>
 
+#include "constants.h"
 #include "graph_types.h"
 #include "processing_node.h"
+
 
 namespace synth_canvas::host {
 

@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <queue>
 
+#include "constants.h"
+
 namespace synth_canvas::host {
 
 GraphProcessor::GraphProcessor() = default;
@@ -163,25 +165,41 @@ auto GraphProcessor::createRenderState(uint32_t master_node_id) -> std::unique_p
             }
         } else if (conn.type == ConnectionType::kEvent) {
             if (id_to_index.count(conn.to_node)) {
+                auto* to_node = state->sorted_nodes[id_to_index[conn.to_node]];
                 RenderState::EventTarget target;
                 target.type = RenderState::EventTarget::Type::kNode;
-                target.destination.node = state->sorted_nodes[id_to_index[conn.to_node]];
-                target.target_param_id = static_cast<clap_id>(conn.to_port);
+                target.destination.node = to_node;
+
+                // Resolve target_param_id from port metadata
+                target.target_param_id = constants::kClapInvalidId;
+                const auto& ports = to_node->getAudioPorts(true);
+                if (conn.to_port < ports.size()) {
+                    target.target_param_id = ports[conn.to_port].target_param_id;
+                }
+
                 state->output_event_targets[id_to_index[conn.from_node]].push_back(target);
             }
         } else if (conn.type == ConnectionType::kModulation) {
             if (id_to_index.count(conn.to_node)) {
+                auto* to_node = state->sorted_nodes[id_to_index[conn.to_node]];
+
+                // Resolve target_param_id from port metadata
+                clap_id resolved_param_id = constants::kClapInvalidId;
+                const auto& ports = to_node->getAudioPorts(true);
+                if (conn.to_port < ports.size()) {
+                    resolved_param_id = ports[conn.to_port].target_param_id;
+                }
+
                 // Audio-rate modulation buffer routing
                 state->input_modulations[id_to_index[conn.to_node]].push_back(
-                    {static_cast<clap_id>(conn.to_port), id_to_index[conn.from_node],
-                     conn.from_port});
+                    {resolved_param_id, id_to_index[conn.from_node], conn.from_port});
 
                 // Also add an event target for this modulation connection,
                 // so nodes that emit events (like EnvelopeNode) can also modulate.
                 RenderState::EventTarget target;
                 target.type = RenderState::EventTarget::Type::kNode;
-                target.destination.node = state->sorted_nodes[id_to_index[conn.to_node]];
-                target.target_param_id = static_cast<clap_id>(conn.to_port);
+                target.destination.node = to_node;
+                target.target_param_id = resolved_param_id;
                 state->output_event_targets[id_to_index[conn.from_node]].push_back(target);
             }
         }

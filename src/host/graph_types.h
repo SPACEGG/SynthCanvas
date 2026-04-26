@@ -42,6 +42,7 @@ struct AudioPortInfo {
     uint32_t index;
     bool is_input;
     bool is_modulation;
+    clap_id target_param_id = -1;
 };
 
 // Internal storage for a parameter

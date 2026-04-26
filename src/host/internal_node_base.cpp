@@ -139,11 +139,12 @@ void InternalNodeBase::addParameter(clap_id id, const std::string& name, const s
 }
 
 void InternalNodeBase::addAudioPort(const std::string& name, bool is_input, uint32_t channel_count,
-                                   bool is_mod) {
+                                   bool is_mod, clap_id target_param_id) {
     AudioPortInfo port;
     port.index = static_cast<uint32_t>(is_input ? _input_ports.size() : _output_ports.size());
     port.is_input = is_input;
     port.is_modulation = is_mod;
+    port.target_param_id = target_param_id;
     port.clap_info.id = port.index;
     std::strncpy(port.clap_info.name, name.c_str(), sizeof(port.clap_info.name) - 1);
     port.clap_info.channel_count = channel_count;

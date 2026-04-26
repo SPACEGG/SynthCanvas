@@ -20,6 +20,11 @@ EnvelopeNode::EnvelopeNode() {
     addParameter(kBypass, "Bypass", "env", 0.0, 1.0, 0.0, CLAP_PARAM_IS_STEPPED);
 
     addAudioPort("Note In", true, 0, false);
+    addAudioPort("Attack Mod", true, 1, true, kAttack);
+    addAudioPort("Decay Mod", true, 1, true, kDecay);
+    addAudioPort("Sustain Mod", true, 1, true, kSustain);
+    addAudioPort("Release Mod", true, 1, true, kRelease);
+    addAudioPort("Amount Mod", true, 1, true, kAmount);
     addAudioPort("Signal Out", false, 0, true);  // No audio, just events
 }
 

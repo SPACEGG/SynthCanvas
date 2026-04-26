@@ -70,7 +70,7 @@ class InternalNodeBase : public ProcessingNode {
     void addParameter(clap_id id, const std::string& name, const std::string& module,
                       double min_val, double max_val, double def_val, uint32_t flags = 0);
     void addAudioPort(const std::string& name, bool is_input, uint32_t channel_count = 2,
-                      bool is_mod = false);
+                      bool is_mod = false, clap_id target_param_id = -1);
 
     // Derived classes must implement these
     virtual void onSampleRateChanged(int32_t sample_rate) {}
