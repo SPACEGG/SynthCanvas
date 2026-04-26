@@ -35,8 +35,12 @@ class EnvelopeNode : public InternalNodeBase {
         Stage stage = kIdle;
 
         double current_value = 0.0;
+        double start_value = 0.0;
         double target_value = 0.0;
-        double coeff = 0.0;  // 1-pole filter coefficient for current stage
+
+        double phase = 0.0;      // 0.0 to 1.0 within the current stage
+        double phase_inc = 0.0;  // Linear increment per sample
+        double curve = 0.0;      // Cached curvature for the stage
 
         // Calculated targets based on velocity
         double peak_amplitude = 1.0;

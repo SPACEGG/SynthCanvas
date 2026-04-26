@@ -36,13 +36,14 @@ void EnvelopeNode::activate(int32_t sample_rate, int32_t block_size) {
         voice.active = false;
         voice.adsr.stage = ADSRState::kIdle;
         voice.adsr.current_value = 0.0;
+        voice.adsr.phase = 0.0;
     }
 }
 
 void EnvelopeNode::process() {
     if (!_processing_enabled || !isActive()) return;
 
-    // 1. Update cached parameters (using current_value which includes modulation)
+    // 1. Update cached parameters
     _cached_attack = getParameterCurrentValue(kAttack);
     _cached_decay = getParameterCurrentValue(kDecay);
     _cached_sustain = getParameterCurrentValue(kSustain);
@@ -60,7 +61,6 @@ void EnvelopeNode::process() {
     for (auto& voice : _voices) {
         if (!voice.active) continue;
 
-        // We iterate through frames, but update modulation every StepSize
         for (int i = 0; i < _output_buffer.frames; ++i) {
             processVoice(voice, i);
 
@@ -81,14 +81,9 @@ void EnvelopeNode::queueEvent(const PluginEvent& event) {
 }
 
 void EnvelopeNode::triggerNoteOn(int16_t key, int16_t channel, int32_t note_id, double velocity) {
-    // Soft-takeover: try to find existing voice for same note
     VoiceState* voice = findVoice(key, note_id);
-    if (!voice) {
-        voice = findFreeVoice();
-    }
-    if (!voice) {
-        voice = getOldestVoice();
-    }
+    if (!voice) voice = findFreeVoice();
+    if (!voice) voice = getOldestVoice();
 
     if (voice) {
         voice->key = key;
@@ -99,14 +94,17 @@ void EnvelopeNode::triggerNoteOn(int16_t key, int16_t channel, int32_t note_id, 
 
         // Velocity mapping
         voice->adsr.peak_amplitude = 1.0 - _cached_vel_amp + (_cached_vel_amp * velocity);
-
         double vel_time_factor = 1.0 - (velocity * _cached_vel_time);
         double actual_attack = std::max(0.1, _cached_attack * vel_time_factor);
 
         // Transition to ATTACK
         voice->adsr.stage = ADSRState::kAttack;
-        voice->adsr.target_value = 1.0;  // Normalized target
-        voice->adsr.coeff = calculateCoeff(actual_attack, _cached_a_curve);
+        voice->adsr.start_value = voice->adsr.current_value;  // Smooth takeover from current
+        voice->adsr.target_value = 1.0;
+        voice->adsr.phase = 0.0;
+        voice->adsr.phase_inc =
+            1.0 / (_current_sample_rate * (std::max(0.1, actual_attack) * 0.001));
+        voice->adsr.curve = _cached_a_curve;
     }
 }
 
@@ -114,8 +112,12 @@ void EnvelopeNode::triggerNoteOff(int16_t key, int32_t note_id) {
     VoiceState* voice = findVoice(key, note_id);
     if (voice && voice->adsr.stage != ADSRState::kIdle) {
         voice->adsr.stage = ADSRState::kRelease;
+        voice->adsr.start_value = voice->adsr.current_value;
         voice->adsr.target_value = 0.0;
-        voice->adsr.coeff = calculateCoeff(_cached_release, _cached_r_curve);
+        voice->adsr.phase = 0.0;
+        voice->adsr.phase_inc =
+            1.0 / (_current_sample_rate * (std::max(0.1, _cached_release) * 0.001));
+        voice->adsr.curve = _cached_r_curve;
     }
 }
 
@@ -147,17 +149,6 @@ auto EnvelopeNode::getOldestVoice() -> VoiceState* {
     return oldest;
 }
 
-auto EnvelopeNode::calculateCoeff(double time_ms, double curve) const -> double {
-    double tau = time_ms * 0.001;
-    if (curve > 0.01) {
-        tau *= (1.0 + curve * 5.0);
-    } else if (curve < -0.01) {
-        tau /= (1.0 - curve * 5.0);
-    }
-
-    return 1.0 - std::exp(-1.0 / (_current_sample_rate * std::max(0.0001, tau)));
-}
-
 void EnvelopeNode::processVoice(VoiceState& voice, uint32_t frame_index) {
     auto& adsr = voice.adsr;
 
@@ -173,42 +164,58 @@ void EnvelopeNode::processVoice(VoiceState& voice, uint32_t frame_index) {
         return;
     }
 
-    const double kThreshold = constants::kEnvelopeSilenceThreshold;
+    if (adsr.stage == ADSRState::kIdle) return;
+    if (adsr.stage == ADSRState::kSustain) {
+        adsr.current_value = _cached_sustain;
+        return;
+    }
 
-    // 1-pole filter style transition
-    adsr.current_value += (adsr.target_value - adsr.current_value) * adsr.coeff;
+    // Increment phase
+    adsr.phase = std::min(1.0, adsr.phase + adsr.phase_inc);
+
+    // Apply Power-scaling Curve
+    // y = (curve > 0) ? pow(x, f) : 1.0 - pow(1.0 - x, f)
+    double curve_val = adsr.curve;
+    double x = adsr.phase;
+    double shaped_x = x;
+
+    if (std::abs(curve_val) > 0.01) {
+        double f = 1.0 + std::abs(curve_val) * 9.0;  // Range 1.0 to 10.0
+        if (curve_val > 0) {
+            shaped_x = std::pow(x, f);
+        } else {
+            shaped_x = 1.0 - std::pow(1.0 - x, f);
+        }
+    }
+
+    // Map shaped phase to start/target range
+    adsr.current_value = adsr.start_value + (adsr.target_value - adsr.start_value) * shaped_x;
 
     // Stage transitions
-    switch (adsr.stage) {
-        case ADSRState::kAttack:
-            if (adsr.current_value >= 1.0 - kThreshold) {
-                adsr.current_value = 1.0;
+    if (adsr.phase >= 1.0) {
+        switch (adsr.stage) {
+            case ADSRState::kAttack:
                 adsr.stage = ADSRState::kDecay;
+                adsr.start_value = 1.0;
                 adsr.target_value = _cached_sustain;
-                adsr.coeff = calculateCoeff(_cached_decay, _cached_d_curve);
-            }
-            break;
-        case ADSRState::kDecay:
-            if (std::abs(adsr.current_value - _cached_sustain) < kThreshold) {
-                adsr.current_value = _cached_sustain;
+                adsr.phase = 0.0;
+                adsr.phase_inc =
+                    1.0 / (_current_sample_rate * (std::max(0.1, _cached_decay) * 0.001));
+                adsr.curve = _cached_d_curve;
+                break;
+            case ADSRState::kDecay:
                 adsr.stage = ADSRState::kSustain;
-                adsr.target_value = _cached_sustain;
-                adsr.coeff = 0.0;
-            }
-            break;
-        case ADSRState::kSustain:
-            adsr.current_value = _cached_sustain;
-            break;
-        case ADSRState::kRelease:
-            if (adsr.current_value < kThreshold) {
+                adsr.current_value = _cached_sustain;
+                break;
+            case ADSRState::kRelease:
                 adsr.current_value = 0.0;
                 adsr.stage = ADSRState::kIdle;
                 voice.active = false;
                 pushNoteChokeEvent(voice, frame_index);
-            }
-            break;
-        default:
-            break;
+                break;
+            default:
+                break;
+        }
     }
 }
 
@@ -232,7 +239,6 @@ void EnvelopeNode::pushModulationEvent(const VoiceState& voice, uint32_t frame_i
 }
 
 void EnvelopeNode::pushNoteChokeEvent(const VoiceState& voice, uint32_t frame_index) {
-    // If Voice Master is enabled: Send NOTE_CHOKE to target nodes.
     if (_cached_voice_master) {
         PluginEvent ev;
         ev.event.header.size = sizeof(clap_event_note);
