@@ -66,6 +66,7 @@ class MidiInputNode : public ProcessingNode {
 
     void openPort(uint32_t port_index);
     void closePort();
+    void deactivateInternal();
 
     uint32_t _instance_id = 0;
     bool _active = false;

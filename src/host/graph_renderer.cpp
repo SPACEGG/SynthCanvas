@@ -167,7 +167,7 @@ void GraphRenderer::collectAndRouteEvents(size_t node_index, ProcessingNode* nod
             if (target.type == GraphProcessor::RenderState::EventTarget::Type::kNode) {
                 // If CLAP_EVENT_PARAM_MOD: Rewrite the param_id to the target port's id
                 if (ev.event.header.type == CLAP_EVENT_PARAM_MOD &&
-                    target.target_param_id != constants::kClapInvalidId) {
+                    static_cast<int32_t>(target.target_param_id) != constants::kClapInvalidId) {
                     PluginEvent rewritten_ev = ev;
                     rewritten_ev.event.param_mod.param_id = target.target_param_id;
                     target.destination.node->queueEvent(rewritten_ev);

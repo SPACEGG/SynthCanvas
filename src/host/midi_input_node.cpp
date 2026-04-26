@@ -27,7 +27,7 @@ MidiInputNode::MidiInputNode() {
     _parameters.push_back(std::move(port_param));
 }
 
-MidiInputNode::~MidiInputNode() { deactivate(); }
+MidiInputNode::~MidiInputNode() { deactivateInternal(); }
 
 void MidiInputNode::activate(int32_t sample_rate, int32_t block_size) {
     _sample_rate = sample_rate;
@@ -36,7 +36,9 @@ void MidiInputNode::activate(int32_t sample_rate, int32_t block_size) {
     openPort(_port_index);
 }
 
-void MidiInputNode::deactivate() {
+void MidiInputNode::deactivate() { deactivateInternal(); }
+
+void MidiInputNode::deactivateInternal() {
     closePort();
     _active = false;
 }
