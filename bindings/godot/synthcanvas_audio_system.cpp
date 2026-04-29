@@ -19,6 +19,12 @@ void SynthCanvasAudioSystem::_bind_methods() {
     godot::ClassDB::bind_method(
         godot::D_METHOD("disconnect_nodes", "from_node", "from_port", "to_node", "to_port", "type"),
         &SynthCanvasAudioSystem::disconnectNodes, DEFVAL(0));
+    godot::ClassDB::bind_method(godot::D_METHOD("update_connection", "from_node", "from_port",
+                                               "to_node", "to_port", "type", "scale", "bypass"),
+                                &SynthCanvasAudioSystem::updateConnection);
+    godot::ClassDB::bind_method(godot::D_METHOD("get_connection_properties", "from_node",
+                                               "from_port", "to_node", "to_port", "type"),
+                                &SynthCanvasAudioSystem::getConnectionProperties);
 
     godot::ClassDB::bind_method(godot::D_METHOD("start_audio"),
                                 &SynthCanvasAudioSystem::startAudio);
@@ -223,6 +229,28 @@ void SynthCanvasAudioSystem::disconnectNodes(uint32_t from_node, uint32_t from_p
         _system->disconnectNodes(from_node, from_port, to_node, to_port,
                                  static_cast<synth_canvas::ConnectionType>(type));
     }
+}
+
+void SynthCanvasAudioSystem::updateConnection(uint32_t from_node, uint32_t from_port,
+                                              uint32_t to_node, uint32_t to_port, int type,
+                                              float scale, bool bypass) {
+    if (_system) {
+        _system->updateConnection(from_node, from_port, to_node, to_port,
+                                  static_cast<synth_canvas::ConnectionType>(type), scale, bypass);
+    }
+}
+
+auto SynthCanvasAudioSystem::getConnectionProperties(uint32_t from_node, uint32_t from_port,
+                                                     uint32_t to_node, uint32_t to_port,
+                                                     int type) -> godot::Dictionary {
+    godot::Dictionary res;
+    if (_system) {
+        auto props = _system->getConnectionProperties(
+            from_node, from_port, to_node, to_port, static_cast<synth_canvas::ConnectionType>(type));
+        res["scale"] = props.scale;
+        res["bypass"] = props.bypass;
+    }
+    return res;
 }
 
 void SynthCanvasAudioSystem::startAudio() {

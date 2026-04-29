@@ -193,6 +193,32 @@ void System::disconnectNodes(uint32_t from_node, uint32_t from_port, uint32_t to
 #endif
 }
 
+void System::updateConnection(uint32_t from_node, uint32_t from_port, uint32_t to_node,
+                              uint32_t to_port, ConnectionType type, float scale, bool bypass) {
+#if defined(__ANDROID__)
+    if (_pimpl->module_router) {
+        _pimpl->module_router->updateConnection(from_node, from_port, to_node, to_port, type, scale,
+                                                bypass);
+    }
+#endif
+}
+
+auto System::getConnectionProperties(uint32_t from_node, uint32_t from_port, uint32_t to_node,
+                                     uint32_t to_port, ConnectionType type) const
+    -> ConnectionProperties {
+#if defined(__ANDROID__)
+    if (_pimpl->module_router) {
+        float scale = 1.0f;
+        bool bypass = false;
+        if (_pimpl->module_router->getConnectionProperties(from_node, from_port, to_node, to_port,
+                                                           type, scale, bypass)) {
+            return {.scale = scale, .bypass = bypass};
+        }
+    }
+#endif
+    return {.scale = 1.0f, .bypass = false};
+}
+
 void System::startAudio() {
 #if defined(__ANDROID__)
     if (_pimpl->audio_engine) _pimpl->audio_engine->start();

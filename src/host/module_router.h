@@ -37,6 +37,11 @@ class ModuleRouter {
                       ConnectionType type = ConnectionType::kAudio);
     void disconnectNodes(uint32_t from_node, uint32_t from_port, uint32_t to_node, uint32_t to_port,
                          ConnectionType type = ConnectionType::kAudio);
+    void updateConnection(uint32_t from_node, uint32_t from_port, uint32_t to_node,
+                          uint32_t to_port, ConnectionType type, float scale, bool bypass);
+    auto getConnectionProperties(uint32_t from_node, uint32_t from_port, uint32_t to_node,
+                                 uint32_t to_port, ConnectionType type, float& out_scale,
+                                 bool& out_bypass) const -> bool;
 
     // Accessors
     auto getProcessingNode(uint32_t instance_id) const -> ProcessingNode*;

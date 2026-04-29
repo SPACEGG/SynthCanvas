@@ -67,6 +67,8 @@ struct InternalRoutingConfig {
     std::string to_node;
     uint32_t to_port;
     ConnectionType type;
+    float scale = 1.0f;
+    bool bypass = false;
 };
 
 struct ParameterMappingConfig {

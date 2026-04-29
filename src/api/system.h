@@ -36,6 +36,16 @@ class System {
     void disconnectNodes(uint32_t from_node, uint32_t from_port, uint32_t to_node, uint32_t to_port,
                          ConnectionType type);
 
+    struct ConnectionProperties {
+        float scale;
+        bool bypass;
+    };
+    void updateConnection(uint32_t from_node, uint32_t from_port, uint32_t to_node, uint32_t to_port,
+                          ConnectionType type, float scale, bool bypass);
+    [[nodiscard]] auto getConnectionProperties(uint32_t from_node, uint32_t from_port,
+                                               uint32_t to_node, uint32_t to_port,
+                                               ConnectionType type) const -> ConnectionProperties;
+
     // Audio Control
     void startAudio();
     void stopAudio();

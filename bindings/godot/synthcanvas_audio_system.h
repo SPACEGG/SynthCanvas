@@ -51,6 +51,10 @@ class SynthCanvasAudioSystem : public godot::Node {
                       int type = 0);
     void disconnectNodes(uint32_t from_node, uint32_t from_port, uint32_t to_node, uint32_t to_port,
                          int type = 0);
+    void updateConnection(uint32_t from_node, uint32_t from_port, uint32_t to_node, uint32_t to_port,
+                          int type, float scale, bool bypass);
+    auto getConnectionProperties(uint32_t from_node, uint32_t from_port, uint32_t to_node,
+                                 uint32_t to_port, int type) -> godot::Dictionary;
 
     void startAudio();
     void stopAudio();

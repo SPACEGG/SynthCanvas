@@ -12,7 +12,6 @@
 #include "graph_types.h"
 #include "processing_node.h"
 
-
 namespace synth_canvas::host {
 
 class GraphProcessor {
@@ -22,12 +21,15 @@ class GraphProcessor {
         struct AudioSource {
             uint32_t node_index;
             uint32_t port_index;
+            bool bypass = false;
         };
 
         struct ModulationSource {
             clap_id target_param_id;
             uint32_t source_node_index;
             uint32_t source_port_index;
+            float scale = 1.0f;
+            bool bypass = false;
         };
 
         struct ParameterMapping {
@@ -48,6 +50,8 @@ class GraphProcessor {
                 uint32_t port_index;
             } destination;
             clap_id target_param_id = constants::kClapInvalidId;
+            float scale = 1.0f;
+            bool bypass = false;
         };
 
         // Global Transport State
@@ -78,6 +82,7 @@ class GraphProcessor {
     // Connection management
     void connect(const PortConnection& conn);
     void disconnect(const PortConnection& conn);
+    auto setConnectionProperties(const PortConnection& conn_id, float scale, bool bypass) -> bool;
 
     // Composite Mapping (Main Thread side)
     void setParameterMapping(const std::string& param_id, uint32_t node_id, uint32_t clap_param_id);

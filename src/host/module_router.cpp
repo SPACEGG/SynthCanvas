@@ -179,6 +179,34 @@ void ModuleRouter::disconnectNodes(uint32_t from_node, uint32_t from_port, uint3
     pushNewState();
 }
 
+void ModuleRouter::updateConnection(uint32_t from_node, uint32_t from_port, uint32_t to_node,
+                                    uint32_t to_port, ConnectionType type, float scale,
+                                    bool bypass) {
+    if (_graph_processor.setConnectionProperties({.from_node = from_node,
+                                                  .from_port = from_port,
+                                                  .to_node = to_node,
+                                                  .to_port = to_port,
+                                                  .type = type},
+                                                 scale, bypass)) {
+        pushNewState();
+    }
+}
+
+auto ModuleRouter::getConnectionProperties(uint32_t from_node, uint32_t from_port, uint32_t to_node,
+                                           uint32_t to_port, ConnectionType type, float& out_scale,
+                                           bool& out_bypass) const -> bool {
+    const auto& connections = _graph_processor.getConnections();
+    for (const auto& conn : connections) {
+        if (conn.from_node == from_node && conn.from_port == from_port && conn.to_node == to_node &&
+            conn.to_port == to_port && conn.type == type) {
+            out_scale = conn.scale;
+            out_bypass = conn.bypass;
+            return true;
+        }
+    }
+    return false;
+}
+
 void ModuleRouter::activateNode(uint32_t instance_id, int32_t sample_rate,
                                 int32_t frames_per_block) {
     if (auto* node = _graph_processor.getNode(instance_id)) {

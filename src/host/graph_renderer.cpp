@@ -45,13 +45,15 @@ void GraphRenderer::applyParameterModulation(size_t node_index, ProcessingNode* 
         _mod_sum_workspace.clear();
 
         for (const auto& mod : modulations) {
+            if (mod.bypass) continue;
+
             ProcessingNode* src_node = state.sorted_nodes[mod.source_node_index];
             if (!src_node) continue;
 
             auto* src_buf = src_node->getOutputBuffer(mod.source_port_index);
             if (!src_buf || !src_buf->data32) continue;
 
-            float mod_value = src_buf->data32[0][t];
+            float mod_value = src_buf->data32[0][t] * mod.scale;
 
             bool found = false;
             for (auto& entry : _mod_sum_workspace) {
@@ -96,13 +98,16 @@ void GraphRenderer::prepareAudioInputs(size_t node_index, ProcessingNode* node,
             final_input = nullptr;
         } else if (sources.size() == 1) {
             const auto& src = sources[0];
-            ProcessingNode* src_node = state.sorted_nodes[src.node_index];
-            if (src_node) final_input = src_node->getOutputBuffer(src.port_index);
+            if (!src.bypass) {
+                ProcessingNode* src_node = state.sorted_nodes[src.node_index];
+                if (src_node) final_input = src_node->getOutputBuffer(src.port_index);
+            }
         } else {
             AudioBuffer* mix_buf = buffers.getMixBuffer(node_index, port_info.index);
             if (mix_buf) {
                 mix_buf->clear();
                 for (const auto& src : sources) {
+                    if (src.bypass) continue;
                     ProcessingNode* src_node = state.sorted_nodes[src.node_index];
                     if (src_node) {
                         AudioBuffer* src_buf = src_node->getOutputBuffer(src.port_index);
@@ -164,12 +169,15 @@ void GraphRenderer::collectAndRouteEvents(size_t node_index, ProcessingNode* nod
     PluginEvent ev;
     while (node->popOutputEvent(ev)) {
         for (const auto& target : targets) {
+            if (target.bypass) continue;
+
             if (target.type == GraphProcessor::RenderState::EventTarget::Type::kNode) {
                 // If CLAP_EVENT_PARAM_MOD: Rewrite the param_id to the target port's id
                 if (ev.event.header.type == CLAP_EVENT_PARAM_MOD &&
                     static_cast<int32_t>(target.target_param_id) != constants::kClapInvalidId) {
                     PluginEvent rewritten_ev = ev;
                     rewritten_ev.event.param_mod.param_id = target.target_param_id;
+                    rewritten_ev.event.param_mod.amount *= target.scale;
                     target.destination.node->queueEvent(rewritten_ev);
                 } else {
                     target.destination.node->queueEvent(ev);

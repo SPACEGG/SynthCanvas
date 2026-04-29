@@ -52,6 +52,20 @@ void GraphProcessor::disconnect(const PortConnection& conn) {
     topologicalSort();
 }
 
+auto GraphProcessor::setConnectionProperties(const PortConnection& conn_id, float scale,
+                                             bool bypass) -> bool {
+    for (auto& conn : _connections) {
+        if (conn.from_node == conn_id.from_node && conn.from_port == conn_id.from_port &&
+            conn.to_node == conn_id.to_node && conn.to_port == conn_id.to_port &&
+            conn.type == conn_id.type) {
+            conn.scale = scale;
+            conn.bypass = bypass;
+            return true;
+        }
+    }
+    return false;
+}
+
 void GraphProcessor::setParameterMapping(const std::string& param_id, uint32_t node_id,
                                          uint32_t clap_param_id) {
     _parameter_mappings[param_id] = {.target_node_id = node_id, .target_param_id = clap_param_id};
@@ -157,11 +171,11 @@ auto GraphProcessor::createRenderState(uint32_t master_node_id) -> std::unique_p
         if (conn.type == ConnectionType::kAudio) {
             if (conn.to_node == master_node_id) {
                 state->master_output_sources.push_back(
-                    {id_to_index[conn.from_node], conn.from_port});
+                    {id_to_index[conn.from_node], conn.from_port, conn.bypass});
             } else if (id_to_index.count(conn.to_node)) {
                 uint32_t to_idx = id_to_index[conn.to_node];
                 state->input_audio_sources[to_idx][conn.to_port].push_back(
-                    {id_to_index[conn.from_node], conn.from_port});
+                    {id_to_index[conn.from_node], conn.from_port, conn.bypass});
             }
         } else if (conn.type == ConnectionType::kEvent) {
             if (id_to_index.count(conn.to_node)) {
@@ -169,6 +183,8 @@ auto GraphProcessor::createRenderState(uint32_t master_node_id) -> std::unique_p
                 RenderState::EventTarget target;
                 target.type = RenderState::EventTarget::Type::kNode;
                 target.destination.node = to_node;
+                target.scale = conn.scale;
+                target.bypass = conn.bypass;
 
                 // Resolve target_param_id from port metadata
                 target.target_param_id = constants::kClapInvalidId;
@@ -192,7 +208,8 @@ auto GraphProcessor::createRenderState(uint32_t master_node_id) -> std::unique_p
 
                 // Audio-rate modulation buffer routing
                 state->input_modulations[id_to_index[conn.to_node]].push_back(
-                    {resolved_param_id, id_to_index[conn.from_node], conn.from_port});
+                    {resolved_param_id, id_to_index[conn.from_node], conn.from_port, conn.scale,
+                     conn.bypass});
 
                 // Also add an event target for this modulation connection,
                 // so nodes that emit events (like EnvelopeNode) can also modulate.
@@ -200,6 +217,8 @@ auto GraphProcessor::createRenderState(uint32_t master_node_id) -> std::unique_p
                 target.type = RenderState::EventTarget::Type::kNode;
                 target.destination.node = to_node;
                 target.target_param_id = resolved_param_id;
+                target.scale = conn.scale;
+                target.bypass = conn.bypass;
                 state->output_event_targets[id_to_index[conn.from_node]].push_back(target);
             }
         }
