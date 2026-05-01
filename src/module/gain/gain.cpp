@@ -113,10 +113,15 @@ void GainPlugin::paramsFlush(const clap_input_events* in, const clap_output_even
             auto* ev = reinterpret_cast<const clap_event_param_value*>(hdr);
             if (ev->param_id == kParamGain) {
                 _gain_db = ev->value;
-                updateTargetGain();
+            }
+        } else if (hdr->type == CLAP_EVENT_PARAM_MOD) {
+            auto* ev = reinterpret_cast<const clap_event_param_mod*>(hdr);
+            if (ev->param_id == kParamGain) {
+                _modulation_db = ev->amount;
             }
         }
     }
+    updateTargetGain();
 }
 
 auto GainPlugin::process(const clap_process* process) noexcept -> clap_process_status {
@@ -146,6 +151,12 @@ auto GainPlugin::process(const clap_process* process) noexcept -> clap_process_s
                     _gain_db = ev->value;
                     updateTargetGain();
                 }
+            } else if (hdr->type == CLAP_EVENT_PARAM_MOD) {
+                auto* ev = reinterpret_cast<const clap_event_param_mod*>(hdr);
+                if (ev->param_id == kParamGain) {
+                    _modulation_db = ev->amount;
+                    updateTargetGain();
+                }
             }
             ev_idx++;
         }
@@ -164,7 +175,8 @@ auto GainPlugin::process(const clap_process* process) noexcept -> clap_process_s
 }
 
 void GainPlugin::updateTargetGain() noexcept {
-    _target_gain_linear = std::pow(10.0, _gain_db / 20.0);
+    double total_gain_db = std::clamp(_gain_db + _modulation_db, -60.0, 12.0);
+    _target_gain_linear = std::pow(10.0, total_gain_db / 20.0);
 }
 
 }  // namespace synth_canvas::gain_plugin
