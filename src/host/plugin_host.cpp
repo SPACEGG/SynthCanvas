@@ -243,7 +243,7 @@ void PluginHost::scanAudioPorts() {
             mod_port.is_input = true;
             mod_port.is_modulation = true;
             mod_port.target_param_id = slot->info.id;
-            
+
             // Fill clap_info for UI/metadata consistency
             std::strncpy(mod_port.clap_info.name, slot->info.name, CLAP_NAME_SIZE);
             mod_port.clap_info.id = mod_port.index;
@@ -458,6 +458,8 @@ void PluginHost::activate(int32_t sample_rate, int32_t block_size) {
         logMessage(CLAP_LOG_ERROR, "Failed to activate plugin.");
         return;
     }
+
+    _input_events_data.reserve(constants::kEventQueueSize);
 
     _schedule_processing.store(true, std::memory_order_release);
 
@@ -721,9 +723,14 @@ void PluginHost::process() {
 }
 
 void PluginHost::generatePluginInputEvents() {
+    _input_events_data.clear();
     PluginEvent ev;
     while (_input_events.try_dequeue(ev)) {
-        _ev_in.push(&ev.event.header);
+        _input_events_data.push_back(ev);
+    }
+
+    for (auto& stored_ev : _input_events_data) {
+        _ev_in.push(&stored_ev.event.header);
     }
 }
 

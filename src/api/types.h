@@ -6,6 +6,9 @@
 #include <string>
 #include <vector>
 
+#include "host/constants.h"
+
+
 namespace synth_canvas {
 
 // Types of signals that can be routed between ports
@@ -82,6 +85,7 @@ struct PortProxyConfig {
     std::string internal_node;
     uint32_t internal_port_index;
     ConnectionType type;
+    uint32_t target_param_id = host::constants::kClapInvalidId;
 };
 
 struct CompositeConfig {

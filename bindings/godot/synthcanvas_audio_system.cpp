@@ -176,13 +176,26 @@ auto SynthCanvasAudioSystem::createCompositeInstance(const godot::Dictionary& co
         godot::Array proxies = config["input_proxies"];
         for (const auto& proxie : proxies) {
             godot::Dictionary p = proxie;
-            cpp_config.input_proxies.push_back(
-                {.external_port_index =
-                     static_cast<uint32_t>(static_cast<int>(p["external_port_index"])),
-                 .internal_node = std::string(godot::String(p["internal_node"]).utf8().get_data()),
-                 .internal_port_index =
-                     static_cast<uint32_t>(static_cast<int>(p["internal_port_index"])),
-                 .type = static_cast<synth_canvas::ConnectionType>(static_cast<int>(p["type"]))});
+            synth_canvas::PortProxyConfig p_config;
+            p_config.external_port_index =
+                static_cast<uint32_t>(static_cast<int>(p["external_port_index"]));
+            p_config.internal_node =
+                std::string(godot::String(p["internal_node"]).utf8().get_data());
+            p_config.type = static_cast<synth_canvas::ConnectionType>(static_cast<int>(p["type"]));
+
+            if (p.has("internal_port_index")) {
+                p_config.internal_port_index =
+                    static_cast<uint32_t>(static_cast<int>(p["internal_port_index"]));
+            } else {
+                p_config.internal_port_index = 0;
+            }
+
+            if (p.has("target_param_id")) {
+                p_config.target_param_id =
+                    static_cast<uint32_t>(static_cast<int>(p["target_param_id"]));
+            }
+
+            cpp_config.input_proxies.push_back(p_config);
         }
     }
 

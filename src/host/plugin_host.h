@@ -162,6 +162,7 @@ class PluginHost final : public ProcessingNode, public BaseHost {
     std::unique_ptr<PluginProxy> _plugin;
     clap::helpers::EventList _ev_in;
     clap::helpers::EventList _ev_out;
+    std::vector<PluginEvent> _input_events_data;
     clap_process _process;
 
     std::unordered_map<clap_id, bool> _is_adjusting_parameter;

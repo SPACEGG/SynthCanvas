@@ -175,7 +175,7 @@ dispatch:
 }
 
 void CompositeNode::setParameterValue(clap_id param_id, double value) {
-    if (param_id < _external_params.size()) {
+    if (param_id < _external_params.size() && _external_params[param_id]) {
         _external_params[param_id]->base_value.store(value, std::memory_order_relaxed);
         _external_params[param_id]->current_value.store(value, std::memory_order_relaxed);
     }
@@ -192,7 +192,7 @@ void CompositeNode::setParameterValue(const std::string& param_id, double value)
         auto ext_it = _param_id_to_external_index.find(param_id);
         if (ext_it != _param_id_to_external_index.end()) {
             uint32_t idx = ext_it->second;
-            if (idx < _external_params.size()) {
+            if (idx < _external_params.size() && _external_params[idx]) {
                 _external_params[idx]->base_value.store(value, std::memory_order_relaxed);
                 _external_params[idx]->current_value.store(value, std::memory_order_relaxed);
             }
@@ -259,8 +259,6 @@ void CompositeNode::pollMainThread() {
 }
 
 auto CompositeNode::load(const CompositeConfig& config) -> bool {
-    log("[CompositeNode] Loading configuration.");
-
     setupBoundaryNodes();
 
     std::map<std::string, uint32_t> alias_to_id;
@@ -319,7 +317,7 @@ void CompositeNode::setupInternalRoutings(const CompositeConfig& config,
     for (const auto& r_cfg : config.routings) {
         auto from_it = alias_to_id.find(r_cfg.from_node);
         auto to_it = alias_to_id.find(r_cfg.to_node);
-        
+
         if (from_it != alias_to_id.end() && to_it != alias_to_id.end()) {
             connectInternal({.from_node = from_it->second,
                              .from_port = r_cfg.from_port,
@@ -336,19 +334,27 @@ void CompositeNode::setupInputProxies(const CompositeConfig& config,
     for (const auto& i_cfg : config.input_proxies) {
         auto it = alias_to_id.find(i_cfg.internal_node);
         if (it != alias_to_id.end()) {
-            // InputProxyNode(OUT) -> Target Internal Node(IN)
-            _internal_processor.connect({.from_node = kInputProxyId,
-                                         .from_port = i_cfg.external_port_index,
-                                         .to_node = it->second,
-                                         .to_port = i_cfg.internal_port_index,
-                                         .type = i_cfg.type});
-
             AudioPortInfo info;
             info.index = i_cfg.external_port_index;
             info.is_input = true;
             info.is_modulation = (i_cfg.type == ConnectionType::kModulation);
+            info.target_param_id = i_cfg.target_param_id;
             info.clap_info.channel_count = constants::kDefaultChannelCount;
             _external_inputs.push_back(info);
+
+            // Conditional internal connection: Skip if it's a direct parameter modulation
+            if (!(i_cfg.type == ConnectionType::kModulation &&
+                  i_cfg.target_param_id != host::constants::kClapInvalidId)) {
+                // InputProxyNode(OUT) -> Target Internal Node(IN)
+                _internal_processor.connect({.from_node = kInputProxyId,
+                                             .from_port = i_cfg.external_port_index,
+                                             .to_node = it->second,
+                                             .to_port = i_cfg.internal_port_index,
+                                             .type = i_cfg.type});
+            } else {
+                log("[CompositeNode] Modulation port ", i_cfg.external_port_index,
+                    " mapped directly to param: ", i_cfg.target_param_id);
+            }
 
             AudioPortInfo out_info = info;
             out_info.is_input = false;
@@ -388,16 +394,18 @@ void CompositeNode::setupOutputProxies(const CompositeConfig& config,
 
 void CompositeNode::setupParameterMappings(const CompositeConfig& config,
                                            const std::map<std::string, uint32_t>& alias_to_id) {
-    uint32_t external_param_idx = 0;
     _external_id_to_target.clear();
     _param_id_to_target.clear();
+    uint32_t external_param_idx = 0;
 
     for (const auto& m_cfg : config.parameter_mappings) {
         auto it = alias_to_id.find(m_cfg.target_node);
         if (it != alias_to_id.end()) {
             uint32_t internal_id = it->second;
+            uint32_t external_id = external_param_idx++;
+
             setParameterMapping(m_cfg.param_id, internal_id, m_cfg.target_param_index);
-            _internal_processor.setDirectParameterMapping(external_param_idx, internal_id,
+            _internal_processor.setDirectParameterMapping(external_id, internal_id,
                                                           m_cfg.target_param_index);
 
             if (auto* target_node = _internal_processor.getNode(internal_id)) {
@@ -405,16 +413,21 @@ void CompositeNode::setupParameterMappings(const CompositeConfig& config,
                 ParameterTarget target = {.node = target_node,
                                           .internal_id = m_cfg.target_param_index};
                 _param_id_to_target[m_cfg.param_id] = target;
-                _external_id_to_target[external_param_idx] = target;
+                _external_id_to_target[external_id] = target;
 
                 if (auto* src_slot = target_node->getParameterSlot(m_cfg.target_param_index)) {
                     auto ext_slot = std::make_unique<ParameterSlot>();
                     ext_slot->info = src_slot->info;
                     std::strncpy(ext_slot->info.name, m_cfg.param_id.c_str(), CLAP_NAME_SIZE);
-                    ext_slot->info.id = external_param_idx++;
+                    ext_slot->info.id = external_id;
                     ext_slot->base_value.store(src_slot->base_value.load());
-                    _param_id_to_external_index[m_cfg.param_id] = ext_slot->info.id;
-                    _external_params.push_back(std::move(ext_slot));
+                    _param_id_to_external_index[m_cfg.param_id] = external_id;
+
+                    // Ensure _external_params is large enough for index-based access
+                    if (external_id >= _external_params.size()) {
+                        _external_params.resize(external_id + 1);
+                    }
+                    _external_params[external_id] = std::move(ext_slot);
                 }
             }
         }
