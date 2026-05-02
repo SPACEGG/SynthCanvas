@@ -1,9 +1,9 @@
 #ifndef SYNTH_CANVAS_HOST_COMPOSITE_NODE_H
 #define SYNTH_CANVAS_HOST_COMPOSITE_NODE_H
 
+#include <map>
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #include "boundary_node.h"
@@ -12,6 +12,7 @@
 #include "graph_types.h"
 #include "processing_node.h"
 #include "readerwriterqueue.h"
+
 
 namespace synth_canvas::host {
 
@@ -84,6 +85,19 @@ class CompositeNode final : public ProcessingNode {
     void updateInternalRenderState();
     void handleInternalEvent(uint32_t internal_id, const PluginEvent& ev);
     [[nodiscard]] auto getInternalParameterTarget(clap_id external_id) const -> ParameterTarget;
+
+    // Helper functions for load()
+    void setupBoundaryNodes();
+    auto loadInternalPlugins(const CompositeConfig& config,
+                             std::map<std::string, uint32_t>& out_alias_to_id) -> bool;
+    void setupInternalRoutings(const CompositeConfig& config,
+                               const std::map<std::string, uint32_t>& alias_to_id);
+    void setupInputProxies(const CompositeConfig& config,
+                           const std::map<std::string, uint32_t>& alias_to_id);
+    void setupOutputProxies(const CompositeConfig& config,
+                            const std::map<std::string, uint32_t>& alias_to_id);
+    void setupParameterMappings(const CompositeConfig& config,
+                                const std::map<std::string, uint32_t>& alias_to_id);
 
     GraphProcessor _internal_processor;
     AudioBufferManager _internal_buffers;

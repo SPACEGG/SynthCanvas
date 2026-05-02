@@ -261,13 +261,7 @@ void CompositeNode::pollMainThread() {
 auto CompositeNode::load(const CompositeConfig& config) -> bool {
     log("[CompositeNode] Loading configuration.");
 
-    // 1. Register Proxy Nodes (Ownership is moved to processor)
-    if (_input_proxy_node_owned) {
-        _internal_processor.addNode(kInputProxyId, std::move(_input_proxy_node_owned));
-    }
-    if (_output_proxy_node_owned) {
-        _internal_processor.addNode(kOutputProxyId, std::move(_output_proxy_node_owned));
-    }
+    setupBoundaryNodes();
 
     std::map<std::string, uint32_t> alias_to_id;
     _external_inputs.clear();
@@ -275,14 +269,37 @@ auto CompositeNode::load(const CompositeConfig& config) -> bool {
     _external_params.clear();
     _param_id_to_external_index.clear();
 
-    // Load Internal Plugins
+    if (!loadInternalPlugins(config, alias_to_id)) {
+        return false;
+    }
+
+    setupInternalRoutings(config, alias_to_id);
+    setupInputProxies(config, alias_to_id);
+    setupOutputProxies(config, alias_to_id);
+    setupParameterMappings(config, alias_to_id);
+
+    pushInternalState();
+    return true;
+}
+
+void CompositeNode::setupBoundaryNodes() {
+    if (_input_proxy_node_owned) {
+        _internal_processor.addNode(kInputProxyId, std::move(_input_proxy_node_owned));
+    }
+    if (_output_proxy_node_owned) {
+        _internal_processor.addNode(kOutputProxyId, std::move(_output_proxy_node_owned));
+    }
+}
+
+auto CompositeNode::loadInternalPlugins(const CompositeConfig& config,
+                                        std::map<std::string, uint32_t>& out_alias_to_id) -> bool {
     uint32_t next_internal_id = 1;
     for (const auto& p_cfg : config.plugins) {
         auto host = std::make_unique<PluginHost>();
         if (host->load(p_cfg.plugin_path, 0)) {
             uint32_t id = next_internal_id++;
             host->setInstanceId(id);
-            alias_to_id[p_cfg.alias] = id;
+            out_alias_to_id[p_cfg.alias] = id;
 
             // Intercept internal events for bubbling up and parameter ID translation
             host->on_event_occured = [this](uint32_t internal_id, const PluginEvent& ev) {
@@ -294,26 +311,35 @@ auto CompositeNode::load(const CompositeConfig& config) -> bool {
             return false;
         }
     }
+    return true;
+}
 
-    // Connect Internal Nodes
+void CompositeNode::setupInternalRoutings(const CompositeConfig& config,
+                                          const std::map<std::string, uint32_t>& alias_to_id) {
     for (const auto& r_cfg : config.routings) {
-        if (alias_to_id.count(r_cfg.from_node) && alias_to_id.count(r_cfg.to_node)) {
-            connectInternal({.from_node = alias_to_id[r_cfg.from_node],
+        auto from_it = alias_to_id.find(r_cfg.from_node);
+        auto to_it = alias_to_id.find(r_cfg.to_node);
+        
+        if (from_it != alias_to_id.end() && to_it != alias_to_id.end()) {
+            connectInternal({.from_node = from_it->second,
                              .from_port = r_cfg.from_port,
-                             .to_node = alias_to_id[r_cfg.to_node],
+                             .to_node = to_it->second,
                              .to_port = r_cfg.to_port,
                              .type = r_cfg.type});
         }
     }
+}
 
-    // Setup External Proxies via Boundary Nodes
+void CompositeNode::setupInputProxies(const CompositeConfig& config,
+                                      const std::map<std::string, uint32_t>& alias_to_id) {
     std::vector<AudioPortInfo> input_proxy_outputs;
     for (const auto& i_cfg : config.input_proxies) {
-        if (alias_to_id.count(i_cfg.internal_node)) {
+        auto it = alias_to_id.find(i_cfg.internal_node);
+        if (it != alias_to_id.end()) {
             // InputProxyNode(OUT) -> Target Internal Node(IN)
             _internal_processor.connect({.from_node = kInputProxyId,
                                          .from_port = i_cfg.external_port_index,
-                                         .to_node = alias_to_id[i_cfg.internal_node],
+                                         .to_node = it->second,
                                          .to_port = i_cfg.internal_port_index,
                                          .type = i_cfg.type});
 
@@ -330,12 +356,16 @@ auto CompositeNode::load(const CompositeConfig& config) -> bool {
         }
     }
     _input_proxy_node->setAudioPorts(false, input_proxy_outputs);
+}
 
+void CompositeNode::setupOutputProxies(const CompositeConfig& config,
+                                       const std::map<std::string, uint32_t>& alias_to_id) {
     std::vector<AudioPortInfo> output_proxy_inputs;
     for (const auto& o_cfg : config.output_proxies) {
-        if (alias_to_id.count(o_cfg.internal_node)) {
+        auto it = alias_to_id.find(o_cfg.internal_node);
+        if (it != alias_to_id.end()) {
             // Source Internal Node(OUT) -> OutputProxyNode(IN)
-            _internal_processor.connect({.from_node = alias_to_id[o_cfg.internal_node],
+            _internal_processor.connect({.from_node = it->second,
                                          .from_port = o_cfg.internal_port_index,
                                          .to_node = kOutputProxyId,
                                          .to_port = o_cfg.external_port_index,
@@ -354,15 +384,18 @@ auto CompositeNode::load(const CompositeConfig& config) -> bool {
         }
     }
     _output_proxy_node->setAudioPorts(true, output_proxy_inputs);
+}
 
-    // Setup Parameter Mappings
+void CompositeNode::setupParameterMappings(const CompositeConfig& config,
+                                           const std::map<std::string, uint32_t>& alias_to_id) {
     uint32_t external_param_idx = 0;
     _external_id_to_target.clear();
     _param_id_to_target.clear();
 
     for (const auto& m_cfg : config.parameter_mappings) {
-        if (alias_to_id.count(m_cfg.target_node)) {
-            uint32_t internal_id = alias_to_id[m_cfg.target_node];
+        auto it = alias_to_id.find(m_cfg.target_node);
+        if (it != alias_to_id.end()) {
+            uint32_t internal_id = it->second;
             setParameterMapping(m_cfg.param_id, internal_id, m_cfg.target_param_index);
             _internal_processor.setDirectParameterMapping(external_param_idx, internal_id,
                                                           m_cfg.target_param_index);
@@ -386,9 +419,6 @@ auto CompositeNode::load(const CompositeConfig& config) -> bool {
             }
         }
     }
-
-    pushInternalState();
-    return true;
 }
 
 void CompositeNode::addInternalNode(uint32_t id, std::unique_ptr<ProcessingNode> node) {

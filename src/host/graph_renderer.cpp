@@ -3,6 +3,7 @@
 #include <cmath>
 
 #include "constants.h"
+#include "logger.h"
 #include "processing_node.h"
 
 namespace synth_canvas::host {
@@ -41,6 +42,14 @@ void GraphRenderer::applyParameterModulation(size_t node_index, ProcessingNode* 
     const auto& modulations = state.input_modulations[node_index];
     if (modulations.empty()) return;
 
+    static uint32_t log_skip = 0;
+    bool should_log = (log_skip++ % 1000 == 0);
+
+    if (should_log) {
+        log("[GraphRenderer] Node ID: ", node->getInstanceId(), " processing ", modulations.size(),
+            " modulations.");
+    }
+
     for (int t = 0; t < num_frames; t += constants::kModulationStepSize) {
         _mod_sum_workspace.clear();
 
@@ -48,12 +57,25 @@ void GraphRenderer::applyParameterModulation(size_t node_index, ProcessingNode* 
             if (mod.bypass) continue;
 
             ProcessingNode* src_node = state.sorted_nodes[mod.source_node_index];
-            if (!src_node) continue;
+            if (!src_node) {
+                if (should_log) log("  [WARN] Source node not found for modulation.");
+                continue;
+            }
 
             auto* src_buf = src_node->getOutputBuffer(mod.source_port_index);
-            if (!src_buf || !src_buf->data32) continue;
+            if (!src_buf || !src_buf->data32) {
+                if (should_log) {
+                    log("  [WARN] Source buffer empty from node ID: ", src_node->getInstanceId());
+                }
+                continue;
+            }
 
             float mod_value = src_buf->data32[0][t] * mod.scale;
+
+            if (should_log && t == 0) {
+                log("  [MOD] From ID: ", src_node->getInstanceId(),
+                    " to Param: ", mod.target_param_id, " value: ", mod_value);
+            }
 
             bool found = false;
             for (auto& entry : _mod_sum_workspace) {
@@ -73,6 +95,9 @@ void GraphRenderer::applyParameterModulation(size_t node_index, ProcessingNode* 
         for (const auto& entry : _mod_sum_workspace) {
             double last_offset = node->getParameterModulationOffset(entry.first);
             if (t == 0 || std::abs(entry.second - last_offset) > constants::kModulationThreshold) {
+                if (should_log && t == 0) {
+                    log("  [APPLY] Param: ", entry.first, " offset: ", entry.second);
+                }
                 node->applyModulation(entry.first, entry.second, t);
             }
         }
