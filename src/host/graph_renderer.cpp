@@ -3,7 +3,6 @@
 #include <cmath>
 
 #include "constants.h"
-#include "logger.h"
 #include "processing_node.h"
 
 namespace synth_canvas::host {
