@@ -124,6 +124,8 @@ auto AudioEngine::onAudioReady(oboe::AudioStream* oboe_stream, void* audio_data,
 
     // Sum master outputs directly to hardware buffer
     for (const auto& src : _current_render_state->master_output_sources) {
+        if (src.bypass) continue;
+
         ProcessingNode* node = _current_render_state->sorted_nodes[src.node_index];
         if (auto* node_buf = node->getOutputBuffer(src.port_index)) {
             accumulateToInterleaved(node_buf, output_ptr, num_frames);
