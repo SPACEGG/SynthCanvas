@@ -20,10 +20,10 @@ void SynthCanvasAudioSystem::_bind_methods() {
         godot::D_METHOD("disconnect_nodes", "from_node", "from_port", "to_node", "to_port", "type"),
         &SynthCanvasAudioSystem::disconnectNodes, DEFVAL(0));
     godot::ClassDB::bind_method(godot::D_METHOD("update_connection", "from_node", "from_port",
-                                               "to_node", "to_port", "type", "scale", "bypass"),
+                                                "to_node", "to_port", "type", "scale", "bypass"),
                                 &SynthCanvasAudioSystem::updateConnection);
     godot::ClassDB::bind_method(godot::D_METHOD("get_connection_properties", "from_node",
-                                               "from_port", "to_node", "to_port", "type"),
+                                                "from_port", "to_node", "to_port", "type"),
                                 &SynthCanvasAudioSystem::getConnectionProperties);
 
     godot::ClassDB::bind_method(godot::D_METHOD("start_audio"),
@@ -254,12 +254,13 @@ void SynthCanvasAudioSystem::updateConnection(uint32_t from_node, uint32_t from_
 }
 
 auto SynthCanvasAudioSystem::getConnectionProperties(uint32_t from_node, uint32_t from_port,
-                                                     uint32_t to_node, uint32_t to_port,
-                                                     int type) -> godot::Dictionary {
+                                                     uint32_t to_node, uint32_t to_port, int type)
+    -> godot::Dictionary {
     godot::Dictionary res;
     if (_system) {
-        auto props = _system->getConnectionProperties(
-            from_node, from_port, to_node, to_port, static_cast<synth_canvas::ConnectionType>(type));
+        auto props =
+            _system->getConnectionProperties(from_node, from_port, to_node, to_port,
+                                             static_cast<synth_canvas::ConnectionType>(type));
         res["scale"] = props.scale;
         res["bypass"] = props.bypass;
     }
@@ -317,6 +318,7 @@ auto SynthCanvasAudioSystem::getPluginParameters(uint32_t instance_id) -> godot:
         param_info["min_value"] = info.min_value;
         param_info["max_value"] = info.max_value;
         param_info["default_value"] = info.default_value;
+        param_info["base_value"] = info.base_value;
         param_info["current_value"] = info.current_value;
 
         result[info.id] = param_info;

@@ -8,7 +8,6 @@
 
 #include "host/constants.h"
 
-
 namespace synth_canvas {
 
 // Types of signals that can be routed between ports
@@ -105,6 +104,7 @@ struct ParameterInfo {
     double min_value;
     double max_value;
     double default_value;
+    double base_value;
     double current_value;
 };
 

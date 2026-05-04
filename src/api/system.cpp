@@ -268,7 +268,8 @@ auto System::getPluginParameters(uint32_t instance_id) -> ParameterList {
         result.push_back({param_slot->info.id, param_slot->info.name, param_slot->info.module,
                           param_slot->info.min_value, param_slot->info.max_value,
                           param_slot->info.default_value,
-                          node->getParameterBaseValue(param_slot->info.id)});
+                          node->getParameterBaseValue(param_slot->info.id),
+                          node->getParameterCurrentValue(param_slot->info.id)});
     }
 #endif
     return result;
