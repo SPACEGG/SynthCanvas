@@ -63,6 +63,8 @@ class MidiInputNode : public ProcessingNode {
    private:
     static void midiCallback(double time_stamp, std::vector<unsigned char>* message,
                              void* user_data);
+    static void errorCallback(rt::midi::RtMidiError::Type type, const std::string& error_text,
+                              void* user_data);
 
     void openPort(uint32_t port_index);
     void closePort();

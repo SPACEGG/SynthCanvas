@@ -13,6 +13,7 @@ MidiInputNode::MidiInputNode() {
         _midi_in = std::make_unique<rt::midi::RtMidiIn>();
         // Ignore sysex, timing, or active sensing messages by default.
         _midi_in->ignoreTypes(true, true, true);
+        _midi_in->setErrorCallback(&errorCallback, this);
     } catch (const rt::midi::RtMidiError& error) {
         log("[MidiInputNode] Error creating RtMidiIn: ", error.getMessage());
     }
@@ -70,9 +71,14 @@ void MidiInputNode::openPort(uint32_t port_index) {
 }
 
 void MidiInputNode::closePort() {
+    log("[MidiInputNode] closePort() - start");
     if (_midi_in && _midi_in->isPortOpen()) {
-        _midi_in->cancelCallback();
-        _midi_in->closePort();
+        try {
+            _midi_in->cancelCallback();
+            _midi_in->closePort();
+        } catch (const rt::midi::RtMidiError& error) {
+            log("[MidiInputNode] closePort() - EXCEPTION: ", error.getMessage());
+        }
     }
 }
 
@@ -87,6 +93,11 @@ void MidiInputNode::midiCallback(double time_stamp, std::vector<unsigned char>* 
     std::copy(message->begin(), message->begin() + raw.size, raw.data.begin());
 
     node->_message_queue.enqueue(raw);
+}
+
+void MidiInputNode::errorCallback(rt::midi::RtMidiError::Type type, const std::string& error_text,
+                                  void* user_data) {
+    log("[MidiInputNode] RtMidi ERROR [Type: ", static_cast<int>(type), "]: ", error_text);
 }
 
 void MidiInputNode::processBegin(int num_frames) {
