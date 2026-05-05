@@ -73,6 +73,7 @@ class MidiInputNode : public ProcessingNode {
     uint32_t _instance_id = 0;
     bool _active = false;
     bool _enabled = false;
+    std::atomic<bool> _pending_close{false};
     int32_t _sample_rate = constants::kDefaultSampleRate;
     int32_t _current_num_frames = 0;
 

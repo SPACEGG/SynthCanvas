@@ -71,13 +71,12 @@ void MidiInputNode::openPort(uint32_t port_index) {
 }
 
 void MidiInputNode::closePort() {
-    log("[MidiInputNode] closePort() - start");
     if (_midi_in && _midi_in->isPortOpen()) {
         try {
             _midi_in->cancelCallback();
             _midi_in->closePort();
         } catch (const rt::midi::RtMidiError& error) {
-            log("[MidiInputNode] closePort() - EXCEPTION: ", error.getMessage());
+            log("[MidiInputNode] EXCEPTION during closePort: ", error.getMessage());
         }
     }
 }
@@ -98,6 +97,8 @@ void MidiInputNode::midiCallback(double time_stamp, std::vector<unsigned char>* 
 void MidiInputNode::errorCallback(rt::midi::RtMidiError::Type type, const std::string& error_text,
                                   void* user_data) {
     log("[MidiInputNode] RtMidi ERROR [Type: ", static_cast<int>(type), "]: ", error_text);
+    auto* node = static_cast<MidiInputNode*>(user_data);
+    node->_pending_close.store(true, std::memory_order_relaxed);
 }
 
 void MidiInputNode::processBegin(int num_frames) {
@@ -168,6 +169,11 @@ auto MidiInputNode::popOutputEvent(PluginEvent& out_event) -> bool {
 }
 
 void MidiInputNode::pollMainThread() {
+    if (_pending_close.load(std::memory_order_relaxed)) {
+        deactivateInternal();
+        _pending_close.store(false, std::memory_order_relaxed);
+    }
+
     PluginEvent ev;
     while (_output_events_to_main.try_dequeue(ev)) {
         if (on_event_occured) {
