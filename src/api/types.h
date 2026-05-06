@@ -56,6 +56,16 @@ struct SystemEvent {
     } data;
 };
 
+// Global transport and timing information
+struct TransportState {
+    double tempo = 120.0;         // BPM
+    double song_pos_beats = 0.0;  // Current position in beats (0.0 to N.N)
+    bool is_playing = false;
+
+    int32_t ts_num = 4;    // Time signature numerator
+    int32_t ts_denom = 4;  // Time signature denominator
+};
+
 // --- Composite Module Configurations ---
 
 struct InternalPluginConfig {

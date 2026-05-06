@@ -40,8 +40,8 @@ class System {
         float scale;
         bool bypass;
     };
-    void updateConnection(uint32_t from_node, uint32_t from_port, uint32_t to_node, uint32_t to_port,
-                          ConnectionType type, float scale, bool bypass);
+    void updateConnection(uint32_t from_node, uint32_t from_port, uint32_t to_node,
+                          uint32_t to_port, ConnectionType type, float scale, bool bypass);
     [[nodiscard]] auto getConnectionProperties(uint32_t from_node, uint32_t from_port,
                                                uint32_t to_node, uint32_t to_port,
                                                ConnectionType type) const -> ConnectionProperties;
@@ -67,6 +67,7 @@ class System {
     void stopNoteFromNode(uint32_t from_node_id, int note);
 
     // Transport Control
+    [[nodiscard]] auto getTransportState() const -> const TransportState&;
     void setTempo(double bpm);
     void setTransportPlaying(bool playing);
 

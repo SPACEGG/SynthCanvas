@@ -353,6 +353,20 @@ void SynthCanvasAudioSystem::stopNoteFromNode(uint32_t from_node_id, int note) {
     }
 }
 
+auto SynthCanvasAudioSystem::getTransportState() -> godot::Dictionary {
+    godot::Dictionary result;
+    if (!_system) return result;
+
+    auto transport = _system->getTransportState();
+    result["is_playing"] = transport.is_playing;
+    result["song_pos_beats"] = transport.song_pos_beats;
+    result["tempo"] = transport.tempo;
+    result["ts_denom"] = transport.ts_denom;
+    result["ts_num"] = transport.ts_num;
+
+    return result;
+}
+
 void SynthCanvasAudioSystem::setTempo(double bpm) {
     if (_system) {
         _system->setTempo(bpm);

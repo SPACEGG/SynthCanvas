@@ -1,5 +1,7 @@
 #include "system.h"
 
+#include "types.h"
+
 #if defined(__ANDROID__)
 #include <clap/clap.h>
 
@@ -18,6 +20,7 @@ struct System::Impl {
     std::unique_ptr<synth_canvas::host::ModuleRouter> module_router;
     std::unique_ptr<synth_canvas::host::AudioEngine> audio_engine;
     EventOccuredCallback on_event_occured;
+    TransportState transport_state;
 
     Impl() {
         module_router = std::make_unique<synth_canvas::host::ModuleRouter>();
@@ -86,6 +89,7 @@ struct System::Impl {
 #else
 struct System::Impl {
     EventOccuredCallback on_event_occured;
+    TransportState transport_state;
 };
 #endif
 
@@ -319,13 +323,22 @@ void System::stopNoteFromNode(uint32_t from_node_id, int note) {
 #endif
 }
 
+auto System::getTransportState() const -> const TransportState& {
+#if defined(__ANDROID__)
+    if (_pimpl->module_router) return _pimpl->module_router->getTransportState();
+#endif
+    return _pimpl->transport_state;
+}
+
 void System::setTempo(double bpm) {
+    _pimpl->transport_state.tempo = bpm;
 #if defined(__ANDROID__)
     if (_pimpl->module_router) _pimpl->module_router->setTempo(bpm);
 #endif
 }
 
 void System::setTransportPlaying(bool playing) {
+    _pimpl->transport_state.is_playing = playing;
 #if defined(__ANDROID__)
     if (_pimpl->module_router) _pimpl->module_router->setTransportPlaying(playing);
 #endif

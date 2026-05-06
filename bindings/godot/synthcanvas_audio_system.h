@@ -51,15 +51,18 @@ class SynthCanvasAudioSystem : public godot::Node {
                       int type = 0);
     void disconnectNodes(uint32_t from_node, uint32_t from_port, uint32_t to_node, uint32_t to_port,
                          int type = 0);
-    void updateConnection(uint32_t from_node, uint32_t from_port, uint32_t to_node, uint32_t to_port,
-                          int type, float scale, bool bypass);
+    void updateConnection(uint32_t from_node, uint32_t from_port, uint32_t to_node,
+                          uint32_t to_port, int type, float scale, bool bypass);
     auto getConnectionProperties(uint32_t from_node, uint32_t from_port, uint32_t to_node,
                                  uint32_t to_port, int type) -> godot::Dictionary;
 
     void startAudio();
     void stopAudio();
+
+    auto getTransportState() -> godot::Dictionary;
     void setTempo(double bpm);
     void setTransportPlaying(bool playing);
+
     void playNote(uint32_t instance_id, int note, double velocity, int32_t note_id = -1);
     void stopNote(uint32_t instance_id, int note, double velocity = 0.0, int32_t note_id = -1);
     void setParameterValue(uint32_t instance_id, const godot::Variant& p_param, double value);
