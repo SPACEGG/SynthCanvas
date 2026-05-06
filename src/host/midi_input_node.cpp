@@ -87,11 +87,11 @@ void MidiInputNode::midiCallback(double time_stamp, std::vector<unsigned char>* 
     if (!message || message->empty()) return;
 
     RawMidiMessage raw;
-    raw.time_stamp = time_stamp;
+    raw.arrival_time = std::chrono::high_resolution_clock::now();
     raw.size = std::min(static_cast<size_t>(4), message->size());
     std::copy(message->begin(), message->begin() + raw.size, raw.data.begin());
 
-    node->_message_queue.enqueue(raw);
+    node->_message_queue.try_enqueue(raw);
 }
 
 void MidiInputNode::errorCallback(rt::midi::RtMidiError::Type type, const std::string& error_text,
@@ -112,6 +112,8 @@ void MidiInputNode::process() {
     if (!_active || !_enabled) return;
 
     RawMidiMessage raw;
+    int32_t last_offset = -1;
+
     while (_message_queue.try_dequeue(raw)) {
         if (raw.size < 1) continue;
 
@@ -119,16 +121,23 @@ void MidiInputNode::process() {
         ev.event.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
         ev.event.header.flags = 0;
 
-        auto now = std::chrono::high_resolution_clock::now();
-        auto duration =
-            std::chrono::duration_cast<std::chrono::microseconds>(now - _block_start_time);
+        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(raw.arrival_time -
+                                                                              _block_start_time);
         auto offset = static_cast<int32_t>((duration.count() * _sample_rate) / 1000000);
 
         if (_current_num_frames > 0) {
-            ev.event.header.time = std::clamp(offset, 0, _current_num_frames - 1);
+            offset = std::clamp(offset, 0, _current_num_frames - 1);
         } else {
-            ev.event.header.time = 0;
+            offset = 0;
         }
+
+        // CLAP requirement: events must be strictly ordered by time
+        if (offset < last_offset) {
+            offset = last_offset;
+        }
+
+        ev.event.header.time = offset;
+        last_offset = offset;
 
         uint8_t status = raw.data[0];
         auto type = static_cast<uint8_t>(status & 0xF0);
@@ -139,12 +148,14 @@ void MidiInputNode::process() {
             uint8_t vel = (raw.size > 2) ? raw.data[2] : 0;
 
             bool is_note_on = (type == constants::midi_status::kNoteOn && vel > 0);
+
             ev.event.header.type = is_note_on ? CLAP_EVENT_NOTE_ON : CLAP_EVENT_NOTE_OFF;
             ev.event.header.size = sizeof(clap_event_note);
             ev.event.note.port_index = 0;
             ev.event.note.channel = channel;
             ev.event.note.key = static_cast<int16_t>(key);
             ev.event.note.velocity = static_cast<double>(vel) / 127.0;
+            ev.event.note.note_id = -1;  // CLAP_NOTE_ID_UNSPECIFIED
         } else {
             ev.event.header.type = CLAP_EVENT_MIDI;
             ev.event.header.size = sizeof(clap_event_midi);

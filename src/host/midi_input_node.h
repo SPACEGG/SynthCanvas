@@ -5,6 +5,7 @@
 #include <readerwriterqueue.h>
 
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <memory>
 #include <vector>
@@ -80,7 +81,7 @@ class MidiInputNode : public ProcessingNode {
     std::unique_ptr<rt::midi::RtMidiIn> _midi_in;
 
     struct RawMidiMessage {
-        double time_stamp;
+        std::chrono::high_resolution_clock::time_point arrival_time;
         std::array<uint8_t, 4> data;
         size_t size;
     };
