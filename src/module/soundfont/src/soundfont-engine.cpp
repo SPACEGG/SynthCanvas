@@ -1,10 +1,10 @@
 #define TSF_IMPLEMENTATION
 #include "soundfont-engine.h"
 
+#include <cstdint>
 #include <cstring>
 
 #include "tsf.h"
-
 
 namespace synth_canvas::soundfont_plugin {
 

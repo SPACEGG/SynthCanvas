@@ -1,7 +1,9 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <vector>
+
 
 // Forward declaration for tsf
 struct tsf;
