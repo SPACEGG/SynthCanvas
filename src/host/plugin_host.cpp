@@ -355,8 +355,8 @@ auto PluginHost::load(const std::string& path, int plugin_index) -> bool {
                                ", index: " + std::to_string(plugin_index))
                                   .c_str());
 
-    const auto kRawPlugin = _plugin_factory->create_plugin(_plugin_factory, clapHost(), desc->id);
-    if (!kRawPlugin) {
+    const auto raw_plugin = _plugin_factory->create_plugin(_plugin_factory, clapHost(), desc->id);
+    if (!raw_plugin) {
         logMessage(CLAP_LOG_ERROR,
                    ("Could not create the plugin with id: " + std::string(desc->id)).c_str());
         _plugin_entry->deinit();
@@ -369,7 +369,7 @@ auto PluginHost::load(const std::string& path, int plugin_index) -> bool {
         return false;
     }
 
-    _plugin = std::make_unique<PluginProxy>(*kRawPlugin, *this);
+    _plugin = std::make_unique<PluginProxy>(*raw_plugin, *this);
 
     if (!_plugin->init()) {
         logMessage(CLAP_LOG_ERROR,
@@ -685,15 +685,15 @@ void PluginHost::process() {
         }
 
         // CLAP uses 64-bit fixed point with 31-bit fractional part (CLAP_BEATTIME_FACTOR)
-        const auto kFactor = static_cast<double>(1LL << 31);
+        const auto factor = static_cast<double>(1LL << 31);
 
         clap_transport.song_pos_beats =
-            static_cast<int64_t>(std::round(_transport->song_pos_beats * kFactor));
+            static_cast<int64_t>(std::round(_transport->song_pos_beats * factor));
 
         // Convert beats to seconds: seconds = (beats * 60) / tempo
         double song_pos_seconds = (_transport->song_pos_beats * 60.0) / _transport->tempo;
         clap_transport.song_pos_seconds =
-            static_cast<int64_t>(std::round(song_pos_seconds * kFactor));
+            static_cast<int64_t>(std::round(song_pos_seconds * factor));
 
         clap_transport.tempo = _transport->tempo;
         clap_transport.tsig_num = static_cast<uint16_t>(_transport->ts_num);
