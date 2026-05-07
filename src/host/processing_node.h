@@ -42,8 +42,8 @@ class ProcessingNode {
     virtual void setParameterValue(const std::string& param_id, double value) = 0;
 
     // State Management
-    virtual bool saveState(std::vector<uint8_t>& data) = 0;
-    virtual bool loadState(const std::vector<uint8_t>& data) = 0;
+    virtual auto saveState(std::vector<uint8_t>& data) -> bool = 0;
+    virtual auto loadState(const std::vector<uint8_t>& data) -> bool = 0;
 
     // Audio-thread safe modulation injection (additive)
     virtual void applyModulation(clap_id param_id, double value, uint32_t sample_offset) = 0;
