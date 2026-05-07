@@ -70,6 +70,9 @@ class PluginHost final : public ProcessingNode, public BaseHost {
     void setParameterValue(const std::string& param_id, double value) override;
     void applyModulation(clap_id param_id, double value, uint32_t sample_offset) override;
 
+    bool saveState(std::vector<uint8_t>& data) override;
+    bool loadState(const std::vector<uint8_t>& data) override;
+
     [[nodiscard]] auto getParameterBaseValue(clap_id param_id) const -> double override;
     [[nodiscard]] auto getParameterCurrentValue(clap_id param_id) const -> double override;
     [[nodiscard]] auto getParameterModulationOffset(clap_id param_id) const -> double override;

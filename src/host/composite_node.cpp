@@ -212,6 +212,68 @@ void CompositeNode::applyModulation(clap_id param_id, double value, uint32_t sam
     }
 }
 
+auto CompositeNode::saveState(std::vector<uint8_t>& data) -> bool {
+    auto node_ids = _internal_processor.getProcessOrder();
+    std::vector<std::pair<uint32_t, std::vector<uint8_t>>> states;
+
+    for (uint32_t id : node_ids) {
+        if (id == kInputProxyId || id == kOutputProxyId) continue;
+        if (auto* node = _internal_processor.getNode(id)) {
+            std::vector<uint8_t> node_data;
+            if (node->saveState(node_data) && !node_data.empty()) {
+                states.emplace_back(id, std::move(node_data));
+            }
+        }
+    }
+
+    auto node_count = static_cast<uint32_t>(states.size());
+    const auto* p_count = reinterpret_cast<const uint8_t*>(&node_count);
+    data.insert(data.end(), p_count, p_count + sizeof(uint32_t));
+
+    for (const auto& [id, node_data] : states) {
+        const auto* p_id = reinterpret_cast<const uint8_t*>(&id);
+        data.insert(data.end(), p_id, p_id + sizeof(uint32_t));
+
+        auto size = static_cast<uint32_t>(node_data.size());
+        const auto* p_size = reinterpret_cast<const uint8_t*>(&size);
+        data.insert(data.end(), p_size, p_size + sizeof(uint32_t));
+
+        data.insert(data.end(), node_data.begin(), node_data.end());
+    }
+
+    return true;
+}
+
+auto CompositeNode::loadState(const std::vector<uint8_t>& data) -> bool {
+    if (data.size() < sizeof(uint32_t)) return false;
+
+    uint32_t node_count = 0;
+    std::memcpy(&node_count, data.data(), sizeof(uint32_t));
+    size_t offset = sizeof(uint32_t);
+
+    for (uint32_t i = 0; i < node_count; ++i) {
+        if (offset + sizeof(uint32_t) * 2 > data.size()) return false;
+
+        uint32_t id = 0;
+        std::memcpy(&id, data.data() + offset, sizeof(uint32_t));
+        offset += sizeof(uint32_t);
+
+        uint32_t size = 0;
+        std::memcpy(&size, data.data() + offset, sizeof(uint32_t));
+        offset += sizeof(uint32_t);
+
+        if (offset + size > data.size()) return false;
+
+        if (auto* node = _internal_processor.getNode(id)) {
+            std::vector<uint8_t> node_data(data.begin() + offset, data.begin() + offset + size);
+            node->loadState(node_data);
+        }
+        offset += size;
+    }
+
+    return true;
+}
+
 auto CompositeNode::getParameterBaseValue(clap_id param_id) const -> double {
     auto target = getInternalParameterTarget(param_id);
     if (target.node) {

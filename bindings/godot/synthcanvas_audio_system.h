@@ -3,6 +3,7 @@
 
 #include <godot_cpp/classes/node.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
+#include <godot_cpp/variant/packed_byte_array.hpp>
 
 #include "api/system.h"  // synth_canvas::System
 
@@ -69,6 +70,10 @@ class SynthCanvasAudioSystem : public godot::Node {
     auto getPluginParameters(uint32_t instance_id) -> godot::Dictionary;
     auto getParameterText(uint32_t instance_id, const godot::Variant& p_param, double value)
         -> godot::String;
+
+    // State Management
+    auto getState(uint32_t instance_id) -> godot::PackedByteArray;
+    void setState(uint32_t instance_id, const godot::PackedByteArray& data);
 
     void playNoteFromNode(uint32_t from_node_id, int note, double velocity);
     void stopNoteFromNode(uint32_t from_node_id, int note);

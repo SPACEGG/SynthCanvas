@@ -62,6 +62,10 @@ class System {
     [[nodiscard]] auto getParameterText(uint32_t instance_id, const std::string& param_id,
                                         double value) const -> std::string;
 
+    // State Management
+    [[nodiscard]] auto saveState(uint32_t instance_id) -> std::vector<uint8_t>;
+    auto loadState(uint32_t instance_id, const std::vector<uint8_t>& data) -> bool;
+
     // Node-based Control
     void playNoteFromNode(uint32_t from_node_id, int note, double velocity);
     void stopNoteFromNode(uint32_t from_node_id, int note);
