@@ -48,6 +48,11 @@ void SynthCanvasAudioSystem::_bind_methods() {
         godot::D_METHOD("get_parameter_text", "instance_id", "param", "value"),
         &SynthCanvasAudioSystem::getParameterText);
 
+    godot::ClassDB::bind_method(godot::D_METHOD("get_state", "instance_id"),
+                                &SynthCanvasAudioSystem::getState);
+    godot::ClassDB::bind_method(godot::D_METHOD("set_state", "instance_id", "data"),
+                                &SynthCanvasAudioSystem::setState);
+
     godot::ClassDB::bind_method(
         godot::D_METHOD("play_note_from_node", "from_node_id", "note", "velocity"),
         &SynthCanvasAudioSystem::playNoteFromNode);
@@ -339,6 +344,28 @@ auto SynthCanvasAudioSystem::getParameterText(uint32_t instance_id, const godot:
         return {_system->getParameterText(instance_id, s.utf8().get_data(), value).c_str()};
     }
     return {std::to_string(value).c_str()};
+}
+
+auto SynthCanvasAudioSystem::getState(uint32_t instance_id) -> godot::PackedByteArray {
+    godot::PackedByteArray res;
+    if (_system) {
+        std::vector<uint8_t> data = _system->saveState(instance_id);
+        if (!data.empty()) {
+            res.resize(static_cast<int64_t>(data.size()));
+            std::memcpy(res.ptrw(), data.data(), data.size());
+        }
+    }
+    return res;
+}
+
+void SynthCanvasAudioSystem::setState(uint32_t instance_id, const godot::PackedByteArray& data) {
+    if (_system) {
+        std::vector<uint8_t> vec(data.size());
+        if (!vec.empty()) {
+            std::memcpy(vec.data(), data.ptr(), data.size());
+        }
+        _system->loadState(instance_id, vec);
+    }
 }
 
 void SynthCanvasAudioSystem::playNoteFromNode(uint32_t from_node_id, int note, double velocity) {

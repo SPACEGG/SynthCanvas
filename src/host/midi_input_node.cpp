@@ -204,6 +204,9 @@ void MidiInputNode::setParameterValue(const std::string& param_id, double value)
     if (param_id == "port_index") setParameterValue(0, value);
 }
 
+auto MidiInputNode::saveState(std::vector<uint8_t>& data) -> bool { return true; }
+auto MidiInputNode::loadState(const std::vector<uint8_t>& data) -> bool { return true; }
+
 auto MidiInputNode::getParameterBaseValue(clap_id param_id) const -> double {
     if (param_id == 0) return static_cast<double>(_port_index);
     return 0.0;

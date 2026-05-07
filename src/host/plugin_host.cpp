@@ -1,10 +1,13 @@
 #include "plugin_host.h"
 
+#include <clap/ext/state.h>
+
 #include <clap/helpers/host.hxx>
 #include <clap/helpers/plugin-proxy.hxx>
 #include <clap/helpers/reducing-param-queue.hxx>
 
 #include "logger.h"
+
 
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
@@ -19,6 +22,31 @@
 #include <utility>
 
 namespace synth_canvas::host {
+
+namespace {
+auto clapOStreamWrite(const clap_ostream* stream, const void* buffer, uint64_t size) -> int64_t {
+    auto* vec = static_cast<std::vector<uint8_t>*>(stream->ctx);
+    const auto* src = static_cast<const uint8_t*>(buffer);
+    vec->insert(vec->end(), src, src + size);
+    return static_cast<int64_t>(size);
+}
+
+struct IStreamContext {
+    const std::vector<uint8_t>* data;
+    uint64_t offset;
+};
+
+auto clapIStreamRead(const clap_istream* stream, void* buffer, uint64_t size) -> int64_t {
+    auto* ctx = static_cast<IStreamContext*>(stream->ctx);
+    uint64_t available = ctx->data->size() - ctx->offset;
+    uint64_t to_read = std::min(size, available);
+    if (to_read > 0) {
+        std::memcpy(buffer, ctx->data->data() + ctx->offset, to_read);
+        ctx->offset += to_read;
+    }
+    return static_cast<int64_t>(to_read);
+}
+}  // namespace
 
 enum class ThreadType {
     kUnknown,
@@ -558,6 +586,41 @@ void PluginHost::applyModulation(clap_id param_id, double value, uint32_t sample
     ev.event.param_mod.channel = constants::kClapInvalidId;
 
     _input_events.try_enqueue(ev);
+}
+
+auto PluginHost::saveState(std::vector<uint8_t>& data) -> bool {
+    checkForMainThread();
+
+    if (!_plugin) return false;
+
+    auto* state_ext = static_cast<const clap_plugin_state_t*>(
+        _plugin->clapPlugin()->get_extension(_plugin->clapPlugin(), CLAP_EXT_STATE));
+
+    if (!state_ext) return true;  // Not an error if the plugin doesn't have state
+
+    clap_ostream stream;
+    stream.ctx = &data;
+    stream.write = clapOStreamWrite;
+
+    return state_ext->save(_plugin->clapPlugin(), &stream);
+}
+
+auto PluginHost::loadState(const std::vector<uint8_t>& data) -> bool {
+    checkForMainThread();
+
+    if (!_plugin) return false;
+
+    auto* state_ext = static_cast<const clap_plugin_state_t*>(
+        _plugin->clapPlugin()->get_extension(_plugin->clapPlugin(), CLAP_EXT_STATE));
+
+    if (!state_ext) return true;  // Not an error
+
+    IStreamContext ctx = {.data = &data, .offset = 0};
+    clap_istream stream;
+    stream.ctx = &ctx;
+    stream.read = clapIStreamRead;
+
+    return state_ext->load(_plugin->clapPlugin(), &stream);
 }
 
 auto PluginHost::getParameterBaseValue(clap_id param_id) const -> double {

@@ -55,6 +55,9 @@ void InternalNodeBase::setParameterValue(const std::string& param_id, double val
     }
 }
 
+auto InternalNodeBase::saveState(std::vector<uint8_t>& data) -> bool { return true; }
+auto InternalNodeBase::loadState(const std::vector<uint8_t>& data) -> bool { return true; }
+
 void InternalNodeBase::applyModulation(clap_id param_id, double value, uint32_t sample_offset) {
     if (auto* slot = getParameterSlot(param_id)) {
         slot->modulation_value.store(value, std::memory_order_relaxed);

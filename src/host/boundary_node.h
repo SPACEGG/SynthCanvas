@@ -39,6 +39,9 @@ class BoundaryNode : public ProcessingNode {
     void setParameterValue(const std::string& param_id, double value) override {}
     void applyModulation(clap_id param_id, double value, uint32_t sample_offset) override {}
 
+    auto saveState(std::vector<uint8_t>& data) -> bool override;
+    auto loadState(const std::vector<uint8_t>& data) -> bool override;
+
     [[nodiscard]] auto getParameterBaseValue(clap_id param_id) const -> double override {
         return 0.0;
     }

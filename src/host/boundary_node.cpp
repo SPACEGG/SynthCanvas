@@ -59,6 +59,9 @@ void BoundaryNode::process() {
     }
 }
 
+auto BoundaryNode::saveState(std::vector<uint8_t>& data) -> bool { return true; }
+auto BoundaryNode::loadState(const std::vector<uint8_t>& data) -> bool { return true; }
+
 auto BoundaryNode::getOutputBuffer(uint32_t port_idx) -> AudioBuffer* {
     if (port_idx < _output_buffers.size()) {
         return _output_buffers[port_idx].get();

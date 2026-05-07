@@ -70,6 +70,9 @@ class PluginHost final : public ProcessingNode, public BaseHost {
     void setParameterValue(const std::string& param_id, double value) override;
     void applyModulation(clap_id param_id, double value, uint32_t sample_offset) override;
 
+    auto saveState(std::vector<uint8_t>& data) -> bool override;
+    auto loadState(const std::vector<uint8_t>& data) -> bool override;
+
     [[nodiscard]] auto getParameterBaseValue(clap_id param_id) const -> double override;
     [[nodiscard]] auto getParameterCurrentValue(clap_id param_id) const -> double override;
     [[nodiscard]] auto getParameterModulationOffset(clap_id param_id) const -> double override;
@@ -112,10 +115,7 @@ class PluginHost final : public ProcessingNode, public BaseHost {
     void requestRestart() noexcept override;
     void requestProcess() noexcept override;
     void requestCallback() noexcept override;
-    auto implementsGui() const noexcept -> bool override { return false; }
-    auto implementsLog() const noexcept -> bool override { return true; }
     void logLog(clap_log_severity severity, const char* message) const noexcept override;
-    auto implementsParams() const noexcept -> bool override { return true; }
     void paramsRescan(clap_param_rescan_flags flags) noexcept override;
     void paramsClear(clap_id param_id, clap_param_clear_flags flags) noexcept override;
     void paramsRequestFlush() noexcept override;
@@ -126,8 +126,17 @@ class PluginHost final : public ProcessingNode, public BaseHost {
     void scanParameters();
     void scanAudioPorts();
 
-    // Not implemented extensions
+    // Implements
+    auto implementsLog() const noexcept -> bool override { return true; }
+    auto implementsState() const noexcept -> bool override { return true; }
+    auto implementsParams() const noexcept -> bool override { return true; }
+    auto implementsGui() const noexcept -> bool override { return false; }
     auto implementsPosixFdSupport() const noexcept -> bool override { return false; }
+    auto implementsRemoteControls() const noexcept -> bool override { return false; }
+    auto implementsTimerSupport() const noexcept -> bool override { return false; }
+    auto implementsThreadPool() const noexcept -> bool override { return false; }
+
+    // Not implemented extensions
     auto posixFdSupportRegisterFd(int fd, clap_posix_fd_flags_t flags) noexcept -> bool override {
         return false;
     }
@@ -135,17 +144,13 @@ class PluginHost final : public ProcessingNode, public BaseHost {
         return false;
     }
     auto posixFdSupportUnregisterFd(int fd) noexcept -> bool override { return false; }
-    auto implementsRemoteControls() const noexcept -> bool override { return false; }
     void remoteControlsChanged() noexcept override {}
     void remoteControlsSuggestPage(clap_id page_id) noexcept override {}
-    auto implementsState() const noexcept -> bool override { return false; }
-    auto implementsTimerSupport() const noexcept -> bool override { return false; }
     auto timerSupportRegisterTimer(uint32_t period_ms, clap_id* timer_id) noexcept
         -> bool override {
         return false;
     }
     auto timerSupportUnregisterTimer(clap_id timer_id) noexcept -> bool override { return false; }
-    auto implementsThreadPool() const noexcept -> bool override { return false; }
     auto threadPoolRequestExec(uint32_t num_tasks) noexcept -> bool override { return false; }
 
    private:

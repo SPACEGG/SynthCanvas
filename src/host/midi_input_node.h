@@ -37,6 +37,9 @@ class MidiInputNode : public ProcessingNode {
     void setParameterValue(clap_id param_id, double value) override;
     void setParameterValue(const std::string& param_id, double value) override;
 
+    auto saveState(std::vector<uint8_t>& data) -> bool override;
+    auto loadState(const std::vector<uint8_t>& data) -> bool override;
+
     void applyModulation(clap_id param_id, double value, uint32_t sample_offset) override {}
 
     [[nodiscard]] auto getParameterBaseValue(clap_id param_id) const -> double override;

@@ -299,6 +299,31 @@ auto System::getParameterText(uint32_t instance_id, const std::string& param_id,
     return std::to_string(value);
 }
 
+auto System::saveState(uint32_t instance_id) -> std::vector<uint8_t> {
+    std::vector<uint8_t> data;
+#if defined(__ANDROID__)
+    if (_pimpl->module_router) {
+        auto* node = _pimpl->module_router->getProcessingNode(instance_id);
+        if (node) {
+            node->saveState(data);
+        }
+    }
+#endif
+    return data;
+}
+
+auto System::loadState(uint32_t instance_id, const std::vector<uint8_t>& data) -> bool {
+#if defined(__ANDROID__)
+    if (_pimpl->module_router) {
+        auto* node = _pimpl->module_router->getProcessingNode(instance_id);
+        if (node) {
+            return node->loadState(data);
+        }
+    }
+#endif
+    return false;
+}
+
 void System::playNoteFromNode(uint32_t from_node_id, int note, double velocity) {
 #if defined(__ANDROID__)
     if (_pimpl->module_router && _pimpl->audio_engine) {
