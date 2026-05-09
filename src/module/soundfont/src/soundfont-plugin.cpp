@@ -7,7 +7,6 @@
 #include <cstring>
 #include <sstream>
 
-
 namespace synth_canvas::soundfont_plugin {
 
 SoundfontPlugin::SoundfontPlugin(const std::string& plugin_path, const clap_host* host)
@@ -140,18 +139,23 @@ auto SoundfontPlugin::paramsValue(clap_id param_id, double* value) noexcept -> b
 
 auto SoundfontPlugin::paramsValueToText(clap_id param_id, double value, char* display,
                                         uint32_t size) noexcept -> bool {
-    if (param_id == kParamPreset) {
-        int idx = static_cast<int>(value);
-        const char* name = _engine.getPresetName(idx);
-        if (name) {
-            std::strncpy(display, name, size);
-        } else {
-            std::snprintf(display, size, "%d", idx);
+    switch (param_id) {
+        case kParamPreset: {
+            int idx = static_cast<int>(value);
+            const char* name = _engine.getPresetName(idx);
+            if (name) {
+                std::snprintf(display, size, "%d: %s", idx, name);
+            } else {
+                std::snprintf(display, size, "%d", idx);
+            }
+            return true;
         }
-        return true;
-    } else if (param_id == kParamMidiChannel) {
-        std::snprintf(display, size, "%d", static_cast<int>(value) + 1);
-        return true;
+        case kParamGain:
+            std::snprintf(display, size, "%.1f dB", value);
+            return true;
+        case kParamMidiChannel:
+            std::snprintf(display, size, "%d", static_cast<int>(value) + 1);
+            return true;
     }
     return false;
 }
@@ -196,19 +200,20 @@ auto SoundfontPlugin::stateLoad(const clap_istream* is) noexcept -> bool {
     std::string key, value;
     std::istringstream ss(state);
     std::string pair;
+    bool path_changed = false;
+
     while (std::getline(ss, pair, ';')) {
         size_t pos = pair.find('=');
         if (pos != std::string::npos) {
             key = pair.substr(0, pos);
             value = pair.substr(pos + 1);
             if (key == "path") {
-                _sf2_path = value;
-                if (_engine.load(_sf2_path)) {
-                    _host.paramsRescan(CLAP_PARAM_RESCAN_ALL);
+                if (_sf2_path != value) {
+                    _sf2_path = value;
+                    path_changed = true;
                 }
             } else if (key == "preset") {
                 _preset_index = std::atof(value.c_str());
-                _engine.setPreset(_current_midi_channel, static_cast<int>(_preset_index));
             } else if (key == "gain") {
                 _gain_db = std::atof(value.c_str());
             } else if (key == "pan") {
@@ -219,8 +224,19 @@ auto SoundfontPlugin::stateLoad(const clap_istream* is) noexcept -> bool {
             }
         }
     }
+
+    // Apply values in correct order after parsing
+    if (path_changed) {
+        _engine.load(_sf2_path);
+    }
+    _engine.setPreset(_current_midi_channel, static_cast<int>(_preset_index));
+
     _current_gain = static_cast<float>(_gain_db);
     _current_pan = static_cast<float>(_pan);
+
+    // Notify host that parameters (especially preset names/count) might have changed
+    _host.paramsRescan(CLAP_PARAM_RESCAN_ALL);
+
     return true;
 }
 
