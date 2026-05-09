@@ -92,8 +92,11 @@ auto InternalNodeBase::getParameterModulationOffset(clap_id param_id) const -> d
     return 0.0;
 }
 
-auto InternalNodeBase::popOutputEvent(PluginEvent& out_event) -> bool {
-    return _output_events.try_dequeue(out_event);
+auto InternalNodeBase::popOutputEvent(uint32_t port_index, PluginEvent& out_event) -> bool {
+    if (port_index < _output_event_queues.size()) {
+        return _output_event_queues[port_index]->try_dequeue(out_event);
+    }
+    return false;
 }
 
 auto InternalNodeBase::getParameterSlot(clap_id param_id) const -> const ParameterSlot* {
@@ -158,6 +161,30 @@ void InternalNodeBase::addAudioPort(const std::string& name, bool is_input, uint
         _input_ports.push_back(port);
     } else {
         _output_ports.push_back(port);
+    }
+}
+
+void InternalNodeBase::addEventPort(const std::string& name, bool is_input) {
+    // Note: We use the same AudioPortInfo structure for now but set port_type to something else if needed.
+    // However, the GraphProcessor expects nodes to have ports.
+    // For internal nodes, we just need to ensure _output_event_queues has a queue for every output port index.
+    AudioPortInfo port;
+    port.index = static_cast<uint32_t>(is_input ? _input_ports.size() : _output_ports.size());
+    port.is_input = is_input;
+    port.is_modulation = false;
+    port.target_param_id = -1;
+    port.clap_info.id = port.index;
+    std::strncpy(port.clap_info.name, name.c_str(), sizeof(port.clap_info.name) - 1);
+    port.clap_info.channel_count = 0;
+    port.clap_info.flags = CLAP_AUDIO_PORT_IS_MAIN;
+    port.clap_info.port_type = "event";  // Custom type or use CLAP_PORT_MIDI
+
+    if (is_input) {
+        _input_ports.push_back(port);
+    } else {
+        _output_ports.push_back(port);
+        _output_event_queues.push_back(
+            std::make_unique<moodycamel::ReaderWriterQueue<PluginEvent>>(constants::kEventQueueSize));
     }
 }
 

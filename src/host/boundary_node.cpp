@@ -85,8 +85,11 @@ void BoundaryNode::reserveOutputBuffers(uint32_t count) {
 
 void BoundaryNode::queueEvent(const PluginEvent& event) { _event_queue.try_enqueue(event); }
 
-auto BoundaryNode::popOutputEvent(PluginEvent& out_event) -> bool {
-    return _event_queue.try_dequeue(out_event);
+auto BoundaryNode::popOutputEvent(uint32_t port_index, PluginEvent& out_event) -> bool {
+    if (port_index == 0) {
+        return _event_queue.try_dequeue(out_event);
+    }
+    return false;
 }
 
 auto BoundaryNode::getAudioPorts(bool is_input) const -> const std::vector<AudioPortInfo>& {

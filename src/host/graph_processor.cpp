@@ -182,6 +182,7 @@ auto GraphProcessor::createRenderState(uint32_t master_node_id) -> std::unique_p
                 auto* to_node = state->sorted_nodes[id_to_index[conn.to_node]];
                 RenderState::EventTarget target;
                 target.type = RenderState::EventTarget::Type::kNode;
+                target.source_port_index = conn.from_port;
                 target.destination.node = to_node;
                 target.scale = conn.scale;
                 target.bypass = conn.bypass;

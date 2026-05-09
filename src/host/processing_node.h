@@ -58,7 +58,7 @@ class ProcessingNode {
     [[nodiscard]] virtual auto getParameterModulationOffset(clap_id param_id) const -> double = 0;
 
     virtual void queueEvent(const PluginEvent& event) = 0;
-    virtual auto popOutputEvent(PluginEvent& out_event) -> bool = 0;
+    virtual auto popOutputEvent(uint32_t port_index, PluginEvent& out_event) -> bool = 0;
     virtual void pollMainThread() = 0;
 
     // Metadata Accessors

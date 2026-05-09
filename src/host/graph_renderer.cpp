@@ -167,31 +167,38 @@ void GraphRenderer::collectAndRouteEvents(size_t node_index, ProcessingNode* nod
     const auto& targets = state.output_event_targets[node_index];
     if (targets.empty()) {
         PluginEvent ev;
-        while (node->popOutputEvent(ev)) {
+        // Poll all potential ports to clear them even if no targets exist
+        const auto& output_ports = node->getAudioPorts(false);
+        for (uint32_t p = 0; p < static_cast<uint32_t>(output_ports.size()); ++p) {
+            while (node->popOutputEvent(p, ev)) {
+            }
         }
         return;
     }
 
-    PluginEvent ev;
-    while (node->popOutputEvent(ev)) {
-        for (const auto& target : targets) {
-            if (target.bypass) continue;
+    const auto& output_ports = node->getAudioPorts(false);
+    for (uint32_t p = 0; p < static_cast<uint32_t>(output_ports.size()); ++p) {
+        PluginEvent ev;
+        while (node->popOutputEvent(p, ev)) {
+            for (const auto& target : targets) {
+                if (target.bypass || target.source_port_index != p) continue;
 
-            if (target.type == GraphProcessor::RenderState::EventTarget::Type::kNode) {
-                // If CLAP_EVENT_PARAM_MOD: Rewrite the param_id to the target port's id
-                if (ev.event.header.type == CLAP_EVENT_PARAM_MOD &&
-                    static_cast<int32_t>(target.target_param_id) != constants::kClapInvalidId) {
-                    PluginEvent rewritten_ev = ev;
-                    rewritten_ev.event.param_mod.param_id = target.target_param_id;
-                    rewritten_ev.event.param_mod.amount *= target.scale;
-                    target.destination.node->queueEvent(rewritten_ev);
-                } else {
-                    target.destination.node->queueEvent(ev);
-                }
-            } else if (target.type ==
-                       GraphProcessor::RenderState::EventTarget::Type::kExternalOutput) {
-                if (handler) {
-                    handler(node, ev, target.destination.port_index);
+                if (target.type == GraphProcessor::RenderState::EventTarget::Type::kNode) {
+                    // If CLAP_EVENT_PARAM_MOD: Rewrite the param_id to the target port's id
+                    if (ev.event.header.type == CLAP_EVENT_PARAM_MOD &&
+                        static_cast<int32_t>(target.target_param_id) != constants::kClapInvalidId) {
+                        PluginEvent rewritten_ev = ev;
+                        rewritten_ev.event.param_mod.param_id = target.target_param_id;
+                        rewritten_ev.event.param_mod.amount *= target.scale;
+                        target.destination.node->queueEvent(rewritten_ev);
+                    } else {
+                        target.destination.node->queueEvent(ev);
+                    }
+                } else if (target.type ==
+                           GraphProcessor::RenderState::EventTarget::Type::kExternalOutput) {
+                    if (handler) {
+                        handler(node, ev, target.destination.port_index);
+                    }
                 }
             }
         }

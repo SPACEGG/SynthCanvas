@@ -5,7 +5,6 @@
 #include <string>
 #include <vector>
 
-#include "constants.h"
 #include "processing_node.h"
 #include "readerwriterqueue.h"
 
@@ -49,7 +48,7 @@ class InternalNodeBase : public ProcessingNode {
     [[nodiscard]] auto getParameterModulationOffset(clap_id param_id) const -> double override;
 
     void queueEvent(const PluginEvent& event) override;
-    auto popOutputEvent(PluginEvent& out_event) -> bool override;
+    auto popOutputEvent(uint32_t port_index, PluginEvent& out_event) -> bool override;
     void pollMainThread() override {}
 
     // Metadata
@@ -74,6 +73,7 @@ class InternalNodeBase : public ProcessingNode {
                       double min_val, double max_val, double def_val, uint32_t flags = 0);
     void addAudioPort(const std::string& name, bool is_input, uint32_t channel_count = 2,
                       bool is_mod = false, clap_id target_param_id = -1);
+    void addEventPort(const std::string& name, bool is_input);
 
     // Derived classes must implement these
     virtual void onSampleRateChanged(int32_t sample_rate) {}
@@ -83,7 +83,7 @@ class InternalNodeBase : public ProcessingNode {
     std::vector<std::unique_ptr<ParameterSlot>> _parameters;
     std::vector<AudioPortInfo> _input_ports;
     std::vector<AudioPortInfo> _output_ports;
-    moodycamel::ReaderWriterQueue<PluginEvent> _output_events{constants::kEventQueueSize};
+    std::vector<std::unique_ptr<moodycamel::ReaderWriterQueue<PluginEvent>>> _output_event_queues;
 
     uint32_t _instance_id = 0;
     bool _is_active = false;

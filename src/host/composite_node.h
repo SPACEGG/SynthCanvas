@@ -50,7 +50,7 @@ class CompositeNode final : public ProcessingNode {
     [[nodiscard]] auto getParameterCurrentValue(clap_id param_id) const -> double override;
     [[nodiscard]] auto getParameterModulationOffset(clap_id param_id) const -> double override;
     void queueEvent(const PluginEvent& event) override;
-    auto popOutputEvent(PluginEvent& out_event) -> bool override;
+    auto popOutputEvent(uint32_t port_index, PluginEvent& out_event) -> bool override;
     void pollMainThread() override;
 
     // Metadata Accessors

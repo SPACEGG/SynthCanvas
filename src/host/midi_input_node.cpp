@@ -19,21 +19,17 @@ MidiInputNode::MidiInputNode() {
     }
 
     // Initialize parameters
-    auto port_param = std::make_unique<ParameterSlot>();
-    port_param->info.id = 0;
-    std::strncpy(port_param->info.name, "Port Index", sizeof(port_param->info.name));
-    port_param->info.min_value = 0;
-    port_param->info.max_value = 255;
-    port_param->info.default_value = 0;
-    _parameters.push_back(std::move(port_param));
+    addParameter(0, "Port Index", "midi", 0.0, 255.0, 0.0, CLAP_PARAM_IS_STEPPED);
+    
+    // Setup ports
+    addEventPort("MIDI Out", false);
 }
 
 MidiInputNode::~MidiInputNode() { deactivateInternal(); }
 
 void MidiInputNode::activate(int32_t sample_rate, int32_t block_size) {
-    _sample_rate = sample_rate;
+    InternalNodeBase::activate(sample_rate, block_size);
     _active = true;
-    _enabled = true;
     openPort(_port_index);
 }
 
@@ -42,6 +38,7 @@ void MidiInputNode::deactivate() { deactivateInternal(); }
 void MidiInputNode::deactivateInternal() {
     closePort();
     _active = false;
+    _is_active = false;
 }
 
 void MidiInputNode::openPort(uint32_t port_index) {
@@ -50,20 +47,10 @@ void MidiInputNode::openPort(uint32_t port_index) {
     closePort();
     try {
         unsigned int port_count = _midi_in->getPortCount();
-
-        uint32_t target_index = port_index;
-        bool found_valid = false;
-
-        for (unsigned int i = 0; i < port_count; ++i) {
-            std::string name = _midi_in->getPortName(i);
-        }
-
-        if (port_count > 0) {
-            std::string final_name = _midi_in->getPortName(target_index);
-
-            _midi_in->openPort(target_index);
+        if (port_index < port_count) {
+            _midi_in->openPort(port_index);
             _midi_in->setCallback(&midiCallback, this);
-            _port_index = target_index;
+            _port_index = port_index;
         }
     } catch (const rt::midi::RtMidiError& error) {
         log("[MidiInputNode] EXCEPTION during openPort: ", error.getMessage());
@@ -102,14 +89,13 @@ void MidiInputNode::errorCallback(rt::midi::RtMidiError::Type type, const std::s
 }
 
 void MidiInputNode::processBegin(int num_frames) {
+    InternalNodeBase::processBegin(num_frames);
     _block_start_time = std::chrono::high_resolution_clock::now();
-    _output_events.clear();
-    _current_event_idx = 0;
     _current_num_frames = num_frames;
 }
 
 void MidiInputNode::process() {
-    if (!_active || !_enabled) return;
+    if (!_active || !_processing_enabled) return;
 
     RawMidiMessage raw;
     int32_t last_offset = -1;
@@ -123,7 +109,7 @@ void MidiInputNode::process() {
 
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(raw.arrival_time -
                                                                               _block_start_time);
-        auto offset = static_cast<int32_t>((duration.count() * _sample_rate) / 1000000);
+        auto offset = static_cast<int32_t>((duration.count() * _current_sample_rate) / 1000000);
 
         if (_current_num_frames > 0) {
             offset = std::clamp(offset, 0, _current_num_frames - 1);
@@ -131,7 +117,6 @@ void MidiInputNode::process() {
             offset = 0;
         }
 
-        // CLAP requirement: events must be strictly ordered by time
         if (offset < last_offset) {
             offset = last_offset;
         }
@@ -155,7 +140,7 @@ void MidiInputNode::process() {
             ev.event.note.channel = channel;
             ev.event.note.key = static_cast<int16_t>(key);
             ev.event.note.velocity = static_cast<double>(vel) / 127.0;
-            ev.event.note.note_id = -1;  // CLAP_NOTE_ID_UNSPECIFIED
+            ev.event.note.note_id = -1;
         } else {
             ev.event.header.type = CLAP_EVENT_MIDI;
             ev.event.header.size = sizeof(clap_event_midi);
@@ -164,19 +149,11 @@ void MidiInputNode::process() {
                         std::min(static_cast<size_t>(3), raw.size));
         }
 
-        _output_events.push_back(ev);
-        _output_events_to_main.enqueue(ev);
+        if (!_output_event_queues.empty()) {
+            _output_event_queues[0]->try_enqueue(ev);
+        }
+        _output_events_to_main.try_enqueue(ev);
     }
-}
-
-void MidiInputNode::processEnd(int num_frames) {}
-
-auto MidiInputNode::popOutputEvent(PluginEvent& out_event) -> bool {
-    if (_current_event_idx < _output_events.size()) {
-        out_event = _output_events[_current_event_idx++];
-        return true;
-    }
-    return false;
 }
 
 void MidiInputNode::pollMainThread() {
@@ -194,6 +171,7 @@ void MidiInputNode::pollMainThread() {
 }
 
 void MidiInputNode::setParameterValue(clap_id param_id, double value) {
+    InternalNodeBase::setParameterValue(param_id, value);
     if (param_id == 0) {
         _port_index = static_cast<uint32_t>(value);
         if (_active) openPort(_port_index);
@@ -201,39 +179,7 @@ void MidiInputNode::setParameterValue(clap_id param_id, double value) {
 }
 
 void MidiInputNode::setParameterValue(const std::string& param_id, double value) {
-    if (param_id == "port_index") setParameterValue(0, value);
+    if (param_id == "0") setParameterValue(0, value);
 }
-
-auto MidiInputNode::saveState(std::vector<uint8_t>& data) -> bool { return true; }
-auto MidiInputNode::loadState(const std::vector<uint8_t>& data) -> bool { return true; }
-
-auto MidiInputNode::getParameterBaseValue(clap_id param_id) const -> double {
-    if (param_id == 0) return static_cast<double>(_port_index);
-    return 0.0;
-}
-
-auto MidiInputNode::getParameterCurrentValue(clap_id param_id) const -> double {
-    if (param_id == 0) return static_cast<double>(_port_index);
-    return 0.0;
-}
-
-auto MidiInputNode::getAudioPorts(bool is_input) const -> const std::vector<AudioPortInfo>& {
-    return is_input ? _audio_inputs : _audio_outputs;
-}
-
-auto MidiInputNode::getParameters() const -> const std::vector<std::unique_ptr<ParameterSlot>>& {
-    return _parameters;
-}
-
-auto MidiInputNode::getParameterSlot(clap_id param_id) const -> const ParameterSlot* {
-    return nullptr;
-}
-
-auto MidiInputNode::getParameterText(clap_id param_id, double value) const -> std::string {
-    return std::to_string(value);
-}
-
-void MidiInputNode::setPorts(uint32_t num_inputs, clap_audio_buffer* inputs, uint32_t num_outputs,
-                             clap_audio_buffer* outputs) {}
 
 }  // namespace synth_canvas::host

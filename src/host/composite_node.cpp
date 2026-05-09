@@ -332,8 +332,8 @@ void CompositeNode::queueEvent(const PluginEvent& event) {
     }
 }
 
-auto CompositeNode::popOutputEvent(PluginEvent& out_event) -> bool {
-    return _output_proxy_node ? _output_proxy_node->popOutputEvent(out_event) : false;
+auto CompositeNode::popOutputEvent(uint32_t port_index, PluginEvent& out_event) -> bool {
+    return _output_proxy_node ? _output_proxy_node->popOutputEvent(port_index, out_event) : false;
 }
 
 void CompositeNode::pollMainThread() {

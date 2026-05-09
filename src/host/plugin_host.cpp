@@ -652,8 +652,11 @@ auto PluginHost::getParameterModulationOffset(clap_id param_id) const -> double 
 
 void PluginHost::queueEvent(const PluginEvent& event) { _input_events.try_enqueue(event); }
 
-auto PluginHost::popOutputEvent(PluginEvent& out_event) -> bool {
-    return _output_events_to_audio.try_dequeue(out_event);
+auto PluginHost::popOutputEvent(uint32_t port_index, PluginEvent& out_event) -> bool {
+    if (port_index == 0) {
+        return _output_events_to_audio.try_dequeue(out_event);
+    }
+    return false;
 }
 
 auto PluginHost::getOutputBuffer(uint32_t port_idx) -> AudioBuffer* {

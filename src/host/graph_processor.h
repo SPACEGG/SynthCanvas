@@ -45,6 +45,7 @@ class GraphProcessor {
         struct EventTarget {
             enum class Type { kNode, kExternalOutput };
             Type type;
+            uint32_t source_port_index = 0;
             union {
                 ProcessingNode* node;
                 uint32_t port_index;

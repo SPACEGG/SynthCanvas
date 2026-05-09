@@ -53,7 +53,7 @@ class BoundaryNode : public ProcessingNode {
     }
 
     void queueEvent(const PluginEvent& event) override;
-    auto popOutputEvent(PluginEvent& out_event) -> bool override;
+    auto popOutputEvent(uint32_t port_index, PluginEvent& out_event) -> bool override;
     void pollMainThread() override {}
 
     void setInstanceId(uint32_t id) override { _instance_id = id; }

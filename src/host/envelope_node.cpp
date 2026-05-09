@@ -27,7 +27,7 @@ EnvelopeNode::EnvelopeNode() {
     addAudioPort("Release Mod", true, 1, true, kRelease);
     addAudioPort("Amount Mod", true, 1, true, kAmount);
     addAudioPort("Voice Mst Mod", true, 1, true, kVoiceMaster);
-    addAudioPort("Signal Out", false, 0, true);  // No audio, just events
+    addEventPort("Signal Out", false);
 }
 
 void EnvelopeNode::activate(int32_t sample_rate, int32_t block_size) {
@@ -235,7 +235,7 @@ void EnvelopeNode::pushModulationEvent(const VoiceState& voice, uint32_t frame_i
     ev.event.param_mod.amount =
         voice.adsr.current_value * voice.adsr.peak_amplitude * _cached_amount;
 
-    _output_events.enqueue(ev);
+    _output_event_queues[0]->enqueue(ev);
 }
 
 void EnvelopeNode::pushNoteChokeEvent(const VoiceState& voice, uint32_t frame_index) {
@@ -253,7 +253,7 @@ void EnvelopeNode::pushNoteChokeEvent(const VoiceState& voice, uint32_t frame_in
         ev.event.note.note_id = voice.note_id;
         ev.event.note.velocity = 0.0;
 
-        _output_events.enqueue(ev);
+        _output_event_queues[0]->enqueue(ev);
     }
 }
 
