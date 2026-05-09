@@ -1,24 +1,25 @@
 #include "soundfont-plugin.h"
 
-#include <algorithm>
-#include <array>
-#include <clap/helpers/host-proxy.hxx>
 #include <clap/helpers/plugin.hxx>
-#include <cmath>
+#include <clap/helpers/host-proxy.hxx>
+
 #include <cstring>
+#include <cmath>
 #include <sstream>
+#include <algorithm>
 
 namespace synth_canvas::soundfont_plugin {
 
 SoundfontPlugin::SoundfontPlugin(const std::string& plugin_path, const clap_host* host)
     : clap::helpers::Plugin<clap::helpers::MisbehaviourHandler::Terminate,
-                            clap::helpers::CheckingLevel::Maximal>(descriptor(), host) {}
+                            clap::helpers::CheckingLevel::Maximal>(descriptor(), host) {
+}
 
 auto SoundfontPlugin::descriptor() -> const clap_plugin_descriptor* {
-    static const std::array<const char*, 3> features = {CLAP_PLUGIN_FEATURE_INSTRUMENT,
-                                                        CLAP_PLUGIN_FEATURE_SYNTHESIZER, nullptr};
+    static const std::array<const char*, 3> kFeatures = {CLAP_PLUGIN_FEATURE_INSTRUMENT,
+                                                         CLAP_PLUGIN_FEATURE_SYNTHESIZER, nullptr};
 
-    static const clap_plugin_descriptor desc = {
+    static const clap_plugin_descriptor kDesc = {
         .clap_version = CLAP_VERSION_INIT,
         .id = "com.synthcanvas.soundfont-plugin",
         .name = "Soundfont Player",
@@ -28,9 +29,9 @@ auto SoundfontPlugin::descriptor() -> const clap_plugin_descriptor* {
         .support_url = "",
         .version = "1.0.0",
         .description = "A lightweight Soundfont (.sf2) player using TinySoundFont.",
-        .features = features.data(),
+        .features = kFeatures.data(),
     };
-    return &desc;
+    return &kDesc;
 }
 
 auto SoundfontPlugin::activate(double sample_rate, uint32_t min_frames_count,
@@ -38,6 +39,7 @@ auto SoundfontPlugin::activate(double sample_rate, uint32_t min_frames_count,
     _engine.setSampleRate(static_cast<float>(sample_rate));
     _current_gain = static_cast<float>(_gain_db);
     _current_pan = static_cast<float>(_pan);
+    _current_midi_channel = static_cast<int>(_midi_channel);
     return true;
 }
 
@@ -75,7 +77,9 @@ auto SoundfontPlugin::notePortsInfo(uint32_t index, bool is_input,
 }
 
 //--- Parameters
-auto SoundfontPlugin::paramsCount() const noexcept -> uint32_t { return kParamCount; }
+auto SoundfontPlugin::paramsCount() const noexcept -> uint32_t {
+    return kParamCount;
+}
 
 auto SoundfontPlugin::paramsInfo(uint32_t index, clap_param_info* info) const noexcept -> bool {
     switch (index) {
@@ -106,21 +110,25 @@ auto SoundfontPlugin::paramsInfo(uint32_t index, clap_param_info* info) const no
             std::strncpy(info->name, "Pan", sizeof(info->name));
             std::strncpy(info->module, "", sizeof(info->module));
             return true;
+        case kParamMidiChannel:
+            info->id = kParamMidiChannel;
+            info->flags = CLAP_PARAM_IS_AUTOMATABLE | CLAP_PARAM_IS_STEPPED;
+            info->min_value = 0;
+            info->max_value = 15;
+            info->default_value = 0;
+            std::strncpy(info->name, "MIDI Channel", sizeof(info->name));
+            std::strncpy(info->module, "", sizeof(info->module));
+            return true;
     }
     return false;
 }
 
 auto SoundfontPlugin::paramsValue(clap_id param_id, double* value) noexcept -> bool {
     switch (param_id) {
-        case kParamPreset:
-            *value = _preset_index;
-            return true;
-        case kParamGain:
-            *value = _gain_db;
-            return true;
-        case kParamPan:
-            *value = _pan;
-            return true;
+        case kParamPreset: *value = _preset_index; return true;
+        case kParamGain: *value = _gain_db; return true;
+        case kParamPan: *value = _pan; return true;
+        case kParamMidiChannel: *value = _midi_channel; return true;
     }
     return false;
 }
@@ -136,6 +144,9 @@ auto SoundfontPlugin::paramsValueToText(clap_id param_id, double value, char* di
             std::snprintf(display, size, "%d", idx);
         }
         return true;
+    } else if (param_id == kParamMidiChannel) {
+        std::snprintf(display, size, "%d", static_cast<int>(value) + 1);
+        return true;
     }
     return false;
 }
@@ -143,7 +154,7 @@ auto SoundfontPlugin::paramsValueToText(clap_id param_id, double value, char* di
 auto SoundfontPlugin::paramsTextToValue(clap_id param_id, const char* display,
                                         double* value) noexcept -> bool {
     if (param_id == kParamPreset) {
-        *value = std::atof(display);  // Simple fallback
+        *value = std::atof(display);
         return true;
     }
     return false;
@@ -161,19 +172,20 @@ auto SoundfontPlugin::stateSave(const clap_ostream* os) noexcept -> bool {
     ss << "path=" << _sf2_path << ";"
        << "preset=" << static_cast<int>(_preset_index) << ";"
        << "gain=" << _gain_db << ";"
-       << "pan=" << _pan << ";";
-
+       << "pan=" << _pan << ";"
+       << "channel=" << static_cast<int>(_midi_channel) << ";";
+    
     std::string state = ss.str();
     int64_t written = os->write(os, state.c_str(), state.size());
     return written == static_cast<int64_t>(state.size());
 }
 
 auto SoundfontPlugin::stateLoad(const clap_istream* is) noexcept -> bool {
-    std::array<char, 1024> buffer;
+    char buffer[1024];
     std::string state;
     int64_t read;
-    while ((read = is->read(is, buffer.data(), sizeof(buffer.data()))) > 0) {
-        state.append(buffer.data(), static_cast<size_t>(read));
+    while ((read = is->read(is, buffer, sizeof(buffer))) > 0) {
+        state.append(buffer, static_cast<size_t>(read));
     }
 
     std::string key, value;
@@ -191,11 +203,14 @@ auto SoundfontPlugin::stateLoad(const clap_istream* is) noexcept -> bool {
                 }
             } else if (key == "preset") {
                 _preset_index = std::atof(value.c_str());
-                _engine.setPreset(static_cast<int>(_preset_index));
+                _engine.setPreset(_current_midi_channel, static_cast<int>(_preset_index));
             } else if (key == "gain") {
                 _gain_db = std::atof(value.c_str());
             } else if (key == "pan") {
                 _pan = std::atof(value.c_str());
+            } else if (key == "channel") {
+                _midi_channel = std::atof(value.c_str());
+                _current_midi_channel = static_cast<int>(_midi_channel);
             }
         }
     }
@@ -215,46 +230,35 @@ auto SoundfontPlugin::process(const clap_process* process) noexcept -> clap_proc
     float* out_r = process->audio_outputs[0].data32[1];
 
     while (current_frame < nframes) {
-        // 1. Process events for the current frame
         handleEvents(process->in_events, event_index, current_frame);
 
-        // 2. Determine how many frames to render in this block
         uint32_t frames_to_render = nframes - current_frame;
         if (event_index < nevents) {
-            const clap_event_header_t* next_event =
-                process->in_events->get(process->in_events, event_index);
+            const clap_event_header_t* next_event = process->in_events->get(process->in_events, event_index);
             if (next_event->time > current_frame) {
-                frames_to_render = std::min(
-                    frames_to_render, static_cast<uint32_t>(next_event->time - current_frame));
+                frames_to_render = std::min(frames_to_render, static_cast<uint32_t>(next_event->time - current_frame));
             }
         }
-
-        // Limit block size for smoothing responsiveness
+        
         frames_to_render = std::min(frames_to_render, 32u);
 
-        // 3. Render the block from engine (Efficient)
-        std::array<float*, 2> block_outputs = {&out_l[current_frame], &out_r[current_frame]};
-        _engine.process(block_outputs.data(), frames_to_render);
+        float* block_outputs[2] = { &out_l[current_frame], &out_r[current_frame] };
+        _engine.process(block_outputs, frames_to_render);
 
-        // 4. Apply sample-accurate smoothing, gain, and pan to the rendered block
         for (uint32_t i = 0; i < frames_to_render; ++i) {
             uint32_t f = current_frame + i;
-
-            // Apply Smoothing
             const float smoothing_coeff = 0.005f;
-
-            // Target values including modulation
-            auto target_gain = static_cast<float>(_gain_db + _gain_mod * 60.0);
+            
+            float target_gain = static_cast<float>(_gain_db + _gain_mod * 60.0);
             float target_pan = std::clamp(static_cast<float>(_pan + _pan_mod), -1.0f, 1.0f);
-
+            
             _current_gain += (target_gain - _current_gain) * smoothing_coeff;
             _current_pan += (target_pan - _current_pan) * smoothing_coeff;
-
-            // Apply Gain and Pan
+            
             float gain_lin = std::pow(10.0f, _current_gain / 20.0f);
             float pan_l = std::min(1.0f, 1.0f - _current_pan);
             float pan_r = std::min(1.0f, 1.0f + _current_pan);
-
+            
             out_l[f] *= gain_lin * pan_l;
             out_r[f] *= gain_lin * pan_r;
         }
@@ -276,12 +280,16 @@ void SoundfontPlugin::handleEvents(const clap_input_events* in, uint32_t& event_
             switch (hdr->type) {
                 case CLAP_EVENT_NOTE_ON: {
                     const auto* ev = reinterpret_cast<const clap_event_note_t*>(hdr);
-                    _engine.noteOn(ev->key, static_cast<float>(ev->velocity));
+                    if (ev->channel == _current_midi_channel) {
+                        _engine.noteOn(ev->channel, ev->key, static_cast<float>(ev->velocity));
+                    }
                     break;
                 }
                 case CLAP_EVENT_NOTE_OFF: {
                     const auto* ev = reinterpret_cast<const clap_event_note_t*>(hdr);
-                    _engine.noteOff(ev->key);
+                    if (ev->channel == _current_midi_channel) {
+                        _engine.noteOff(ev->channel, ev->key);
+                    }
                     break;
                 }
                 case CLAP_EVENT_PARAM_VALUE: {
@@ -289,7 +297,7 @@ void SoundfontPlugin::handleEvents(const clap_input_events* in, uint32_t& event_
                     switch (ev->param_id) {
                         case kParamPreset:
                             _preset_index = ev->value;
-                            _engine.setPreset(static_cast<int>(_preset_index));
+                            _engine.setPreset(_current_midi_channel, static_cast<int>(_preset_index));
                             break;
                         case kParamGain:
                             _gain_db = ev->value;
@@ -297,37 +305,39 @@ void SoundfontPlugin::handleEvents(const clap_input_events* in, uint32_t& event_
                         case kParamPan:
                             _pan = ev->value;
                             break;
+                        case kParamMidiChannel:
+                            _midi_channel = ev->value;
+                            _current_midi_channel = static_cast<int>(_midi_channel);
+                            // Re-apply preset to the new channel
+                            _engine.setPreset(_current_midi_channel, static_cast<int>(_preset_index));
+                            break;
                     }
                     break;
                 }
                 case CLAP_EVENT_PARAM_MOD: {
                     const auto* ev = reinterpret_cast<const clap_event_param_mod_t*>(hdr);
                     switch (ev->param_id) {
-                        case kParamGain:
-                            _gain_mod = ev->amount;
-                            break;
-                        case kParamPan:
-                            _pan_mod = ev->amount;
-                            break;
+                        case kParamGain: _gain_mod = ev->amount; break;
+                        case kParamPan: _pan_mod = ev->amount; break;
                     }
                     break;
                 }
                 case CLAP_EVENT_MIDI: {
                     const auto* ev = reinterpret_cast<const clap_event_midi_t*>(hdr);
                     uint8_t msg = ev->data[0] & 0xF0;
-                    if (msg == 0xE0) {  // Pitch Bend
-                        int pb = ev->data[1] + (ev->data[2] << 7);
-                        _engine.setPitchBend(pb);
-                    } else if (msg == 0x90) {  // Note On fallback
-                        uint8_t key = ev->data[1];
-                        uint8_t vel = ev->data[2];
-                        if (vel > 0) {
-                            _engine.noteOn(key, vel / 127.0f);
-                        } else {
-                            _engine.noteOff(key);
+                    uint8_t chan = ev->data[0] & 0x0F;
+                    if (chan == _current_midi_channel) {
+                        if (msg == 0xE0) { // Pitch Bend
+                            int pb = ev->data[1] + (ev->data[2] << 7);
+                            _engine.setPitchBend(chan, pb);
+                        } else if (msg == 0x90) { // Note On fallback
+                            uint8_t key = ev->data[1];
+                            uint8_t vel = ev->data[2];
+                            if (vel > 0) _engine.noteOn(chan, key, vel / 127.0f);
+                            else _engine.noteOff(chan, key);
+                        } else if (msg == 0x80) { // Note Off fallback
+                            _engine.noteOff(chan, ev->data[1]);
                         }
-                    } else if (msg == 0x80) {  // Note Off fallback
-                        _engine.noteOff(ev->data[1]);
                     }
                     break;
                 }
@@ -337,4 +347,4 @@ void SoundfontPlugin::handleEvents(const clap_input_events* in, uint32_t& event_
     }
 }
 
-}  // namespace synth_canvas::soundfont_plugin
+} // namespace synth_canvas::soundfont_plugin

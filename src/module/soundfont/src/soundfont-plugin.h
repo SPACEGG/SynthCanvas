@@ -53,6 +53,7 @@ public:
         kParamPreset = 0,
         kParamGain,
         kParamPan,
+        kParamMidiChannel,
         kParamCount
     };
 
@@ -64,6 +65,7 @@ private:
     double _preset_index{0.0};
     double _gain_db{0.0};
     double _pan{0.0};
+    double _midi_channel{0.0};
 
     // Modulation
     double _gain_mod{0.0};
@@ -75,6 +77,7 @@ private:
 
     // Current values for engine updates
     int _current_preset{-1};
+    int _current_midi_channel{0};
     std::string _sf2_path;
 
     SoundfontEngine _engine;
