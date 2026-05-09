@@ -226,6 +226,18 @@ auto CompositeNode::saveState(std::vector<uint8_t>& data) -> bool {
         }
     }
 
+    if (states.empty()) return true;
+
+    // Return directly if internal node is unique.
+    if (states.size() == 1) {
+        data = std::move(states[0].second);
+        return true;
+    }
+
+    // Multi-node state: Package with "COMP" magic header.
+    const char* magic = "COMP";
+    data.insert(data.end(), magic, magic + 4);
+
     auto node_count = static_cast<uint32_t>(states.size());
     const auto* p_count = reinterpret_cast<const uint8_t*>(&node_count);
     data.insert(data.end(), p_count, p_count + sizeof(uint32_t));
@@ -245,30 +257,46 @@ auto CompositeNode::saveState(std::vector<uint8_t>& data) -> bool {
 }
 
 auto CompositeNode::loadState(const std::vector<uint8_t>& data) -> bool {
-    if (data.size() < sizeof(uint32_t)) return false;
+    if (data.empty()) return false;
 
-    uint32_t node_count = 0;
-    std::memcpy(&node_count, data.data(), sizeof(uint32_t));
-    size_t offset = sizeof(uint32_t);
+    // Detect if this is a structured Composite state using the "COMP" magic header.
+    bool is_structured = (data.size() >= 8 && std::memcmp(data.data(), "COMP", 4) == 0);
 
-    for (uint32_t i = 0; i < node_count; ++i) {
-        if (offset + sizeof(uint32_t) * 2 > data.size()) return false;
+    if (is_structured) {
+        uint32_t node_count = 0;
+        std::memcpy(&node_count, data.data() + 4, sizeof(uint32_t));
+        size_t offset = 8;
 
-        uint32_t id = 0;
-        std::memcpy(&id, data.data() + offset, sizeof(uint32_t));
-        offset += sizeof(uint32_t);
+        for (uint32_t i = 0; i < node_count; ++i) {
+            if (offset + sizeof(uint32_t) * 2 > data.size()) return false;
 
-        uint32_t size = 0;
-        std::memcpy(&size, data.data() + offset, sizeof(uint32_t));
-        offset += sizeof(uint32_t);
+            uint32_t id = 0;
+            std::memcpy(&id, data.data() + offset, sizeof(uint32_t));
+            offset += sizeof(uint32_t);
 
-        if (offset + size > data.size()) return false;
+            uint32_t size = 0;
+            std::memcpy(&size, data.data() + offset, sizeof(uint32_t));
+            offset += sizeof(uint32_t);
 
-        if (auto* node = _internal_processor.getNode(id)) {
-            std::vector<uint8_t> node_data(data.begin() + offset, data.begin() + offset + size);
-            node->loadState(node_data);
+            if (offset + size > data.size()) return false;
+
+            if (auto* node = _internal_processor.getNode(id)) {
+                std::vector<uint8_t> node_data(data.begin() + offset, data.begin() + offset + size);
+                node->loadState(node_data);
+            }
+            offset += size;
         }
-        offset += size;
+    } else {
+        // Broadcast / Transparent Forwarding:
+        // If data is not structured (e.g. a raw command string "path=...;"),
+        // forward it to all internal nodes.
+        log("[CompositeNode] Non-structured state detected, broadcasting to internal nodes.");
+        for (uint32_t id : _internal_processor.getProcessOrder()) {
+            if (id == kInputProxyId || id == kOutputProxyId) continue;
+            if (auto* node = _internal_processor.getNode(id)) {
+                node->loadState(data);
+            }
+        }
     }
 
     return true;
@@ -366,12 +394,39 @@ auto CompositeNode::loadInternalPlugins(const CompositeConfig& config,
                 this->handleInternalEvent(internal_id, ev);
             };
 
+            // Bubble up parameter rescan signal
+            host->on_params_rescan = [this](uint32_t internal_id) {
+                this->refreshParameterMetadata();
+                if (this->on_params_rescan) {
+                    this->on_params_rescan(this->_instance_id);
+                }
+            };
+
             addInternalNode(id, std::move(host));
         } else {
             return false;
         }
     }
     return true;
+}
+
+void CompositeNode::refreshParameterMetadata() {
+    // Loop through all mapped parameters and refresh their metadata from the actual internal node.
+    for (auto& [param_id, target] : _param_id_to_target) {
+        auto ext_it = _param_id_to_external_index.find(param_id);
+        if (ext_it != _param_id_to_external_index.end()) {
+            uint32_t ext_idx = ext_it->second;
+            if (ext_idx < _external_params.size()) {
+                if (auto* src_slot = target.node->getParameterSlot(target.internal_id)) {
+                    // Update the cached metadata info (especially min/max/default)
+                    _external_params[ext_idx]->info = src_slot->info;
+                    // Restore the external parameter name (which is the param_id)
+                    std::strncpy(_external_params[ext_idx]->info.name, param_id.c_str(),
+                                 CLAP_NAME_SIZE);
+                }
+            }
+        }
+    }
 }
 
 void CompositeNode::setupInternalRoutings(const CompositeConfig& config,

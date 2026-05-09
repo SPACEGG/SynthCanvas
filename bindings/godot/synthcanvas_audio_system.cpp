@@ -104,6 +104,11 @@ SynthCanvasAudioSystem::SynthCanvasAudioSystem() {
             emit_signal("midi_event_received", ev.instance_id, bytes, ev.data.midi.port_index);
         }
     });
+
+    _system->setParamsRescanCallback([this](uint32_t instance_id) -> void {
+        // Use param_id = -1 as a special signal for "all parameters rescanned"
+        emit_signal("parameter_changed", instance_id, -1, 1.0);
+    });
 }
 
 SynthCanvasAudioSystem::~SynthCanvasAudioSystem() {

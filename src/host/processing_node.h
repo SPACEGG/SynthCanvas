@@ -81,6 +81,9 @@ class ProcessingNode {
 
     // Universal Event Callback (invoked during pollMainThread)
     std::function<void(uint32_t, const PluginEvent&)> on_event_occured;
+
+    // Direct Parameter Rescan Callback (invoked on the main thread when plugin metadata changes)
+    std::function<void(uint32_t)> on_params_rescan;
 };
 
 }  // namespace synth_canvas::host

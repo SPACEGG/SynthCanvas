@@ -77,6 +77,7 @@ class System {
 
     // Event Callbacks
     void setEventOccuredCallback(EventOccuredCallback cb);
+    void setParamsRescanCallback(std::function<void(uint32_t)> cb);
 
    private:
     struct Impl;

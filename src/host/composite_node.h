@@ -87,6 +87,7 @@ class CompositeNode final : public ProcessingNode {
 
     void updateInternalRenderState();
     void handleInternalEvent(uint32_t internal_id, const PluginEvent& ev);
+    void refreshParameterMetadata();
     [[nodiscard]] auto getInternalParameterTarget(clap_id external_id) const -> ParameterTarget;
 
     // Helper functions for load()

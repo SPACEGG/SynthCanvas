@@ -20,6 +20,7 @@ struct System::Impl {
     std::unique_ptr<synth_canvas::host::ModuleRouter> module_router;
     std::unique_ptr<synth_canvas::host::AudioEngine> audio_engine;
     EventOccuredCallback on_event_occured;
+    std::function<void(uint32_t)> on_params_rescan;
     TransportState transport_state;
 
     Impl() {
@@ -124,10 +125,18 @@ auto System::createPluginInstance(const std::string& path) -> uint32_t {
 #if defined(__ANDROID__)
     if (!_pimpl->module_router) return 0;
     uint32_t id = _pimpl->module_router->createPluginInstance(path);
-    if (id != 0 && _pimpl->audio_engine && _pimpl->audio_engine->isRunning()) {
-        int32_t rate = _pimpl->audio_engine->getSampleRate();
-        int32_t frames = _pimpl->audio_engine->getFramesPerBlock();
-        _pimpl->module_router->activateNode(id, rate, frames);
+    if (id != 0) {
+        if (auto* node = _pimpl->module_router->getProcessingNode(id)) {
+            node->on_params_rescan = [this](uint32_t instance_id) {
+                if (_pimpl->on_params_rescan) _pimpl->on_params_rescan(instance_id);
+            };
+        }
+
+        if (_pimpl->audio_engine && _pimpl->audio_engine->isRunning()) {
+            int32_t rate = _pimpl->audio_engine->getSampleRate();
+            int32_t frames = _pimpl->audio_engine->getFramesPerBlock();
+            _pimpl->module_router->activateNode(id, rate, frames);
+        }
     }
     return id;
 #else
@@ -148,10 +157,18 @@ auto System::registerSpecialNode(const std::string& type) -> uint32_t {
 #if defined(__ANDROID__)
     if (_pimpl->module_router) {
         uint32_t id = _pimpl->module_router->registerSpecialNode(type);
-        if (id != 0 && _pimpl->audio_engine && _pimpl->audio_engine->isRunning()) {
-            int32_t rate = _pimpl->audio_engine->getSampleRate();
-            int32_t frames = _pimpl->audio_engine->getFramesPerBlock();
-            _pimpl->module_router->activateNode(id, rate, frames);
+        if (id != 0) {
+            if (auto* node = _pimpl->module_router->getProcessingNode(id)) {
+                node->on_params_rescan = [this](uint32_t instance_id) {
+                    if (_pimpl->on_params_rescan) _pimpl->on_params_rescan(instance_id);
+                };
+            }
+
+            if (_pimpl->audio_engine && _pimpl->audio_engine->isRunning()) {
+                int32_t rate = _pimpl->audio_engine->getSampleRate();
+                int32_t frames = _pimpl->audio_engine->getFramesPerBlock();
+                _pimpl->module_router->activateNode(id, rate, frames);
+            }
         }
         return id;
     }
@@ -167,10 +184,18 @@ auto System::createCompositeInstance(const CompositeConfig& config) -> uint32_t 
 
     uint32_t id = _pimpl->module_router->createCompositeInstance(config);
 
-    if (id != 0 && _pimpl->audio_engine && _pimpl->audio_engine->isRunning()) {
-        int32_t rate = _pimpl->audio_engine->getSampleRate();
-        int32_t frames = _pimpl->audio_engine->getFramesPerBlock();
-        _pimpl->module_router->activateNode(id, rate, frames);
+    if (id != 0) {
+        if (auto* node = _pimpl->module_router->getProcessingNode(id)) {
+            node->on_params_rescan = [this](uint32_t instance_id) {
+                if (_pimpl->on_params_rescan) _pimpl->on_params_rescan(instance_id);
+            };
+        }
+
+        if (_pimpl->audio_engine && _pimpl->audio_engine->isRunning()) {
+            int32_t rate = _pimpl->audio_engine->getSampleRate();
+            int32_t frames = _pimpl->audio_engine->getFramesPerBlock();
+            _pimpl->module_router->activateNode(id, rate, frames);
+        }
     }
 
     return id;
@@ -370,5 +395,9 @@ void System::setTransportPlaying(bool playing) {
 }
 
 void System::setEventOccuredCallback(EventOccuredCallback cb) { _pimpl->on_event_occured = cb; }
+
+void System::setParamsRescanCallback(std::function<void(uint32_t)> cb) {
+    _pimpl->on_params_rescan = cb;
+}
 
 }  // namespace synth_canvas

@@ -8,7 +8,6 @@
 
 #include "logger.h"
 
-
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -60,25 +59,25 @@ void logMessage(clap_log_severity severity, const char* msg) {
     std::string prefix;
     switch (severity) {
         case CLAP_LOG_DEBUG:
-            prefix = "[DEBUG]";
+            prefix = "[PluginHost-DEBUG]";
             break;
         case CLAP_LOG_INFO:
-            prefix = "[INFO]";
+            prefix = "[PluginHost-INFO]";
             break;
         case CLAP_LOG_WARNING:
-            prefix = "[WARNING]";
+            prefix = "[PluginHost-WARNING]";
             break;
         case CLAP_LOG_ERROR:
-            prefix = "[ERROR]";
+            prefix = "[PluginHost-ERROR]";
             break;
         case CLAP_LOG_FATAL:
-            prefix = "[FATAL]";
+            prefix = "[PluginHost-FATAL]";
             break;
         case CLAP_LOG_HOST_MISBEHAVING:
-            prefix = "[HOST MISBEHAVING]";
+            prefix = "[PluginHost-HOST_MISBEHAVING]";
             break;
         default:
-            prefix = "[UNKNOWN]";
+            prefix = "[PluginHost-UNKNOWN]";
             break;
     }
     log(prefix, " ", msg);
@@ -206,6 +205,10 @@ void PluginHost::paramsRescan(clap_param_rescan_flags flags) noexcept {
     logMessage(CLAP_LOG_INFO,
                ("Plugin requested parameter rescan with flags: " + std::to_string(flags)).c_str());
     scanParameters();
+
+    if (on_params_rescan) {
+        on_params_rescan(_instance_id);
+    }
 }
 
 void PluginHost::paramsClear(clap_id param_id, clap_param_clear_flags flags) noexcept {
