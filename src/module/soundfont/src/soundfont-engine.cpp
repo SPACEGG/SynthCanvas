@@ -9,8 +9,6 @@
 
 namespace synth_canvas::soundfont_plugin {
 
-SoundfontEngine::SoundfontEngine() {}
-
 SoundfontEngine::~SoundfontEngine() { cleanup(); }
 
 void SoundfontEngine::cleanup() {
@@ -93,9 +91,7 @@ void SoundfontEngine::setPreset(int channel, int index) {
     }
 }
 
-auto SoundfontEngine::getPresetCount() const -> int {
-    return _tsf ? tsf_get_presetcount(_tsf) : 0;
-}
+auto SoundfontEngine::getPresetCount() const -> int { return _tsf ? tsf_get_presetcount(_tsf) : 0; }
 
 auto SoundfontEngine::getPresetName(int index) const -> const char* {
     return _tsf ? tsf_get_presetname(_tsf, index) : nullptr;

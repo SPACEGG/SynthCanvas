@@ -1,25 +1,24 @@
 #include "soundfont-plugin.h"
 
-#include <clap/helpers/plugin.hxx>
-#include <clap/helpers/host-proxy.hxx>
-
-#include <cstring>
-#include <cmath>
-#include <sstream>
 #include <algorithm>
+#include <clap/helpers/host-proxy.hxx>
+#include <clap/helpers/plugin.hxx>
+#include <cmath>
+#include <cstring>
+#include <sstream>
+
 
 namespace synth_canvas::soundfont_plugin {
 
 SoundfontPlugin::SoundfontPlugin(const std::string& plugin_path, const clap_host* host)
     : clap::helpers::Plugin<clap::helpers::MisbehaviourHandler::Terminate,
-                            clap::helpers::CheckingLevel::Maximal>(descriptor(), host) {
-}
+                            clap::helpers::CheckingLevel::Maximal>(descriptor(), host) {}
 
 auto SoundfontPlugin::descriptor() -> const clap_plugin_descriptor* {
-    static const std::array<const char*, 3> kFeatures = {CLAP_PLUGIN_FEATURE_INSTRUMENT,
-                                                         CLAP_PLUGIN_FEATURE_SYNTHESIZER, nullptr};
+    static const std::array<const char*, 3> features = {CLAP_PLUGIN_FEATURE_INSTRUMENT,
+                                                        CLAP_PLUGIN_FEATURE_SYNTHESIZER, nullptr};
 
-    static const clap_plugin_descriptor kDesc = {
+    static const clap_plugin_descriptor desc = {
         .clap_version = CLAP_VERSION_INIT,
         .id = "com.synthcanvas.soundfont-plugin",
         .name = "Soundfont Player",
@@ -29,9 +28,9 @@ auto SoundfontPlugin::descriptor() -> const clap_plugin_descriptor* {
         .support_url = "",
         .version = "1.0.0",
         .description = "A lightweight Soundfont (.sf2) player using TinySoundFont.",
-        .features = kFeatures.data(),
+        .features = features.data(),
     };
-    return &kDesc;
+    return &desc;
 }
 
 auto SoundfontPlugin::activate(double sample_rate, uint32_t min_frames_count,
@@ -77,9 +76,7 @@ auto SoundfontPlugin::notePortsInfo(uint32_t index, bool is_input,
 }
 
 //--- Parameters
-auto SoundfontPlugin::paramsCount() const noexcept -> uint32_t {
-    return kParamCount;
-}
+auto SoundfontPlugin::paramsCount() const noexcept -> uint32_t { return kParamCount; }
 
 auto SoundfontPlugin::paramsInfo(uint32_t index, clap_param_info* info) const noexcept -> bool {
     switch (index) {
@@ -125,10 +122,18 @@ auto SoundfontPlugin::paramsInfo(uint32_t index, clap_param_info* info) const no
 
 auto SoundfontPlugin::paramsValue(clap_id param_id, double* value) noexcept -> bool {
     switch (param_id) {
-        case kParamPreset: *value = _preset_index; return true;
-        case kParamGain: *value = _gain_db; return true;
-        case kParamPan: *value = _pan; return true;
-        case kParamMidiChannel: *value = _midi_channel; return true;
+        case kParamPreset:
+            *value = _preset_index;
+            return true;
+        case kParamGain:
+            *value = _gain_db;
+            return true;
+        case kParamPan:
+            *value = _pan;
+            return true;
+        case kParamMidiChannel:
+            *value = _midi_channel;
+            return true;
     }
     return false;
 }
@@ -174,18 +179,18 @@ auto SoundfontPlugin::stateSave(const clap_ostream* os) noexcept -> bool {
        << "gain=" << _gain_db << ";"
        << "pan=" << _pan << ";"
        << "channel=" << static_cast<int>(_midi_channel) << ";";
-    
+
     std::string state = ss.str();
     int64_t written = os->write(os, state.c_str(), state.size());
     return written == static_cast<int64_t>(state.size());
 }
 
 auto SoundfontPlugin::stateLoad(const clap_istream* is) noexcept -> bool {
-    char buffer[1024];
+    std::array<char, 1024> buffer;
     std::string state;
     int64_t read;
-    while ((read = is->read(is, buffer, sizeof(buffer))) > 0) {
-        state.append(buffer, static_cast<size_t>(read));
+    while ((read = is->read(is, buffer.data(), sizeof(buffer.data()))) > 0) {
+        state.append(buffer.data(), static_cast<size_t>(read));
     }
 
     std::string key, value;
@@ -234,31 +239,33 @@ auto SoundfontPlugin::process(const clap_process* process) noexcept -> clap_proc
 
         uint32_t frames_to_render = nframes - current_frame;
         if (event_index < nevents) {
-            const clap_event_header_t* next_event = process->in_events->get(process->in_events, event_index);
+            const clap_event_header_t* next_event =
+                process->in_events->get(process->in_events, event_index);
             if (next_event->time > current_frame) {
-                frames_to_render = std::min(frames_to_render, static_cast<uint32_t>(next_event->time - current_frame));
+                frames_to_render = std::min(
+                    frames_to_render, static_cast<uint32_t>(next_event->time - current_frame));
             }
         }
-        
+
         frames_to_render = std::min(frames_to_render, 32u);
 
-        float* block_outputs[2] = { &out_l[current_frame], &out_r[current_frame] };
-        _engine.process(block_outputs, frames_to_render);
+        std::array<float*, 2> block_outputs = {&out_l[current_frame], &out_r[current_frame]};
+        _engine.process(block_outputs.data(), frames_to_render);
 
         for (uint32_t i = 0; i < frames_to_render; ++i) {
             uint32_t f = current_frame + i;
             const float smoothing_coeff = 0.005f;
-            
-            float target_gain = static_cast<float>(_gain_db + _gain_mod * 60.0);
+
+            auto target_gain = static_cast<float>(_gain_db + _gain_mod * 60.0);
             float target_pan = std::clamp(static_cast<float>(_pan + _pan_mod), -1.0f, 1.0f);
-            
+
             _current_gain += (target_gain - _current_gain) * smoothing_coeff;
             _current_pan += (target_pan - _current_pan) * smoothing_coeff;
-            
+
             float gain_lin = std::pow(10.0f, _current_gain / 20.0f);
             float pan_l = std::min(1.0f, 1.0f - _current_pan);
             float pan_r = std::min(1.0f, 1.0f + _current_pan);
-            
+
             out_l[f] *= gain_lin * pan_l;
             out_r[f] *= gain_lin * pan_r;
         }
@@ -297,7 +304,8 @@ void SoundfontPlugin::handleEvents(const clap_input_events* in, uint32_t& event_
                     switch (ev->param_id) {
                         case kParamPreset:
                             _preset_index = ev->value;
-                            _engine.setPreset(_current_midi_channel, static_cast<int>(_preset_index));
+                            _engine.setPreset(_current_midi_channel,
+                                              static_cast<int>(_preset_index));
                             break;
                         case kParamGain:
                             _gain_db = ev->value;
@@ -309,7 +317,8 @@ void SoundfontPlugin::handleEvents(const clap_input_events* in, uint32_t& event_
                             _midi_channel = ev->value;
                             _current_midi_channel = static_cast<int>(_midi_channel);
                             // Re-apply preset to the new channel
-                            _engine.setPreset(_current_midi_channel, static_cast<int>(_preset_index));
+                            _engine.setPreset(_current_midi_channel,
+                                              static_cast<int>(_preset_index));
                             break;
                     }
                     break;
@@ -317,8 +326,12 @@ void SoundfontPlugin::handleEvents(const clap_input_events* in, uint32_t& event_
                 case CLAP_EVENT_PARAM_MOD: {
                     const auto* ev = reinterpret_cast<const clap_event_param_mod_t*>(hdr);
                     switch (ev->param_id) {
-                        case kParamGain: _gain_mod = ev->amount; break;
-                        case kParamPan: _pan_mod = ev->amount; break;
+                        case kParamGain:
+                            _gain_mod = ev->amount;
+                            break;
+                        case kParamPan:
+                            _pan_mod = ev->amount;
+                            break;
                     }
                     break;
                 }
@@ -327,15 +340,18 @@ void SoundfontPlugin::handleEvents(const clap_input_events* in, uint32_t& event_
                     uint8_t msg = ev->data[0] & 0xF0;
                     uint8_t chan = ev->data[0] & 0x0F;
                     if (chan == _current_midi_channel) {
-                        if (msg == 0xE0) { // Pitch Bend
+                        if (msg == 0xE0) {  // Pitch Bend
                             int pb = ev->data[1] + (ev->data[2] << 7);
                             _engine.setPitchBend(chan, pb);
-                        } else if (msg == 0x90) { // Note On fallback
+                        } else if (msg == 0x90) {  // Note On fallback
                             uint8_t key = ev->data[1];
                             uint8_t vel = ev->data[2];
-                            if (vel > 0) _engine.noteOn(chan, key, vel / 127.0f);
-                            else _engine.noteOff(chan, key);
-                        } else if (msg == 0x80) { // Note Off fallback
+                            if (vel > 0) {
+                                _engine.noteOn(chan, key, vel / 127.0f);
+                            } else {
+                                _engine.noteOff(chan, key);
+                            }
+                        } else if (msg == 0x80) {  // Note Off fallback
                             _engine.noteOff(chan, ev->data[1]);
                         }
                     }
@@ -347,4 +363,4 @@ void SoundfontPlugin::handleEvents(const clap_input_events* in, uint32_t& event_
     }
 }
 
-} // namespace synth_canvas::soundfont_plugin
+}  // namespace synth_canvas::soundfont_plugin
