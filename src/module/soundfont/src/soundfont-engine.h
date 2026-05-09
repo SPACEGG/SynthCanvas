@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -21,15 +23,15 @@ class SoundfontEngine {
     void setSampleRate(float sample_rate);
 
     // Note handling
-    void noteOn(int key, float velocity);
-    void noteOff(int key);
-    void allNotesOff();
+    void noteOn(int channel, int key, float velocity);
+    void noteOff(int channel, int key);
+    void allNotesOff(int channel);
 
     // Pitch handling
-    void setPitchBend(int pitch_wheel_14bit);
+    void setPitchBend(int channel, int pitch_wheel_14bit);
 
     // Preset management
-    void setPreset(int index);
+    void setPreset(int channel, int index);
     [[nodiscard]] auto getPresetCount() const -> int;
     [[nodiscard]] auto getPresetName(int index) const -> const char*;
 
@@ -39,6 +41,7 @@ class SoundfontEngine {
    private:
     void cleanup();
 
+    std::mutex _tsf_mutex;
     tsf* _tsf = nullptr;
     float _sample_rate = 44100.0f;
     int _current_preset = 0;
