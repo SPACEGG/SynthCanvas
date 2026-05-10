@@ -224,6 +224,42 @@ void ModuleRouter::deactivateNode(uint32_t instance_id) {
     }
 }
 
+void ModuleRouter::updateNodePorts(uint32_t instance_id) {
+    auto* node = _graph_processor.getNode(instance_id);
+    if (!node) return;
+
+    auto input_count = static_cast<uint32_t>(node->getAudioPorts(true).size());
+    auto output_count = static_cast<uint32_t>(node->getAudioPorts(false).size());
+
+    // Prune connections that refer to ports that no longer exist
+    auto connections = _graph_processor.getConnections();
+    bool changed = false;
+
+    // Use a copy of connections to iterate since we might modify the list
+    for (const auto& conn : connections) {
+        bool should_disconnect = false;
+        if (conn.from_node == instance_id && conn.from_port >= output_count) {
+            should_disconnect = true;
+        } else if (conn.to_node == instance_id && conn.to_port >= input_count) {
+            should_disconnect = true;
+        }
+
+        if (should_disconnect) {
+            _graph_processor.disconnect(conn);
+            changed = true;
+            if (on_connection_pruned) {
+                on_connection_pruned(conn);
+            }
+        }
+    }
+
+    if (on_node_ports_changed) {
+        on_node_ports_changed(instance_id, input_count, output_count);
+    }
+
+    pushNewState();
+}
+
 auto ModuleRouter::getConnectionCount(uint32_t to_node, uint32_t to_port, ConnectionType type) const
     -> size_t {
     const auto& connections = _graph_processor.getConnections();

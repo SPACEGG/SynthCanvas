@@ -165,9 +165,9 @@ void InternalNodeBase::addAudioPort(const std::string& name, bool is_input, uint
 }
 
 void InternalNodeBase::addEventPort(const std::string& name, bool is_input) {
-    // Note: We use the same AudioPortInfo structure for now but set port_type to something else if needed.
-    // However, the GraphProcessor expects nodes to have ports.
-    // For internal nodes, we just need to ensure _output_event_queues has a queue for every output port index.
+    // Note: We use the same AudioPortInfo structure for now but set port_type to something else if
+    // needed. However, the GraphProcessor expects nodes to have ports. For internal nodes, we just
+    // need to ensure _output_event_queues has a queue for every output port index.
     AudioPortInfo port;
     port.index = static_cast<uint32_t>(is_input ? _input_ports.size() : _output_ports.size());
     port.is_input = is_input;
@@ -183,8 +183,21 @@ void InternalNodeBase::addEventPort(const std::string& name, bool is_input) {
         _input_ports.push_back(port);
     } else {
         _output_ports.push_back(port);
-        _output_event_queues.push_back(
-            std::make_unique<moodycamel::ReaderWriterQueue<PluginEvent>>(constants::kEventQueueSize));
+        _output_event_queues.push_back(std::make_unique<moodycamel::ReaderWriterQueue<PluginEvent>>(
+            constants::kEventQueueSize));
+    }
+}
+
+void InternalNodeBase::resizeOutputPorts(uint32_t new_count) {
+    if (new_count == _output_ports.size()) return;
+
+    if (new_count < _output_ports.size()) {
+        _output_ports.resize(new_count);
+        _output_event_queues.resize(new_count);
+    } else {
+        for (auto i = static_cast<uint32_t>(_output_ports.size()); i < new_count; ++i) {
+            addEventPort("Note OUT " + std::to_string(i), false);
+        }
     }
 }
 

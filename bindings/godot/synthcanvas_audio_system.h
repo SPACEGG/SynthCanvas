@@ -26,6 +26,8 @@ class SynthCanvasAudioSystem : public godot::Node {
         kParameterValue,
         kParameterMod,
         kMidi,
+        kConnectionDisconnected,
+        kNodePortsChanged,
     };
 
    private:
@@ -68,6 +70,7 @@ class SynthCanvasAudioSystem : public godot::Node {
     void stopNote(uint32_t instance_id, int note, double velocity = 0.0, int32_t note_id = -1);
     void setParameterValue(uint32_t instance_id, const godot::Variant& p_param, double value);
     auto getPluginParameters(uint32_t instance_id) -> godot::Dictionary;
+    auto getPorts(uint32_t instance_id, bool is_input) -> godot::Array;
     auto getParameterText(uint32_t instance_id, const godot::Variant& p_param, double value)
         -> godot::String;
 

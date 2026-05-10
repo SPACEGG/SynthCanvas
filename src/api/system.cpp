@@ -105,6 +105,33 @@ void System::initialize(LogCallback log_cb) {
             [this](uint32_t instance_id, const synth_canvas::host::PluginEvent& ev) {
                 _pimpl->handleInternalEvent(instance_id, ev);
             });
+
+        _pimpl->module_router->on_connection_pruned =
+            [this](const synth_canvas::host::PortConnection& conn) {
+                if (_pimpl->on_event_occured) {
+                    SystemEvent sev;
+                    sev.type = SystemEventType::kConnectionDisconnected;
+                    sev.instance_id = 0;
+                    sev.data.connection.from_node = conn.from_node;
+                    sev.data.connection.from_port = conn.from_port;
+                    sev.data.connection.to_node = conn.to_node;
+                    sev.data.connection.to_port = conn.to_port;
+                    sev.data.connection.type = static_cast<int32_t>(conn.type);
+                    _pimpl->on_event_occured(sev);
+                }
+            };
+
+        _pimpl->module_router->on_node_ports_changed = [this](uint32_t id, uint32_t inputs,
+                                                              uint32_t outputs) {
+            if (_pimpl->on_event_occured) {
+                SystemEvent sev;
+                sev.type = SystemEventType::kNodePortsChanged;
+                sev.instance_id = id;
+                sev.data.port_change.input_count = inputs;
+                sev.data.port_change.output_count = outputs;
+                _pimpl->on_event_occured(sev);
+            }
+        };
     }
 #else
     if (log_cb) log_cb("[System] Initializing (Dummy/Windows)...");
@@ -299,6 +326,29 @@ auto System::getPluginParameters(uint32_t instance_id) -> ParameterList {
                           param_slot->info.default_value,
                           node->getParameterBaseValue(param_slot->info.id),
                           node->getParameterCurrentValue(param_slot->info.id)});
+    }
+#endif
+    return result;
+}
+
+auto System::getPorts(uint32_t instance_id, bool is_input) -> PortList {
+    PortList result;
+#if defined(__ANDROID__)
+    if (!_pimpl->module_router) return result;
+    auto* node = _pimpl->module_router->getProcessingNode(instance_id);
+    if (!node) return result;
+
+    const auto& ports = node->getAudioPorts(is_input);
+    for (const auto& port : ports) {
+        ConnectionType type = ConnectionType::kAudio;
+        if (port.is_modulation) {
+            type = ConnectionType::kModulation;
+        } else if (port.clap_info.port_type &&
+                   std::string(port.clap_info.port_type) == "event") {
+            type = ConnectionType::kEvent;
+        }
+
+        result.push_back({port.index, port.clap_info.name, port.is_input, type});
     }
 #endif
     return result;

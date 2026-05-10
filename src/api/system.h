@@ -57,6 +57,7 @@ class System {
     void setParameterValue(uint32_t instance_id, const std::string& param_id, double value);
 
     auto getPluginParameters(uint32_t instance_id) -> ParameterList;
+    auto getPorts(uint32_t instance_id, bool is_input) -> PortList;
     [[nodiscard]] auto getParameterText(uint32_t instance_id, uint32_t param_id, double value) const
         -> std::string;
     [[nodiscard]] auto getParameterText(uint32_t instance_id, const std::string& param_id,

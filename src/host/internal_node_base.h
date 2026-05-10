@@ -74,6 +74,7 @@ class InternalNodeBase : public ProcessingNode {
     void addAudioPort(const std::string& name, bool is_input, uint32_t channel_count = 2,
                       bool is_mod = false, clap_id target_param_id = -1);
     void addEventPort(const std::string& name, bool is_input);
+    void resizeOutputPorts(uint32_t new_count);
 
     // Derived classes must implement these
     virtual void onSampleRateChanged(int32_t sample_rate) {}

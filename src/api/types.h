@@ -27,6 +27,8 @@ enum class SystemEventType : uint32_t {
     kParameterValue,
     kParameterMod,
     kMidi,
+    kConnectionDisconnected,
+    kNodePortsChanged,
 };
 
 struct SystemEvent {
@@ -53,6 +55,19 @@ struct SystemEvent {
             int16_t port_index;
             std::array<uint8_t, 3> data;
         } midi;
+
+        struct {
+            uint32_t from_node;
+            uint32_t from_port;
+            uint32_t to_node;
+            uint32_t to_port;
+            int32_t type;
+        } connection;
+
+        struct {
+            uint32_t input_count;
+            uint32_t output_count;
+        } port_change;
     } data;
 };
 
@@ -119,6 +134,15 @@ struct ParameterInfo {
 };
 
 using ParameterList = std::vector<ParameterInfo>;
+
+struct PortInfo {
+    uint32_t index;
+    std::string name;
+    bool is_input;
+    ConnectionType type;
+};
+
+using PortList = std::vector<PortInfo>;
 
 }  // namespace synth_canvas
 

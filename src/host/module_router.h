@@ -64,12 +64,19 @@ class ModuleRouter {
     void activateNode(uint32_t instance_id, int32_t sample_rate, int32_t frames_per_block);
     void deactivateNode(uint32_t instance_id);
 
+    // Dynamic Port Updates
+    void updateNodePorts(uint32_t instance_id);
+
     // Transport Control (Main Thread)
     void setTempo(double bpm) { _main_transport.tempo = bpm; }
     void setTransportPlaying(bool playing) { _main_transport.is_playing = playing; }
     [[nodiscard]] auto getTransportState() const -> const TransportState& {
         return _main_transport;
     }
+
+    // Structural Callbacks
+    std::function<void(const PortConnection&)> on_connection_pruned;
+    std::function<void(uint32_t, uint32_t, uint32_t)> on_node_ports_changed;
 
    private:
     GraphProcessor _graph_processor;

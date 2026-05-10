@@ -285,6 +285,54 @@ void PluginHost::scanAudioPorts() {
             _audio_input_ports.push_back(mod_port);
         }
     }
+
+    // Add Event ports
+    auto note_ports_ext = static_cast<const clap_plugin_note_ports_t*>(
+        _plugin->clapPlugin()->get_extension(_plugin->clapPlugin(), CLAP_EXT_NOTE_PORTS));
+
+    if (note_ports_ext) {
+        uint32_t note_in_count = note_ports_ext->count(_plugin->clapPlugin(), true);
+        for (uint32_t i = 0; i < note_in_count; ++i) {
+            clap_note_port_info note_info;
+            if (note_ports_ext->get(_plugin->clapPlugin(), i, true, &note_info)) {
+                AudioPortInfo port;
+                port.index = static_cast<uint32_t>(_audio_input_ports.size());
+                port.is_input = true;
+                port.is_modulation = false;
+                port.target_param_id = -1;
+
+                // Map NotePortInfo to AudioPortInfo structure
+                // Note: Note ports don't have id_out, we only use id and name.
+                port.clap_info.id = note_info.id;
+                std::strncpy(port.clap_info.name, note_info.name, sizeof(port.clap_info.name) - 1);
+                port.clap_info.channel_count = 16;  // Standard MIDI
+                port.clap_info.flags = CLAP_AUDIO_PORT_IS_MAIN;
+                port.clap_info.port_type = "event";
+
+                _audio_input_ports.push_back(port);
+            }
+        }
+
+        uint32_t note_out_count = note_ports_ext->count(_plugin->clapPlugin(), false);
+        for (uint32_t i = 0; i < note_out_count; ++i) {
+            clap_note_port_info note_info;
+            if (note_ports_ext->get(_plugin->clapPlugin(), i, false, &note_info)) {
+                AudioPortInfo port;
+                port.index = static_cast<uint32_t>(_audio_output_ports.size());
+                port.is_input = false;
+                port.is_modulation = false;
+                port.target_param_id = -1;
+
+                port.clap_info.id = note_info.id;
+                std::strncpy(port.clap_info.name, note_info.name, sizeof(port.clap_info.name) - 1);
+                port.clap_info.channel_count = 16;
+                port.clap_info.flags = CLAP_AUDIO_PORT_IS_MAIN;
+                port.clap_info.port_type = "event";
+
+                _audio_output_ports.push_back(port);
+            }
+        }
+    }
 }
 
 auto PluginHost::load(const std::string& path, int plugin_index) -> bool {

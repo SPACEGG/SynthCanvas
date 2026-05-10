@@ -44,6 +44,8 @@ void SynthCanvasAudioSystem::_bind_methods() {
         &SynthCanvasAudioSystem::setParameterValue);
     godot::ClassDB::bind_method(godot::D_METHOD("get_plugin_parameters", "instance_id"),
                                 &SynthCanvasAudioSystem::getPluginParameters);
+    godot::ClassDB::bind_method(godot::D_METHOD("get_ports", "instance_id", "is_input"),
+                                &SynthCanvasAudioSystem::getPorts);
     godot::ClassDB::bind_method(
         godot::D_METHOD("get_parameter_text", "instance_id", "param", "value"),
         &SynthCanvasAudioSystem::getParameterText);
@@ -78,6 +80,18 @@ void SynthCanvasAudioSystem::_bind_methods() {
         "midi_event_received", godot::PropertyInfo(godot::Variant::INT, "instance_id"),
         godot::PropertyInfo(godot::Variant::PACKED_BYTE_ARRAY, "midi_bytes"),
         godot::PropertyInfo(godot::Variant::INT, "port_index")));
+
+    ADD_SIGNAL(godot::MethodInfo("connection_disconnected",
+                                 godot::PropertyInfo(godot::Variant::INT, "from_node"),
+                                 godot::PropertyInfo(godot::Variant::INT, "from_port"),
+                                 godot::PropertyInfo(godot::Variant::INT, "to_node"),
+                                 godot::PropertyInfo(godot::Variant::INT, "to_port"),
+                                 godot::PropertyInfo(godot::Variant::INT, "type")));
+
+    ADD_SIGNAL(godot::MethodInfo("node_ports_changed",
+                                 godot::PropertyInfo(godot::Variant::INT, "instance_id"),
+                                 godot::PropertyInfo(godot::Variant::INT, "input_count"),
+                                 godot::PropertyInfo(godot::Variant::INT, "output_count")));
 }
 
 SynthCanvasAudioSystem::SynthCanvasAudioSystem() {
@@ -102,6 +116,13 @@ SynthCanvasAudioSystem::SynthCanvasAudioSystem() {
             bytes.push_back(ev.data.midi.data[1]);
             bytes.push_back(ev.data.midi.data[2]);
             emit_signal("midi_event_received", ev.instance_id, bytes, ev.data.midi.port_index);
+        } else if (ev.type == SystemEventType::kConnectionDisconnected) {
+            emit_signal("connection_disconnected", ev.data.connection.from_node,
+                        ev.data.connection.from_port, ev.data.connection.to_node,
+                        ev.data.connection.to_port, ev.data.connection.type);
+        } else if (ev.type == SystemEventType::kNodePortsChanged) {
+            emit_signal("node_ports_changed", ev.instance_id, ev.data.port_change.input_count,
+                        ev.data.port_change.output_count);
         }
     });
 
@@ -332,6 +353,23 @@ auto SynthCanvasAudioSystem::getPluginParameters(uint32_t instance_id) -> godot:
         param_info["current_value"] = info.current_value;
 
         result[info.id] = param_info;
+    }
+
+    return result;
+}
+
+auto SynthCanvasAudioSystem::getPorts(uint32_t instance_id, bool is_input) -> godot::Array {
+    godot::Array result;
+    if (!_system) return result;
+
+    auto ports = _system->getPorts(instance_id, is_input);
+    for (const auto& info : ports) {
+        godot::Dictionary port_info;
+        port_info["index"] = info.index;
+        port_info["name"] = godot::String(info.name.c_str());
+        port_info["is_input"] = info.is_input;
+        port_info["type"] = static_cast<int>(info.type);
+        result.append(port_info);
     }
 
     return result;
