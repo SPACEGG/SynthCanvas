@@ -49,7 +49,7 @@ class InternalNodeBase : public ProcessingNode {
 
     void queueEvent(const PluginEvent& event) override;
     auto popOutputEvent(uint32_t port_index, PluginEvent& out_event) -> bool override;
-    void pollMainThread() override {}
+    void pollMainThread() override;
 
     // Metadata
     void setInstanceId(uint32_t id) override { _instance_id = id; }
@@ -85,6 +85,7 @@ class InternalNodeBase : public ProcessingNode {
     std::vector<AudioPortInfo> _input_ports;
     std::vector<AudioPortInfo> _output_ports;
     std::vector<std::unique_ptr<moodycamel::ReaderWriterQueue<PluginEvent>>> _output_event_queues;
+    moodycamel::ReaderWriterQueue<PluginEvent> _output_events_to_main{constants::kEventQueueSize};
 
     uint32_t _instance_id = 0;
     bool _is_active = false;

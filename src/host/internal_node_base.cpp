@@ -99,6 +99,15 @@ auto InternalNodeBase::popOutputEvent(uint32_t port_index, PluginEvent& out_even
     return false;
 }
 
+void InternalNodeBase::pollMainThread() {
+    PluginEvent ev;
+    while (_output_events_to_main.try_dequeue(ev)) {
+        if (on_event_occured) {
+            on_event_occured(_instance_id, ev);
+        }
+    }
+}
+
 auto InternalNodeBase::getParameterSlot(clap_id param_id) const -> const ParameterSlot* {
     for (const auto& param : _parameters) {
         if (param->info.id == param_id) return param.get();

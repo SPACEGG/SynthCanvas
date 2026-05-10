@@ -22,6 +22,7 @@ if(ANDROID)
         host/midi_input_node.cpp
         host/module_router.cpp
         host/plugin_host.cpp
+        host/stepper_node.cpp
     )
 endif()
 
