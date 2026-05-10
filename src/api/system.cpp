@@ -157,6 +157,9 @@ auto System::createPluginInstance(const std::string& path) -> uint32_t {
             node->on_params_rescan = [this](uint32_t instance_id) {
                 if (_pimpl->on_params_rescan) _pimpl->on_params_rescan(instance_id);
             };
+            node->on_ports_changed = [this](uint32_t instance_id) {
+                if (_pimpl->module_router) _pimpl->module_router->updateNodePorts(instance_id);
+            };
         }
 
         if (_pimpl->audio_engine && _pimpl->audio_engine->isRunning()) {
@@ -189,6 +192,9 @@ auto System::registerSpecialNode(const std::string& type) -> uint32_t {
                 node->on_params_rescan = [this](uint32_t instance_id) {
                     if (_pimpl->on_params_rescan) _pimpl->on_params_rescan(instance_id);
                 };
+                node->on_ports_changed = [this](uint32_t instance_id) {
+                    if (_pimpl->module_router) _pimpl->module_router->updateNodePorts(instance_id);
+                };
             }
 
             if (_pimpl->audio_engine && _pimpl->audio_engine->isRunning()) {
@@ -215,6 +221,9 @@ auto System::createCompositeInstance(const CompositeConfig& config) -> uint32_t 
         if (auto* node = _pimpl->module_router->getProcessingNode(id)) {
             node->on_params_rescan = [this](uint32_t instance_id) {
                 if (_pimpl->on_params_rescan) _pimpl->on_params_rescan(instance_id);
+            };
+            node->on_ports_changed = [this](uint32_t instance_id) {
+                if (_pimpl->module_router) _pimpl->module_router->updateNodePorts(instance_id);
             };
         }
 
