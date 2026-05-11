@@ -9,7 +9,7 @@
 #include "plugin_host.h"
 #include "sequencer_node.h"
 #include "stepper_node.h"
-
+#include "transport_node.h"
 
 namespace synth_canvas::host {
 
@@ -108,6 +108,17 @@ auto ModuleRouter::registerSpecialNode(const std::string& type) -> uint32_t {
         auto node = std::make_unique<SequencerNode>();
         node->setInstanceId(id);
         node->on_event_occured = _on_event_occured;
+        _graph_processor.addNode(id, std::move(node));
+        pushNewState();
+    } else if (type == "transport") {
+        auto node = std::make_unique<TransportNode>();
+        node->setInstanceId(id);
+        node->on_event_occured = _on_event_occured;
+        node->on_transport_change_requested = [this](double tempo, bool playing) {
+            setTempo(tempo);
+            setTransportPlaying(playing);
+            pushNewState();
+        };
         _graph_processor.addNode(id, std::move(node));
         pushNewState();
     }

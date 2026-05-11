@@ -24,6 +24,7 @@ if(ANDROID)
         host/plugin_host.cpp
         host/stepper_node.cpp
         host/sequencer_node.cpp
+        host/transport_node.cpp
     )
 endif()
 
