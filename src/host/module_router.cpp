@@ -7,7 +7,9 @@
 #include "logger.h"
 #include "midi_input_node.h"
 #include "plugin_host.h"
+#include "sequencer_node.h"
 #include "stepper_node.h"
+
 
 namespace synth_canvas::host {
 
@@ -98,6 +100,12 @@ auto ModuleRouter::registerSpecialNode(const std::string& type) -> uint32_t {
         pushNewState();
     } else if (type == "stepper") {
         auto node = std::make_unique<StepperNode>();
+        node->setInstanceId(id);
+        node->on_event_occured = _on_event_occured;
+        _graph_processor.addNode(id, std::move(node));
+        pushNewState();
+    } else if (type == "sequencer") {
+        auto node = std::make_unique<SequencerNode>();
         node->setInstanceId(id);
         node->on_event_occured = _on_event_occured;
         _graph_processor.addNode(id, std::move(node));

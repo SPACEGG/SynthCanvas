@@ -23,6 +23,7 @@ if(ANDROID)
         host/module_router.cpp
         host/plugin_host.cpp
         host/stepper_node.cpp
+        host/sequencer_node.cpp
     )
 endif()
 
