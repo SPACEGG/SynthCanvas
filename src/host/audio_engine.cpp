@@ -164,6 +164,10 @@ void AudioEngine::updateRenderState() {
         _buffer_manager.reserveInputMixBuffers(port_counts);
 
         if (_current_render_state) {
+            // Prevent timeline jumps during structural changes (node/connection updates)
+            // by preserving the audio thread's accurate song position.
+            new_state->transport.song_pos_beats = _current_render_state->transport.song_pos_beats;
+            
             _module_router->released_states.enqueue(std::move(_current_render_state));
         }
         _current_render_state = std::move(new_state);
