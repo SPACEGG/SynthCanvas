@@ -106,17 +106,18 @@ auto AudioEngine::onAudioReady(oboe::AudioStream* oboe_stream, void* audio_data,
 
     _buffer_manager.prepareBlock();
 
-    // Update Transport Beats
+    // Render first using the CURRENT transport position
+    _renderer.render(*_current_render_state, _buffer_manager, num_frames,
+                     [this](ProcessingNode* source, const PluginEvent& ev, uint32_t port_index) {
+                         this->handleEvent(source, ev, port_index);
+                     });
+
+    // Update Transport Beats AFTER rendering so it's ready for the NEXT block
     if (_current_render_state->transport.is_playing) {
         double seconds = static_cast<double>(num_frames) / _sample_rate;
         double beats = seconds * (_current_render_state->transport.tempo / 60.0);
         _current_render_state->transport.song_pos_beats += beats;
     }
-
-    _renderer.render(*_current_render_state, _buffer_manager, num_frames,
-                     [this](ProcessingNode* source, const PluginEvent& ev, uint32_t port_index) {
-                         this->handleEvent(source, ev, port_index);
-                     });
 
     // Clear output buffer
     auto* output_ptr = static_cast<float*>(audio_data);

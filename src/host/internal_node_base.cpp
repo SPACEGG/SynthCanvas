@@ -17,7 +17,10 @@ void InternalNodeBase::activate(int32_t sample_rate, int32_t block_size) {
 
 void InternalNodeBase::deactivate() { _is_active = false; }
 
-void InternalNodeBase::processBegin(int num_frames) { _output_buffer.clear(); }
+void InternalNodeBase::processBegin(int num_frames) {
+    _output_buffer.frames = num_frames;
+    _output_buffer.clear();
+}
 
 void InternalNodeBase::processEnd(int num_frames) {
     // Standard internal nodes might not need much here

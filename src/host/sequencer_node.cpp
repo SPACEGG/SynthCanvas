@@ -53,13 +53,21 @@ void SequencerNode::processBegin(int num_frames) {
 }
 
 void SequencerNode::process() {
-    if (!_transport || !_transport->is_playing) return;
+    if (!_transport || !_transport->is_playing) {
+        _last_block_end_beat = -1.0;
+        return;
+    }
 
     double tempo = _transport->tempo;
     double samples_per_beat = (_current_sample_rate * 60.0) / tempo;
     double block_start_beat = _transport->song_pos_beats;
     double block_end_beat =
         block_start_beat + (static_cast<double>(_output_buffer.frames) / samples_per_beat);
+
+    // Gapless boundary: Use the end of the last block as the start of this block
+    // to prevent skipping events due to floating point precision jitter.
+    double effective_start_beat =
+        (_last_block_end_beat >= 0) ? _last_block_end_beat : block_start_beat;
 
     double step_duration = getStepDurationBeats();
     double swing_factor = _swing.load(std::memory_order_relaxed);
@@ -71,9 +79,9 @@ void SequencerNode::process() {
 
         // 1. Handle Trigger OUT (Sequence End)
         double sequence_end_beat = instance.start_beat + (active_steps * step_duration);
-        if (sequence_end_beat >= block_start_beat && sequence_end_beat < block_end_beat) {
-            auto offset = static_cast<uint32_t>(
-                std::round((sequence_end_beat - block_start_beat) * samples_per_beat));
+        if (sequence_end_beat >= effective_start_beat && sequence_end_beat < block_end_beat) {
+            double relative_beat = std::max(0.0, sequence_end_beat - block_start_beat);
+            auto offset = static_cast<uint32_t>(std::round(relative_beat * samples_per_beat));
             offset = std::min(offset, static_cast<uint32_t>(_output_buffer.frames - 1));
 
             PluginEvent trigger_ev;
@@ -101,9 +109,9 @@ void SequencerNode::process() {
             }
 
             double global_note_start = instance.start_beat + note_start_relative;
-            if (global_note_start >= block_start_beat && global_note_start < block_end_beat) {
-                auto offset = static_cast<uint32_t>(
-                    std::round((global_note_start - block_start_beat) * samples_per_beat));
+            if (global_note_start >= effective_start_beat && global_note_start < block_end_beat) {
+                double relative_beat = std::max(0.0, global_note_start - block_start_beat);
+                auto offset = static_cast<uint32_t>(std::round(relative_beat * samples_per_beat));
                 offset = std::min(offset, static_cast<uint32_t>(_output_buffer.frames - 1));
                 triggerNoteOn(i, note, global_note_start, offset);
 
@@ -129,9 +137,9 @@ void SequencerNode::process() {
             auto& active = instance.active_notes[n];
             if (!active.is_active) continue;
 
-            if (active.off_beat >= block_start_beat && active.off_beat < block_end_beat) {
-                auto offset = static_cast<uint32_t>(
-                    std::round((active.off_beat - block_start_beat) * samples_per_beat));
+            if (active.off_beat >= effective_start_beat && active.off_beat < block_end_beat) {
+                double relative_beat = std::max(0.0, active.off_beat - block_start_beat);
+                auto offset = static_cast<uint32_t>(std::round(relative_beat * samples_per_beat));
                 offset = std::min(offset, static_cast<uint32_t>(_output_buffer.frames - 1));
                 triggerNoteOff(i, n, offset);
             } else if (!instance.is_active) {
@@ -175,12 +183,13 @@ void SequencerNode::queueEvent(const PluginEvent& event) {
 
         if (_restart_mode.load(std::memory_order_relaxed)) {
             // Mono mode: reset all and start instance 0
-            for (auto& inst : _instances) {
+            for (uint32_t i = 0; i < kMaxInstances; ++i) {
+                auto& inst = _instances[i];
                 if (inst.is_active) {
-                    // Kill all active notes
+                    // Kill all active notes for this SPECIFIC instance
                     for (uint32_t n = 0; n < kMaxActiveNotesPerInstance; ++n) {
                         if (inst.active_notes[n].is_active) {
-                            triggerNoteOff(0, n, event.event.header.time);
+                            triggerNoteOff(i, n, event.event.header.time);
                         }
                     }
                 }
