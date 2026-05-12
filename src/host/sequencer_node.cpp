@@ -15,7 +15,7 @@ SequencerNode::SequencerNode() {
     addParameter(kParamSwing, "Swing", "Logic", 0.0, 0.75, 0.0, CLAP_PARAM_IS_AUTOMATABLE);
     addParameter(kParamRestart, "Restart", "Logic", 0.0, 1.0, 1.0,
                  CLAP_PARAM_IS_AUTOMATABLE | CLAP_PARAM_IS_STEPPED);
-    addParameter(kParamCurrentStep, "Current Step", "Logic", 0.0, 31.0, 0.0,
+    addParameter(kParamCurrentStep, "Current Step", "Logic", -1.0, 31.0, -1.0,
                  CLAP_PARAM_IS_READONLY | CLAP_PARAM_IS_STEPPED);
 
     // 2. Ports
@@ -72,7 +72,7 @@ void SequencerNode::process() {
 
     if (!_transport || !_transport->is_playing) {
         if (_was_playing) {
-            send_step_gui_update(0, 0);
+            send_step_gui_update(-1, 0);
             _was_playing = false;
         }
         _last_block_end_beat = -1.0;
@@ -119,7 +119,7 @@ void SequencerNode::process() {
         auto& instance = _instances[i];
         if (!instance.is_active) continue;
 
-        // 1. Handle Trigger OUT (Sequence End)
+        // Handle Trigger OUT (Sequence End)
         double sequence_end_beat = instance.start_beat + (active_steps * step_duration);
         if (sequence_end_beat >= effective_start_beat && sequence_end_beat < block_end_beat) {
             double relative_beat = std::max(0.0, sequence_end_beat - block_start_beat);
@@ -141,14 +141,12 @@ void SequencerNode::process() {
             _output_event_queues[1]->try_enqueue(trigger_ev);
             instance.is_active = false;
 
-            // If this was the first active instance (the one GUI follows), reset GUI step
             if (i == first_active_idx) {
-                send_step_gui_update(0, offset);
+                send_step_gui_update(-1, offset);
             }
         }
 
-        // 2. Generate current_step GUI updates (Independent of notes)
-        // Only track for the first active instance to keep GUI consistent
+        // GUI Step Updates (Regardless of notes)
         if (i == first_active_idx && instance.is_active) {
             for (int32_t s = 0; s < active_steps; ++s) {
                 double step_beat = instance.start_beat + (s * step_duration);
@@ -162,7 +160,7 @@ void SequencerNode::process() {
             }
         }
 
-        // 3. Generate NOTE_ON from Pattern
+        // Generate NOTE_ON from Pattern
         for (const auto& note : _active_pattern) {
             double note_start_relative = note.step * step_duration;
             if (note.step % 2 == 1) {
