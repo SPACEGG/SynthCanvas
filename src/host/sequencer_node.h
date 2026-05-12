@@ -72,6 +72,7 @@ private:
 
     int32_t _next_note_id = 0;
     double _last_block_end_beat = -1.0;
+    bool _was_playing = false;
 };
 
 } // namespace synth_canvas::host

@@ -41,6 +41,7 @@ void SequencerNode::activate(int32_t sample_rate, int32_t block_size) {
         instance.is_active = false;
     }
     _last_block_end_beat = -1.0;
+    _was_playing = false;
 }
 
 void SequencerNode::processBegin(int num_frames) {
@@ -53,10 +54,31 @@ void SequencerNode::processBegin(int num_frames) {
 }
 
 void SequencerNode::process() {
+    auto send_step_gui_update = [&](int32_t step, uint32_t offset) {
+        PluginEvent gui_ev;
+        gui_ev.event.header.size = sizeof(clap_event_param_value);
+        gui_ev.event.header.time = offset;
+        gui_ev.event.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+        gui_ev.event.header.type = CLAP_EVENT_PARAM_VALUE;
+        gui_ev.event.header.flags = 0;
+        gui_ev.event.param_value.param_id = kParamCurrentStep;
+        gui_ev.event.param_value.value = static_cast<double>(step);
+        gui_ev.event.param_value.note_id = -1;
+        gui_ev.event.param_value.port_index = -1;
+        gui_ev.event.param_value.key = -1;
+        gui_ev.event.param_value.channel = -1;
+        _output_events_to_main.try_enqueue(gui_ev);
+    };
+
     if (!_transport || !_transport->is_playing) {
+        if (_was_playing) {
+            send_step_gui_update(0, 0);
+            _was_playing = false;
+        }
         _last_block_end_beat = -1.0;
         return;
     }
+    _was_playing = true;
 
     double tempo = _transport->tempo;
     double samples_per_beat = (_current_sample_rate * 60.0) / tempo;
@@ -64,14 +86,34 @@ void SequencerNode::process() {
     double block_end_beat =
         block_start_beat + (static_cast<double>(_output_buffer.frames) / samples_per_beat);
 
-    // Gapless boundary: Use the end of the last block as the start of this block
-    // to prevent skipping events due to floating point precision jitter.
+    if (_last_block_end_beat >= 0) {
+        double delta = block_start_beat - _last_block_end_beat;
+        if (delta < -0.0001 || delta > 0.1) {
+            _last_block_end_beat = block_start_beat;
+        }
+    }
+
     double effective_start_beat =
         (_last_block_end_beat >= 0) ? _last_block_end_beat : block_start_beat;
 
     double step_duration = getStepDurationBeats();
     double swing_factor = _swing.load(std::memory_order_relaxed);
     int32_t active_steps = _active_steps.load(std::memory_order_relaxed);
+
+    bool any_instance_active = false;
+    uint32_t first_active_idx = 0xFFFFFFFF;
+
+    for (uint32_t i = 0; i < kMaxInstances; ++i) {
+        if (_instances[i].is_active) {
+            if (first_active_idx == 0xFFFFFFFF) first_active_idx = i;
+            any_instance_active = true;
+        }
+    }
+
+    if (!any_instance_active) {
+        _last_block_end_beat = block_end_beat;
+        return;
+    }
 
     for (uint32_t i = 0; i < kMaxInstances; ++i) {
         auto& instance = _instances[i];
@@ -98,12 +140,31 @@ void SequencerNode::process() {
 
             _output_event_queues[1]->try_enqueue(trigger_ev);
             instance.is_active = false;
+
+            // If this was the first active instance (the one GUI follows), reset GUI step
+            if (i == first_active_idx) {
+                send_step_gui_update(0, offset);
+            }
         }
 
-        // 2. Generate NOTE_ON from Pattern
+        // 2. Generate current_step GUI updates (Independent of notes)
+        // Only track for the first active instance to keep GUI consistent
+        if (i == first_active_idx && instance.is_active) {
+            for (int32_t s = 0; s < active_steps; ++s) {
+                double step_beat = instance.start_beat + (s * step_duration);
+                if (step_beat >= effective_start_beat && step_beat < block_end_beat) {
+                    double relative_beat = std::max(0.0, step_beat - block_start_beat);
+                    auto offset =
+                        static_cast<uint32_t>(std::round(relative_beat * samples_per_beat));
+                    offset = std::min(offset, static_cast<uint32_t>(_output_buffer.frames - 1));
+                    send_step_gui_update(s, offset);
+                }
+            }
+        }
+
+        // 3. Generate NOTE_ON from Pattern
         for (const auto& note : _active_pattern) {
             double note_start_relative = note.step * step_duration;
-            // Apply swing to even-numbered steps (1, 3, 5...)
             if (note.step % 2 == 1) {
                 note_start_relative += swing_factor * step_duration;
             }
@@ -114,25 +175,10 @@ void SequencerNode::process() {
                 auto offset = static_cast<uint32_t>(std::round(relative_beat * samples_per_beat));
                 offset = std::min(offset, static_cast<uint32_t>(_output_buffer.frames - 1));
                 triggerNoteOn(i, note, global_note_start, offset);
-
-                // GUI Sync: Send Current Step update
-                PluginEvent gui_ev;
-                gui_ev.event.header.size = sizeof(clap_event_param_value);
-                gui_ev.event.header.time = offset;
-                gui_ev.event.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
-                gui_ev.event.header.type = CLAP_EVENT_PARAM_VALUE;
-                gui_ev.event.header.flags = 0;
-                gui_ev.event.param_value.param_id = kParamCurrentStep;
-                gui_ev.event.param_value.value = static_cast<double>(note.step);
-                gui_ev.event.param_value.note_id = -1;
-                gui_ev.event.param_value.port_index = -1;
-                gui_ev.event.param_value.key = -1;
-                gui_ev.event.param_value.channel = -1;
-                _output_events_to_main.try_enqueue(gui_ev);
             }
         }
 
-        // 3. Generate NOTE_OFF from Active Notes
+        // 4. Generate NOTE_OFF from Active Notes
         for (uint32_t n = 0; n < kMaxActiveNotesPerInstance; ++n) {
             auto& active = instance.active_notes[n];
             if (!active.is_active) continue;
@@ -143,7 +189,6 @@ void SequencerNode::process() {
                 offset = std::min(offset, static_cast<uint32_t>(_output_buffer.frames - 1));
                 triggerNoteOff(i, n, offset);
             } else if (!instance.is_active) {
-                // Sequence ended, force kill remaining notes
                 triggerNoteOff(i, n, 0);
             }
         }
