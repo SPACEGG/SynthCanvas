@@ -1,4 +1,4 @@
-#include "graph_renderer.h"
+﻿#include "graph_renderer.h"
 
 #include <cmath>
 
@@ -41,8 +41,6 @@ void GraphRenderer::applyParameterModulation(size_t node_index, ProcessingNode* 
     const auto& modulations = state.input_modulations[node_index];
     if (modulations.empty()) return;
 
-    static uint32_t log_skip = 0;
-
     for (int t = 0; t < num_frames; t += constants::kModulationStepSize) {
         _mod_sum_workspace.clear();
 
@@ -50,14 +48,10 @@ void GraphRenderer::applyParameterModulation(size_t node_index, ProcessingNode* 
             if (mod.bypass) continue;
 
             ProcessingNode* src_node = state.sorted_nodes[mod.source_node_index];
-            if (!src_node) {
-                continue;
-            }
+            if (!src_node) continue;
 
             auto* src_buf = src_node->getOutputBuffer(mod.source_port_index);
-            if (!src_buf || !src_buf->data32) {
-                continue;
-            }
+            if (!src_buf || !src_buf->data32) continue;
 
             float mod_value = src_buf->data32[0][t] * mod.scale;
 
@@ -98,29 +92,29 @@ void GraphRenderer::prepareAudioInputs(size_t node_index, ProcessingNode* node,
 
         AudioBuffer* final_input = nullptr;
         auto it = port_map.find(port_info.index);
-        const auto& sources = it->second;
 
-        if (it == port_map.end() || sources.empty()) {
-            final_input = nullptr;
-        } else if (sources.size() == 1) {
-            const auto& src = sources[0];
-            if (!src.bypass) {
-                ProcessingNode* src_node = state.sorted_nodes[src.node_index];
-                if (src_node) final_input = src_node->getOutputBuffer(src.port_index);
-            }
-        } else {
-            AudioBuffer* mix_buf = buffers.getMixBuffer(node_index, port_info.index);
-            if (mix_buf) {
-                mix_buf->clear();
-                for (const auto& src : sources) {
-                    if (src.bypass) continue;
+        if (it != port_map.end() && !it->second.empty()) {
+            const auto& sources = it->second;
+            if (sources.size() == 1) {
+                const auto& src = sources[0];
+                if (!src.bypass) {
                     ProcessingNode* src_node = state.sorted_nodes[src.node_index];
-                    if (src_node) {
-                        AudioBuffer* src_buf = src_node->getOutputBuffer(src.port_index);
-                        mix_buf->accumulate(src_buf, num_frames);
-                    }
+                    if (src_node) final_input = src_node->getOutputBuffer(src.port_index);
                 }
-                final_input = mix_buf;
+            } else {
+                AudioBuffer* mix_buf = buffers.getMixBuffer(node_index, port_info.index);
+                if (mix_buf) {
+                    mix_buf->clear();
+                    for (const auto& src : sources) {
+                        if (src.bypass) continue;
+                        ProcessingNode* src_node = state.sorted_nodes[src.node_index];
+                        if (src_node) {
+                            AudioBuffer* src_buf = src_node->getOutputBuffer(src.port_index);
+                            mix_buf->accumulate(src_buf, num_frames);
+                        }
+                    }
+                    final_input = mix_buf;
+                }
             }
         }
 
@@ -139,11 +133,8 @@ void GraphRenderer::prepareAudioOutputs(ProcessingNode* node, AudioBufferManager
 
     for (size_t i = 0; i < output_ports.size(); ++i) {
         const auto& port_info = output_ports[i];
-
         AudioBuffer* buf = node->getOutputBuffer(port_info.index);
-        if (buf && buf->owns_memory) {
-            buf->clear();
-        }
+        if (buf && buf->owns_memory) buf->clear();
 
         _outputs_workspace[i].channel_count = port_info.clap_info.channel_count;
         _outputs_workspace[i].data32 = buf ? buf->data32 : nullptr;
@@ -167,7 +158,6 @@ void GraphRenderer::collectAndRouteEvents(size_t node_index, ProcessingNode* nod
     const auto& targets = state.output_event_targets[node_index];
     if (targets.empty()) {
         PluginEvent ev;
-        // Poll all potential ports to clear them even if no targets exist
         const auto& output_ports = node->getAudioPorts(false);
         for (uint32_t p = 0; p < static_cast<uint32_t>(output_ports.size()); ++p) {
             while (node->popOutputEvent(p, ev)) {
@@ -184,7 +174,6 @@ void GraphRenderer::collectAndRouteEvents(size_t node_index, ProcessingNode* nod
                 if (target.bypass || target.source_port_index != p) continue;
 
                 if (target.type == GraphProcessor::RenderState::EventTarget::Type::kNode) {
-                    // If CLAP_EVENT_PARAM_MOD: Rewrite the param_id to the target port's id
                     if (ev.event.header.type == CLAP_EVENT_PARAM_MOD &&
                         static_cast<int32_t>(target.target_param_id) != constants::kClapInvalidId) {
                         PluginEvent rewritten_ev = ev;

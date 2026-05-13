@@ -1,4 +1,4 @@
-#include "sequencer_node.h"
+﻿#include "sequencer_node.h"
 
 #include <algorithm>
 #include <cmath>
@@ -7,7 +7,6 @@
 namespace synth_canvas::host {
 
 SequencerNode::SequencerNode() {
-    // 1. Register Parameters
     addParameter(kParamSteps, "Steps", "Logic", 1.0, 32.0, 8.0,
                  CLAP_PARAM_IS_AUTOMATABLE | CLAP_PARAM_IS_STEPPED);
     addParameter(kParamTime, "Time", "Logic", 0.0, 5.0, 1.0,
@@ -18,12 +17,10 @@ SequencerNode::SequencerNode() {
     addParameter(kParamCurrentStep, "Current Step", "Logic", -1.0, 31.0, -1.0,
                  CLAP_PARAM_IS_READONLY | CLAP_PARAM_IS_STEPPED);
 
-    // 2. Ports
     addEventPort("Trigger IN", true);
     addEventPort("Note OUT", false);     // Port 0
     addEventPort("Trigger OUT", false);  // Port 1
 
-    // 3. Pre-allocate
     _active_pattern.reserve(kMaxPatternSize);
     _pending_pattern.reserve(kMaxPatternSize);
 
@@ -39,6 +36,7 @@ void SequencerNode::activate(int32_t sample_rate, int32_t block_size) {
     InternalNodeBase::activate(sample_rate, block_size);
     for (auto& instance : _instances) {
         instance.is_active = false;
+        instance.last_processed_relative_beat = 0.0;
     }
     _last_block_end_beat = -1.0;
     _was_playing = false;
@@ -75,7 +73,6 @@ void SequencerNode::process() {
             send_step_gui_update(-1, 0);
             _was_playing = false;
         }
-        _last_block_end_beat = -1.0;
         return;
     }
     _was_playing = true;
@@ -83,48 +80,40 @@ void SequencerNode::process() {
     double tempo = _transport->tempo;
     double samples_per_beat = (_current_sample_rate * 60.0) / tempo;
     double block_start_beat = _transport->song_pos_beats;
-    double block_end_beat =
-        block_start_beat + (static_cast<double>(_output_buffer.frames) / samples_per_beat);
-
-    if (_last_block_end_beat >= 0) {
-        double delta = block_start_beat - _last_block_end_beat;
-        if (delta < -0.0001 || delta > 0.1) {
-            _last_block_end_beat = block_start_beat;
-        }
-    }
-
-    double effective_start_beat =
-        (_last_block_end_beat >= 0) ? _last_block_end_beat : block_start_beat;
+    uint32_t num_frames = _output_buffer.frames;
+    double block_beats = static_cast<double>(num_frames) / samples_per_beat;
 
     double step_duration = getStepDurationBeats();
     double swing_factor = _swing.load(std::memory_order_relaxed);
     int32_t active_steps = _active_steps.load(std::memory_order_relaxed);
 
-    bool any_instance_active = false;
     uint32_t first_active_idx = 0xFFFFFFFF;
-
     for (uint32_t i = 0; i < kMaxInstances; ++i) {
         if (_instances[i].is_active) {
             if (first_active_idx == 0xFFFFFFFF) first_active_idx = i;
-            any_instance_active = true;
+            break;
         }
     }
 
-    if (!any_instance_active) {
-        _last_block_end_beat = block_end_beat;
-        return;
-    }
+    constexpr double epsilon = 1e-10;
 
     for (uint32_t i = 0; i < kMaxInstances; ++i) {
         auto& instance = _instances[i];
         if (!instance.is_active) continue;
 
-        // Handle Trigger OUT (Sequence End)
-        double sequence_end_beat = instance.start_beat + (active_steps * step_duration);
-        if (sequence_end_beat >= effective_start_beat && sequence_end_beat < block_end_beat) {
-            double relative_beat = std::max(0.0, sequence_end_beat - block_start_beat);
-            auto offset = static_cast<uint32_t>(std::round(relative_beat * samples_per_beat));
-            offset = std::min(offset, static_cast<uint32_t>(_output_buffer.frames - 1));
+        // Progress Calculation (Delta Timing)
+        double progress_start = instance.last_processed_relative_beat;
+        double progress_end = progress_start + block_beats;
+
+        // 1. Trigger OUT (Sequence End)
+        double sequence_end_relative_beat = active_steps * step_duration;
+        bool sequence_finished = false;
+        if (sequence_end_relative_beat >= progress_start - epsilon &&
+            sequence_end_relative_beat < progress_end - epsilon) {
+            double relative_in_block_beat = sequence_end_relative_beat - progress_start;
+            auto offset =
+                static_cast<uint32_t>(std::round(relative_in_block_beat * samples_per_beat));
+            offset = std::min(offset, num_frames - 1);
 
             PluginEvent trigger_ev;
             trigger_ev.event.header.size = sizeof(clap_event_note);
@@ -139,60 +128,70 @@ void SequencerNode::process() {
             trigger_ev.event.note.note_id = -1;
 
             _output_event_queues[1]->try_enqueue(trigger_ev);
-            instance.is_active = false;
+            sequence_finished = true;
 
             if (i == first_active_idx) {
                 send_step_gui_update(-1, offset);
             }
         }
 
-        // GUI Step Updates (Regardless of notes)
-        if (i == first_active_idx && instance.is_active) {
+        // 2. GUI Step Updates
+        if (i == first_active_idx) {
             for (int32_t s = 0; s < active_steps; ++s) {
-                double step_beat = instance.start_beat + (s * step_duration);
-                if (step_beat >= effective_start_beat && step_beat < block_end_beat) {
-                    double relative_beat = std::max(0.0, step_beat - block_start_beat);
-                    auto offset =
-                        static_cast<uint32_t>(std::round(relative_beat * samples_per_beat));
-                    offset = std::min(offset, static_cast<uint32_t>(_output_buffer.frames - 1));
+                double step_beat_relative = s * step_duration;
+                if (step_beat_relative >= progress_start - epsilon &&
+                    step_beat_relative < progress_end - epsilon) {
+                    double relative_in_block_beat = step_beat_relative - progress_start;
+                    auto offset = static_cast<uint32_t>(
+                        std::round(relative_in_block_beat * samples_per_beat));
+                    offset = std::min(offset, num_frames - 1);
                     send_step_gui_update(s, offset);
                 }
             }
         }
 
-        // Generate NOTE_ON from Pattern
+        // 3. NOTE_ON from Pattern
         for (const auto& note : _active_pattern) {
             double note_start_relative = note.step * step_duration;
             if (note.step % 2 == 1) {
                 note_start_relative += swing_factor * step_duration;
             }
 
-            double global_note_start = instance.start_beat + note_start_relative;
-            if (global_note_start >= effective_start_beat && global_note_start < block_end_beat) {
-                double relative_beat = std::max(0.0, global_note_start - block_start_beat);
-                auto offset = static_cast<uint32_t>(std::round(relative_beat * samples_per_beat));
-                offset = std::min(offset, static_cast<uint32_t>(_output_buffer.frames - 1));
+            if (note_start_relative >= progress_start - epsilon &&
+                note_start_relative < progress_end - epsilon) {
+                double relative_in_block_beat = note_start_relative - progress_start;
+                auto offset =
+                    static_cast<uint32_t>(std::round(relative_in_block_beat * samples_per_beat));
+                offset = std::min(offset, num_frames - 1);
+
+                double global_note_start = block_start_beat + relative_in_block_beat;
                 triggerNoteOn(i, note, global_note_start, offset);
             }
         }
 
-        // 4. Generate NOTE_OFF from Active Notes
+        // 4. NOTE_OFF from Active Notes
         for (uint32_t n = 0; n < kMaxActiveNotesPerInstance; ++n) {
             auto& active = instance.active_notes[n];
             if (!active.is_active) continue;
 
-            if (active.off_beat >= effective_start_beat && active.off_beat < block_end_beat) {
-                double relative_beat = std::max(0.0, active.off_beat - block_start_beat);
-                auto offset = static_cast<uint32_t>(std::round(relative_beat * samples_per_beat));
-                offset = std::min(offset, static_cast<uint32_t>(_output_buffer.frames - 1));
+            double off_relative_beat = active.off_beat - instance.start_beat;
+            if (off_relative_beat >= progress_start - epsilon &&
+                off_relative_beat < progress_end - epsilon) {
+                double relative_in_block_beat = off_relative_beat - progress_start;
+                auto offset =
+                    static_cast<uint32_t>(std::round(relative_in_block_beat * samples_per_beat));
+                offset = std::min(offset, num_frames - 1);
                 triggerNoteOff(i, n, offset);
-            } else if (!instance.is_active) {
-                triggerNoteOff(i, n, 0);
+            } else if (sequence_finished) {
+                triggerNoteOff(i, n, num_frames - 1);
             }
         }
-    }
 
-    _last_block_end_beat = block_end_beat;
+        instance.last_processed_relative_beat = progress_end;
+        if (sequence_finished) {
+            instance.is_active = false;
+        }
+    }
 }
 
 void SequencerNode::setParameterValue(clap_id param_id, double value) {
@@ -218,18 +217,25 @@ void SequencerNode::setParameterValue(clap_id param_id, double value) {
 
 void SequencerNode::queueEvent(const PluginEvent& event) {
     if (event.event.header.type == CLAP_EVENT_NOTE_ON) {
-        // Find trigger beat relative to current block
         double tempo = _transport ? _transport->tempo : 120.0;
         double samples_per_beat = (_current_sample_rate * 60.0) / tempo;
+
         double trigger_beat = (_transport ? _transport->song_pos_beats : 0.0) +
-                              (event.event.header.time / samples_per_beat);
+                              (static_cast<double>(event.event.header.time) / samples_per_beat);
+
+        auto setup_instance = [&](PlaybackInstance& inst) {
+            inst.is_active = true;
+            inst.start_beat = trigger_beat;
+            // CRITICAL FIX: Reset the internal timeline to match the offset within the block.
+            inst.last_processed_relative_beat =
+                -(static_cast<double>(event.event.header.time) / samples_per_beat);
+            for (auto& n : inst.active_notes) n.is_active = false;
+        };
 
         if (_restart_mode.load(std::memory_order_relaxed)) {
-            // Mono mode: reset all and start instance 0
             for (uint32_t i = 0; i < kMaxInstances; ++i) {
                 auto& inst = _instances[i];
                 if (inst.is_active) {
-                    // Kill all active notes for this SPECIFIC instance
                     for (uint32_t n = 0; n < kMaxActiveNotesPerInstance; ++n) {
                         if (inst.active_notes[n].is_active) {
                             triggerNoteOff(i, n, event.event.header.time);
@@ -238,14 +244,11 @@ void SequencerNode::queueEvent(const PluginEvent& event) {
                 }
                 inst.is_active = false;
             }
-            _instances[0].is_active = true;
-            _instances[0].start_beat = trigger_beat;
+            setup_instance(_instances[0]);
         } else {
-            // Poly mode: find free instance
             for (auto& inst : _instances) {
                 if (!inst.is_active) {
-                    inst.is_active = true;
-                    inst.start_beat = trigger_beat;
+                    setup_instance(inst);
                     break;
                 }
             }
@@ -286,17 +289,17 @@ auto SequencerNode::loadState(const std::vector<uint8_t>& data) -> bool {
 auto SequencerNode::getStepDurationBeats() const -> double {
     switch (_time_enum.load(std::memory_order_relaxed)) {
         case 0:
-            return 1.0;  // 1/4
+            return 1.0;
         case 1:
-            return 0.5;  // 1/8
+            return 0.5;
         case 2:
-            return 1.0 / 3.0;  // 1/8T
+            return 1.0 / 3.0;
         case 3:
-            return 0.25;  // 1/16
+            return 0.25;
         case 4:
-            return 1.0 / 6.0;  // 1/16T
+            return 1.0 / 6.0;
         case 5:
-            return 0.125;  // 1/32
+            return 0.125;
         default:
             return 0.5;
     }
@@ -305,8 +308,6 @@ auto SequencerNode::getStepDurationBeats() const -> double {
 void SequencerNode::triggerNoteOn(uint32_t instance_idx, const NoteData& note, double start_beat,
                                   uint32_t sample_offset) {
     auto& instance = _instances[instance_idx];
-
-    // Find free active note slot
     for (uint32_t i = 0; i < kMaxActiveNotesPerInstance; ++i) {
         if (!instance.active_notes[i].is_active) {
             auto& active = instance.active_notes[i];
@@ -321,7 +322,7 @@ void SequencerNode::triggerNoteOn(uint32_t instance_idx, const NoteData& note, d
             ev.event.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
             ev.event.header.type = CLAP_EVENT_NOTE_ON;
             ev.event.header.flags = 0;
-            ev.event.note.port_index = 0;  // Note OUT
+            ev.event.note.port_index = 0;
             ev.event.note.key = note.pitch;
             ev.event.note.channel = 0;
             ev.event.note.velocity = note.velocity / 255.0;
