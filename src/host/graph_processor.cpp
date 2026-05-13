@@ -119,13 +119,34 @@ void GraphProcessor::topologicalSort() {
         }
     }
 
+    auto is_processed = [&](uint32_t id) {
+        return std::ranges::find(_process_order, id) != _process_order.end();
+    };
+
     while (_process_order.size() < _nodes.size()) {
         if (q.empty()) {
             // Cycle detected! Perform Smart Cycle Breaking.
-            // Look for a node that has NO incoming strong (Audio/Modulation) connections.
+            
+            // 1. Calculate active out-degree among remaining nodes
+            std::unordered_map<uint32_t, int> active_out_degree;
+            for (const auto& conn : _connections) {
+                if (_nodes.count(conn.from_node) && _nodes.count(conn.to_node)) {
+                    if (!is_processed(conn.from_node) && !is_processed(conn.to_node)) {
+                        active_out_degree[conn.from_node]++;
+                    }
+                }
+            }
+
             uint32_t best_node = 0xFFFFFFFF;
+
+            // 2. Find a node to break the cycle.
+            // Prioritize nodes with no incoming strong connections.
+            // DO NOT pick "victim" downstream nodes (active_out_degree == 0).
             for (const auto& [id, node] : _nodes) {
-                if (std::ranges::find(_process_order, id) != _process_order.end()) continue;
+                if (is_processed(id)) continue;
+                
+                // Skip nodes that don't point to any other unprocessed node
+                if (active_out_degree[id] == 0) continue;
 
                 if (strong_in_degree[id] == 0) {
                     if (best_node == 0xFFFFFFFF || id < best_node) {
@@ -134,10 +155,21 @@ void GraphProcessor::topologicalSort() {
                 }
             }
 
-            // Fallback for audio loops: pick the smallest ID among unprocessed nodes.
+            // Fallback 1: If all nodes in cycle have strong connections, just pick the lowest ID in cycle
             if (best_node == 0xFFFFFFFF) {
                 for (const auto& [id, node] : _nodes) {
-                    if (std::ranges::find(_process_order, id) != _process_order.end()) continue;
+                    if (is_processed(id)) continue;
+                    if (active_out_degree[id] == 0) continue;
+                    if (best_node == 0xFFFFFFFF || id < best_node) {
+                        best_node = id;
+                    }
+                }
+            }
+            
+            // Fallback 2: Extreme edge case where everything left is a disconnected downstream node
+            if (best_node == 0xFFFFFFFF) {
+                 for (const auto& [id, node] : _nodes) {
+                    if (is_processed(id)) continue;
                     if (best_node == 0xFFFFFFFF || id < best_node) {
                         best_node = id;
                     }
@@ -154,16 +186,18 @@ void GraphProcessor::topologicalSort() {
             uint32_t u = q.front();
             q.pop();
 
-            if (std::ranges::find(_process_order, u) != _process_order.end()) continue;
+            if (is_processed(u)) continue;
             _process_order.push_back(u);
 
             if (adj.count(u)) {
                 for (const auto& edge : adj[u]) {
-                    if (edge.type != ConnectionType::kEvent) {
-                        strong_in_degree[edge.to]--;
-                    }
-                    if (--in_degree[edge.to] == 0) {
-                        q.push(edge.to);
+                    if (!is_processed(edge.to)) {
+                        if (edge.type != ConnectionType::kEvent) {
+                            strong_in_degree[edge.to]--;
+                        }
+                        if (--in_degree[edge.to] == 0) {
+                            q.push(edge.to);
+                        }
                     }
                 }
             }
