@@ -8,9 +8,39 @@ namespace synth_canvas::host {
 
 static constexpr double kPi = std::numbers::pi;
 
+struct SyncOption {
+    const char* label;
+    double multiplier;
+};
+
+static constexpr std::array<SyncOption, 10> kSyncOptions = {
+    {{.label = "4/1", .multiplier = 1.0 / 16.0},
+     {.label = "2/1", .multiplier = 1.0 / 8.0},
+     {.label = "1/1", .multiplier = 1.0 / 4.0},
+     {.label = "1/2", .multiplier = 1.0 / 2.0},
+     {.label = "1/4", .multiplier = 1.0},
+     {.label = "1/8", .multiplier = 2.0},
+     {.label = "1/8T", .multiplier = 3.0},
+     {.label = "1/16", .multiplier = 4.0},
+     {.label = "1/16T", .multiplier = 6.0},
+     {.label = "1/32", .multiplier = 8.0}}};
+
+static constexpr double kMinFreq = 0.01;
+static constexpr double kMaxFreq = 20.0;
+
+static auto getSyncIndex(double value) -> int {
+    double normalized = (value - kMinFreq) / (kMaxFreq - kMinFreq);
+    auto index = static_cast<int>(normalized * static_cast<double>(kSyncOptions.size()));
+    if (index >= static_cast<int>(kSyncOptions.size())) {
+        index = static_cast<int>(kSyncOptions.size()) - 1;
+    }
+    if (index < 0) index = 0;
+    return index;
+}
+
 LFONode::LFONode() : _rng(std::random_device{}()) {
     // Add parameters with default values and ranges
-    addParameter(kFreq, "Frequency", "lfo", 0.01, 20.0, 1.0);
+    addParameter(kFreq, "Frequency", "lfo", kMinFreq, kMaxFreq, 1.0);
     addParameter(kWaveform, "Waveform", "lfo", 0.0, 4.0, 0.0);
     addParameter(kSync, "Sync", "lfo", 0.0, 1.0, 0.0);
     addParameter(kRetrigger, "Retrigger", "lfo", 0.0, 1.0, 0.0);
@@ -71,8 +101,8 @@ void LFONode::process() {
 
         if (sync && _transport) {
             // In sync mode, phase is absolute based on song position
-            // song_pos_beats * division (freq acts as division/multiplier here)
-            current_sample_phase = std::fmod(_transport->song_pos_beats * freq, 1.0);
+            double actual_freq = kSyncOptions[getSyncIndex(freq)].multiplier;
+            current_sample_phase = std::fmod(_transport->song_pos_beats * actual_freq, 1.0);
             if (current_sample_phase < 0) current_sample_phase += 1.0;
         }
 
@@ -137,13 +167,13 @@ auto LFONode::getParameterText(clap_id param_id, double value) const -> std::str
     switch (param_id) {
         case kFreq: {
             bool sync = getParameterBaseValue(kSync) > 0.5;
-            std::array<char, 32> buf{};
             if (sync) {
-                snprintf(buf.data(), buf.size(), "%.2fx", value);
+                return kSyncOptions[getSyncIndex(value)].label;
             } else {
+                std::array<char, 32> buf{};
                 snprintf(buf.data(), buf.size(), "%.2f Hz", value);
+                return {buf.data()};
             }
-            return {buf.data()};
         }
         case kWaveform: {
             int wave = static_cast<int>(value);
