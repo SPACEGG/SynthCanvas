@@ -22,6 +22,11 @@ void InternalNodeBase::processBegin(int num_frames) {
     _output_buffer.clear();
 }
 
+void InternalNodeBase::processEvents(int num_frames) {
+    // Default implementation: do nothing. Derived classes (like SequencerNode)
+    // can override this to re-run event generation logic during re-injections.
+}
+
 void InternalNodeBase::processEnd(int num_frames) {
     // Standard internal nodes might not need much here
 }

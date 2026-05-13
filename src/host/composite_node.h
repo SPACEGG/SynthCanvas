@@ -32,6 +32,7 @@ class CompositeNode final : public ProcessingNode {
                   clap_audio_buffer* outputs) override;
     void processBegin(int num_frames) override;
     void process() override;
+    void processEvents(int num_frames) override;
     void processEnd(int num_frames) override;
 
     // Output Buffers

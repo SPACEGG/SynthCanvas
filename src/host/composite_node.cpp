@@ -93,6 +93,13 @@ void CompositeNode::processBegin(int num_frames) {
     if (_output_proxy_node) _output_proxy_node->processBegin(num_frames);
 }
 
+void CompositeNode::processEvents(int num_frames) {
+    if (!_is_active || !_current_state) return;
+    
+    // Defer to GraphRenderer's renderEvents once we implement it
+    _renderer.renderEvents(*_current_state, _internal_buffers, num_frames, nullptr);
+}
+
 void CompositeNode::process() {
     if (!_is_active || !_current_state) return;
     int32_t num_frames = _current_num_frames;

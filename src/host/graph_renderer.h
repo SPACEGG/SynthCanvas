@@ -28,6 +28,9 @@ class GraphRenderer {
     void render(const GraphProcessor::RenderState& state, AudioBufferManager& buffers,
                 int32_t num_frames, const EventHandler& handler);
 
+    void renderEvents(const GraphProcessor::RenderState& state, AudioBufferManager& buffers,
+                      int32_t num_frames, const EventHandler& handler);
+
    private:
     void processSingleNode(size_t node_index, ProcessingNode* node,
                            const GraphProcessor::RenderState& state, AudioBufferManager& buffers,
@@ -46,7 +49,8 @@ class GraphRenderer {
 
     void collectAndRouteEvents(size_t node_index, ProcessingNode* node,
                                const GraphProcessor::RenderState& state,
-                               const EventHandler& handler);
+                               const EventHandler& handler,
+                               std::vector<bool>* needs_reprocessing = nullptr);
 
     std::vector<std::pair<clap_id, double>> _mod_sum_workspace;
     std::vector<clap_audio_buffer> _inputs_workspace;

@@ -101,11 +101,13 @@ void SequencerNode::process() {
         auto& instance = _instances[i];
         if (!instance.is_active) continue;
 
-        // Progress Calculation (Delta Timing)
+        // Progress Calculation (Delta Timing) - Idempotent
         double progress_start = instance.last_processed_relative_beat;
-        double progress_end = progress_start + block_beats;
+        double progress_end = (block_start_beat + block_beats) - instance.start_beat;
 
-        // 1. Trigger OUT (Sequence End)
+        // If the instance started exactly at the block end or in the future, wait for next block.
+        if (progress_end <= progress_start) continue;
+
         double sequence_end_relative_beat = active_steps * step_duration;
         bool sequence_finished = false;
         if (sequence_end_relative_beat >= progress_start - epsilon &&

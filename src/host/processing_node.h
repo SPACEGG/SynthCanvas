@@ -28,6 +28,7 @@ class ProcessingNode {
                           clap_audio_buffer* outputs) = 0;
     virtual void processBegin(int num_frames) = 0;
     virtual void process() = 0;
+    virtual void processEvents(int num_frames) = 0;
     virtual void processEnd(int num_frames) = 0;
 
     // Output Buffers

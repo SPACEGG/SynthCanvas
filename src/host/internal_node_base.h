@@ -29,6 +29,7 @@ class InternalNodeBase : public ProcessingNode {
     void setPorts(uint32_t num_inputs, clap_audio_buffer* inputs, uint32_t num_outputs,
                   clap_audio_buffer* outputs) override;
     void processBegin(int num_frames) override;
+    void processEvents(int num_frames) override;
     void processEnd(int num_frames) override;
 
     // Output Buffers

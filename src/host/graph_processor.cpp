@@ -93,7 +93,10 @@ void GraphProcessor::topologicalSort() {
         in_degree[id] = 0;
     }
 
+    // Phase 2: Tiered Topological Sort (Ignore Event connections for cycle detection)
     for (const auto& conn : _connections) {
+        if (conn.type == ConnectionType::kEvent) continue;
+        
         if (_nodes.count(conn.from_node) && _nodes.count(conn.to_node)) {
             adj[conn.from_node].push_back(conn.to_node);
             in_degree[conn.to_node]++;
@@ -120,10 +123,16 @@ void GraphProcessor::topologicalSort() {
     }
 
     if (_process_order.size() < _nodes.size()) {
+        // Deterministic fallback for audio loops or disconnected nodes
+        std::vector<uint32_t> remaining;
         for (const auto& [id, node] : _nodes) {
             if (std::ranges::find(_process_order, id) == _process_order.end()) {
-                _process_order.push_back(id);
+                remaining.push_back(id);
             }
+        }
+        std::ranges::sort(remaining);
+        for (uint32_t id : remaining) {
+            _process_order.push_back(id);
         }
     }
 }
