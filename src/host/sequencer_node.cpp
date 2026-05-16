@@ -259,6 +259,16 @@ void SequencerNode::queueEvent(const PluginEvent& event) {
 }
 
 auto SequencerNode::saveState(std::vector<uint8_t>& data) -> bool {
+    // 1. Save base class state (parameters) first
+    std::vector<uint8_t> base_state;
+    if (!InternalNodeBase::saveState(base_state)) return false;
+
+    auto base_size = static_cast<uint32_t>(base_state.size());
+    const auto* p_bsize = reinterpret_cast<const uint8_t*>(&base_size);
+    data.insert(data.end(), p_bsize, p_bsize + sizeof(uint32_t));
+    data.insert(data.end(), base_state.begin(), base_state.end());
+
+    // 2. Save Sequencer-specific pattern state
     auto count = static_cast<uint32_t>(_active_pattern.size());
     size_t start = data.size();
     data.resize(start + sizeof(uint32_t) + (count * sizeof(NoteData)));
@@ -274,14 +284,29 @@ auto SequencerNode::saveState(std::vector<uint8_t>& data) -> bool {
 auto SequencerNode::loadState(const std::vector<uint8_t>& data) -> bool {
     if (data.size() < sizeof(uint32_t)) return false;
 
-    uint32_t count;
-    std::memcpy(&count, data.data(), sizeof(uint32_t));
+    // 1. Load base class state
+    uint32_t base_size = 0;
+    std::memcpy(&base_size, data.data(), sizeof(uint32_t));
 
-    if (data.size() < sizeof(uint32_t) + (count * sizeof(NoteData))) return false;
+    if (data.size() < sizeof(uint32_t) + base_size) return false;
+
+    std::vector<uint8_t> base_state(data.begin() + sizeof(uint32_t),
+                                    data.begin() + sizeof(uint32_t) + base_size);
+    if (!InternalNodeBase::loadState(base_state)) return false;
+
+    // 2. Load Sequencer-specific pattern state
+    size_t offset = sizeof(uint32_t) + base_size;
+    if (data.size() < offset + sizeof(uint32_t)) return false;
+
+    uint32_t count;
+    std::memcpy(&count, data.data() + offset, sizeof(uint32_t));
+    offset += sizeof(uint32_t);
+
+    if (data.size() < offset + (count * sizeof(NoteData))) return false;
 
     _pending_pattern.clear();
     if (count > 0) {
-        const auto* src = reinterpret_cast<const NoteData*>(data.data() + sizeof(uint32_t));
+        const auto* src = reinterpret_cast<const NoteData*>(data.data() + offset);
         _pending_pattern.insert(_pending_pattern.end(), src, src + count);
     }
     _pending_update.store(true, std::memory_order_release);

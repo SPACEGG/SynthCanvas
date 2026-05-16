@@ -63,8 +63,47 @@ void InternalNodeBase::setParameterValue(const std::string& param_id, double val
     }
 }
 
-auto InternalNodeBase::saveState(std::vector<uint8_t>& data) -> bool { return true; }
-auto InternalNodeBase::loadState(const std::vector<uint8_t>& data) -> bool { return true; }
+auto InternalNodeBase::saveState(std::vector<uint8_t>& data) -> bool {
+    auto param_count = static_cast<uint32_t>(_parameters.size());
+    const auto* p_count = reinterpret_cast<const uint8_t*>(&param_count);
+    data.insert(data.end(), p_count, p_count + sizeof(uint32_t));
+
+    for (const auto& param : _parameters) {
+        uint32_t id = param->info.id;
+        double val = param->base_value.load(std::memory_order_relaxed);
+
+        const auto* p_id = reinterpret_cast<const uint8_t*>(&id);
+        data.insert(data.end(), p_id, p_id + sizeof(uint32_t));
+
+        const auto* p_val = reinterpret_cast<const uint8_t*>(&val);
+        data.insert(data.end(), p_val, p_val + sizeof(double));
+    }
+    return true;
+}
+
+auto InternalNodeBase::loadState(const std::vector<uint8_t>& data) -> bool {
+    if (data.size() < sizeof(uint32_t)) return false;
+
+    uint32_t param_count = 0;
+    std::memcpy(&param_count, data.data(), sizeof(uint32_t));
+
+    size_t offset = sizeof(uint32_t);
+    if (data.size() < offset + param_count * (sizeof(uint32_t) + sizeof(double))) return false;
+
+    for (uint32_t i = 0; i < param_count; ++i) {
+        uint32_t id = 0;
+        double val = 0.0;
+
+        std::memcpy(&id, data.data() + offset, sizeof(uint32_t));
+        offset += sizeof(uint32_t);
+
+        std::memcpy(&val, data.data() + offset, sizeof(double));
+        offset += sizeof(double);
+
+        setParameterValue(id, val);
+    }
+    return true;
+}
 
 void InternalNodeBase::applyModulation(clap_id param_id, double value, uint32_t sample_offset) {
     if (auto* slot = getParameterSlot(param_id)) {

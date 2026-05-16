@@ -2,7 +2,6 @@
 
 #include <cstring>
 
-
 namespace synth_canvas::host {
 
 StepperNode::StepperNode() {
@@ -116,6 +115,16 @@ void StepperNode::process() {
 }
 
 auto StepperNode::saveState(std::vector<uint8_t>& data) -> bool {
+    // 1. Save base class state (parameters) first
+    std::vector<uint8_t> base_state;
+    if (!InternalNodeBase::saveState(base_state)) return false;
+
+    auto base_size = static_cast<uint32_t>(base_state.size());
+    const auto* p_bsize = reinterpret_cast<const uint8_t*>(&base_size);
+    data.insert(data.end(), p_bsize, p_bsize + sizeof(uint32_t));
+    data.insert(data.end(), base_state.begin(), base_state.end());
+
+    // 2. Save Stepper-specific matrix state
     // 64 bytes for 32 x uint16_t matrix
     size_t start = data.size();
     data.resize(start + (kMaxSteps * sizeof(uint16_t)));
@@ -130,10 +139,24 @@ auto StepperNode::saveState(std::vector<uint8_t>& data) -> bool {
 }
 
 auto StepperNode::loadState(const std::vector<uint8_t>& data) -> bool {
-    if (data.size() < (kMaxSteps * sizeof(uint16_t))) return false;
+    if (data.size() < sizeof(uint32_t)) return false;
+
+    // 1. Load base class state
+    uint32_t base_size = 0;
+    std::memcpy(&base_size, data.data(), sizeof(uint32_t));
+
+    if (data.size() < sizeof(uint32_t) + base_size) return false;
+
+    std::vector<uint8_t> base_state(data.begin() + sizeof(uint32_t),
+                                    data.begin() + sizeof(uint32_t) + base_size);
+    if (!InternalNodeBase::loadState(base_state)) return false;
+
+    // 2. Load Stepper-specific matrix state
+    size_t offset = sizeof(uint32_t) + base_size;
+    if (data.size() < offset + (kMaxSteps * sizeof(uint16_t))) return false;
 
     std::array<uint16_t, kMaxSteps> buffer;
-    std::memcpy(buffer.data(), data.data(), buffer.size() * sizeof(uint16_t));
+    std::memcpy(buffer.data(), data.data() + offset, buffer.size() * sizeof(uint16_t));
 
     for (uint32_t i = 0; i < kMaxSteps; ++i) {
         _matrix[i].store(buffer[i], std::memory_order_relaxed);
