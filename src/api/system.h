@@ -46,6 +46,10 @@ class System {
                                                uint32_t to_node, uint32_t to_port,
                                                ConnectionType type) const -> ConnectionProperties;
 
+    // Project Persistence
+    [[nodiscard]] auto saveProject() -> std::string;
+    auto loadProject(const std::string& json_str) -> bool;
+
     // Audio Control
     void startAudio();
     void stopAudio();

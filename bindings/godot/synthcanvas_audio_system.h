@@ -74,6 +74,10 @@ class SynthCanvasAudioSystem : public godot::Node {
     auto getParameterText(uint32_t instance_id, const godot::Variant& p_param, double value)
         -> godot::String;
 
+    // Project Persistence
+    auto saveProject() -> godot::String;
+    auto loadProject(const godot::String& json_str) -> bool;
+
     // State Management
     auto getState(uint32_t instance_id) -> godot::PackedByteArray;
     void setState(uint32_t instance_id, const godot::PackedByteArray& data);

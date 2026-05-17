@@ -338,6 +338,7 @@ void PluginHost::scanAudioPorts() {
 auto PluginHost::load(const std::string& path, int plugin_index) -> bool {
     unload();
 
+    _plugin_path = path;
     logMessage(CLAP_LOG_INFO, ("Attempting to load plugin: " + path).c_str());
 
 #if defined(_WIN32)

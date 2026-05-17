@@ -6,6 +6,7 @@
 #include "constants.h"
 #include "logger.h"
 #include "plugin_host.h"
+#include "utils/json_converters.h"
 
 namespace synth_canvas::host {
 
@@ -29,6 +30,11 @@ CompositeNode::~CompositeNode() {
     }
     while (_released_states.try_dequeue(state)) {
     }
+}
+
+auto CompositeNode::getCreationInfo() const -> std::string {
+    nlohmann::json j = _config;
+    return j.dump();
 }
 
 void CompositeNode::activate(int32_t sample_rate, int32_t block_size) {
@@ -95,7 +101,7 @@ void CompositeNode::processBegin(int num_frames) {
 
 void CompositeNode::processEvents(int num_frames) {
     if (!_is_active || !_current_state) return;
-    
+
     // Defer to GraphRenderer's renderEvents once we implement it
     _renderer.renderEvents(*_current_state, _internal_buffers, num_frames, nullptr);
 }
@@ -356,6 +362,7 @@ void CompositeNode::pollMainThread() {
 }
 
 auto CompositeNode::load(const CompositeConfig& config) -> bool {
+    _config = config;
     setupBoundaryNodes();
 
     std::map<std::string, uint32_t> alias_to_id;

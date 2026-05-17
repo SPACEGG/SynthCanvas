@@ -65,6 +65,8 @@ class ProcessingNode {
     // Metadata Accessors
     virtual void setInstanceId(uint32_t id) = 0;
     [[nodiscard]] virtual auto getInstanceId() const -> uint32_t = 0;
+    [[nodiscard]] virtual auto getNodeType() const -> std::string = 0;
+    [[nodiscard]] virtual auto getCreationInfo() const -> std::string = 0;
     [[nodiscard]] virtual auto getAudioPorts(bool is_input) const
         -> const std::vector<AudioPortInfo>& = 0;
     [[nodiscard]] virtual auto getParameters() const

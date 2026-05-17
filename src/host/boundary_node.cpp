@@ -19,6 +19,10 @@ void BoundaryNode::activate(int32_t sample_rate, int32_t block_size) {
 
 void BoundaryNode::deactivate() { _is_active = false; }
 
+auto BoundaryNode::getCreationInfo() const -> std::string {
+    return _type == Type::kInputProxy ? "input" : "output";
+}
+
 void BoundaryNode::setPorts(uint32_t num_inputs, clap_audio_buffer* inputs, uint32_t num_outputs,
                             clap_audio_buffer* outputs) {
     _current_inputs = inputs;

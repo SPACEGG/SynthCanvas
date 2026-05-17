@@ -1,12 +1,15 @@
-﻿#include "sequencer_node.h"
+#include "sequencer_node.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstring>
 
+#include "logger.h"
+
 namespace synth_canvas::host {
 
 SequencerNode::SequencerNode() {
+    _node_type_name = "sequencer";
     addParameter(kParamSteps, "Steps", "Logic", 1.0, 32.0, 8.0,
                  CLAP_PARAM_IS_AUTOMATABLE | CLAP_PARAM_IS_STEPPED);
     addParameter(kParamTime, "Time", "Logic", 0.0, 5.0, 1.0,
@@ -259,16 +262,12 @@ void SequencerNode::queueEvent(const PluginEvent& event) {
 }
 
 auto SequencerNode::saveState(std::vector<uint8_t>& data) -> bool {
-    // 1. Save base class state (parameters) first
-    std::vector<uint8_t> base_state;
-    if (!InternalNodeBase::saveState(base_state)) return false;
+    size_t start_size = data.size();
+    
+    // 1. Save base class state (parameters) FIRST to align with Godot UI expectations
+    if (!InternalNodeBase::saveState(data)) return false;
 
-    auto base_size = static_cast<uint32_t>(base_state.size());
-    const auto* p_bsize = reinterpret_cast<const uint8_t*>(&base_size);
-    data.insert(data.end(), p_bsize, p_bsize + sizeof(uint32_t));
-    data.insert(data.end(), base_state.begin(), base_state.end());
-
-    // 2. Save Sequencer-specific pattern state
+    // 2. Append Sequencer-specific pattern state
     auto count = static_cast<uint32_t>(_active_pattern.size());
     size_t start = data.size();
     data.resize(start + sizeof(uint32_t) + (count * sizeof(NoteData)));
@@ -278,31 +277,49 @@ auto SequencerNode::saveState(std::vector<uint8_t>& data) -> bool {
         std::memcpy(data.data() + start + sizeof(uint32_t), _active_pattern.data(),
                     count * sizeof(NoteData));
     }
+
+    log("[SequencerNode] saveState: Total size = ", (data.size() - start_size), 
+        ", Pattern notes = ", count);
+
     return true;
 }
 
 auto SequencerNode::loadState(const std::vector<uint8_t>& data) -> bool {
-    if (data.size() < sizeof(uint32_t)) return false;
+    log("[SequencerNode] loadState: Received data size = ", data.size());
+    
+    if (data.size() < sizeof(uint32_t)) {
+        log("[SequencerNode] ERROR: loadState failed, data too small.");
+        return false;
+    }
 
-    // 1. Load base class state
-    uint32_t base_size = 0;
-    std::memcpy(&base_size, data.data(), sizeof(uint32_t));
+    // 1. Locate the start of Sequencer-specific data using the parent's block size header
+    uint32_t base_block_size = 0;
+    std::memcpy(&base_block_size, data.data(), sizeof(uint32_t));
+    log("[SequencerNode] loadState: Parent block size = ", base_block_size);
 
-    if (data.size() < sizeof(uint32_t) + base_size) return false;
+    // Pass the whole data to InternalNodeBase; it will only read up to base_block_size
+    if (data.size() >= base_block_size && base_block_size > 0) {
+        if (!InternalNodeBase::loadState(data)) {
+             log("[SequencerNode] Base state load failed or skipped.");
+        }
+    }
 
-    std::vector<uint8_t> base_state(data.begin() + sizeof(uint32_t),
-                                    data.begin() + sizeof(uint32_t) + base_size);
-    if (!InternalNodeBase::loadState(base_state)) return false;
-
-    // 2. Load Sequencer-specific pattern state
-    size_t offset = sizeof(uint32_t) + base_size;
-    if (data.size() < offset + sizeof(uint32_t)) return false;
+    size_t offset = base_block_size;
+    if (data.size() < offset + sizeof(uint32_t)) {
+        log("[SequencerNode] No pattern data found at offset ", offset, ". (Likely parameter update only)");
+        return true; 
+    }
 
     uint32_t count;
     std::memcpy(&count, data.data() + offset, sizeof(uint32_t));
     offset += sizeof(uint32_t);
 
-    if (data.size() < offset + (count * sizeof(NoteData))) return false;
+    log("[SequencerNode] loadState: Header says pattern contains ", count, " notes.");
+
+    if (data.size() < offset + (count * sizeof(NoteData))) {
+        log("[SequencerNode] ERROR: Data size is too small for ", count, " notes.");
+        return false;
+    }
 
     _pending_pattern.clear();
     if (count > 0) {
@@ -310,6 +327,9 @@ auto SequencerNode::loadState(const std::vector<uint8_t>& data) -> bool {
         _pending_pattern.insert(_pending_pattern.end(), src, src + count);
     }
     _pending_update.store(true, std::memory_order_release);
+    
+    log("[SequencerNode] loadState: Successfully restored ", count, " notes.");
+
     return true;
 }
 

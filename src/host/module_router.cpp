@@ -10,6 +10,8 @@
 #include "sequencer_node.h"
 #include "stepper_node.h"
 #include "transport_node.h"
+#include "utils/base64.h"
+#include "utils/json_converters.h"
 
 namespace synth_canvas::host {
 
@@ -24,7 +26,7 @@ ModuleRouter::~ModuleRouter() {
     log("[ModuleRouter] Destroyed.");
 }
 
-auto ModuleRouter::createPluginInstance(const std::string& path) -> uint32_t {
+auto ModuleRouter::createPluginInstance(const std::string& path, uint32_t forced_id) -> uint32_t {
     log("[ModuleRouter] Creating plugin instance from path: ", path);
     auto host = std::make_unique<PluginHost>();
     if (!host->load(path, 0)) {
@@ -32,7 +34,17 @@ auto ModuleRouter::createPluginInstance(const std::string& path) -> uint32_t {
         return 0;
     }
 
-    uint32_t id = _next_instance_id++;
+    uint32_t id;
+    if (forced_id != constants::kClapInvalidId) {
+        id = forced_id;
+        uint32_t current = _next_instance_id.load();
+        if (id >= current) {
+            _next_instance_id.store(id + 1);
+        }
+    } else {
+        id = _next_instance_id++;
+    }
+
     host->setInstanceId(id);
     host->on_event_occured = _on_event_occured;
 
@@ -43,7 +55,8 @@ auto ModuleRouter::createPluginInstance(const std::string& path) -> uint32_t {
     return id;
 }
 
-auto ModuleRouter::createCompositeInstance(const CompositeConfig& config) -> uint32_t {
+auto ModuleRouter::createCompositeInstance(const CompositeConfig& config, uint32_t forced_id)
+    -> uint32_t {
     log("[ModuleRouter] Creating composite instance.");
     auto composite = std::make_unique<CompositeNode>();
 
@@ -52,7 +65,17 @@ auto ModuleRouter::createCompositeInstance(const CompositeConfig& config) -> uin
         return 0;
     }
 
-    uint32_t id = _next_instance_id++;
+    uint32_t id;
+    if (forced_id != constants::kClapInvalidId) {
+        id = forced_id;
+        uint32_t current = _next_instance_id.load();
+        if (id >= current) {
+            _next_instance_id.store(id + 1);
+        }
+    } else {
+        id = _next_instance_id++;
+    }
+
     composite->setInstanceId(id);
     composite->on_event_occured = _on_event_occured;
 
@@ -72,59 +95,176 @@ void ModuleRouter::destroyInstance(uint32_t instance_id) {
     }
 }
 
-auto ModuleRouter::registerSpecialNode(const std::string& type) -> uint32_t {
+auto ModuleRouter::registerSpecialNode(const std::string& type, uint32_t forced_id) -> uint32_t {
     uint32_t id;
     if (type == "audio_out") {
         id = constants::kAudioOutputNoteId;
+    } else if (forced_id != constants::kClapInvalidId) {
+        id = forced_id;
+        uint32_t current = _next_instance_id.load();
+        if (id >= current) {
+            _next_instance_id.store(id + 1);
+        }
     } else {
         id = _next_instance_id++;
     }
 
+    std::unique_ptr<InternalNodeBase> node;
     if (type == "midi_input") {
-        auto node = std::make_unique<MidiInputNode>();
-        node->setInstanceId(id);
-        node->on_event_occured = _on_event_occured;
-        _graph_processor.addNode(id, std::move(node));
-        pushNewState();
+        node = std::make_unique<MidiInputNode>();
     } else if (type == "lfo") {
-        auto node = std::make_unique<LFONode>();
-        node->setInstanceId(id);
-        node->on_event_occured = _on_event_occured;
-        _graph_processor.addNode(id, std::move(node));
-        pushNewState();
+        node = std::make_unique<LFONode>();
     } else if (type == "envelope") {
-        auto node = std::make_unique<EnvelopeNode>();
-        node->setInstanceId(id);
-        node->on_event_occured = _on_event_occured;
-        _graph_processor.addNode(id, std::move(node));
-        pushNewState();
+        node = std::make_unique<EnvelopeNode>();
     } else if (type == "stepper") {
-        auto node = std::make_unique<StepperNode>();
-        node->setInstanceId(id);
-        node->on_event_occured = _on_event_occured;
-        _graph_processor.addNode(id, std::move(node));
-        pushNewState();
+        node = std::make_unique<StepperNode>();
     } else if (type == "sequencer") {
-        auto node = std::make_unique<SequencerNode>();
-        node->setInstanceId(id);
-        node->on_event_occured = _on_event_occured;
-        _graph_processor.addNode(id, std::move(node));
-        pushNewState();
+        node = std::make_unique<SequencerNode>();
     } else if (type == "transport") {
-        auto node = std::make_unique<TransportNode>();
-        node->setInstanceId(id);
-        node->on_event_occured = _on_event_occured;
-        node->on_transport_change_requested = [this](double tempo, bool playing) {
+        auto t_node = std::make_unique<TransportNode>();
+        t_node->on_transport_change_requested = [this](double tempo, bool playing) {
             setTempo(tempo);
             setTransportPlaying(playing);
             pushNewState();
         };
+        node = std::move(t_node);
+    }
+
+    if (node) {
+        node->setInstanceId(id);
+        node->on_event_occured = _on_event_occured;
         _graph_processor.addNode(id, std::move(node));
         pushNewState();
     }
 
     log("[ModuleRouter] Registered special node ID: ", id, " Type: ", type);
     return id;
+}
+
+void ModuleRouter::clearGraph() {
+    log("[ModuleRouter] Clearing graph.");
+    auto node_ids = _graph_processor.getProcessOrder();
+    for (uint32_t id : node_ids) {
+        if (id == constants::kAudioOutputNoteId) continue;
+        auto node = _graph_processor.removeNode(id);
+        if (node) {
+            _pending_deletion_nodes.push_back(std::move(node));
+        }
+    }
+    _next_instance_id.store(constants::kInitialPluginInstanceId);
+    pushNewState();
+}
+
+auto ModuleRouter::serializeGraph() const -> std::string {
+    nlohmann::json j;
+    j["version"] = "1.0";
+    j["transport"] = _main_transport;
+
+    auto nodes_j = nlohmann::json::array();
+    auto node_ids = _graph_processor.getProcessOrder();
+    for (uint32_t id : node_ids) {
+        if (id == constants::kAudioOutputNoteId) continue;
+        if (auto* node = _graph_processor.getNode(id)) {
+            nlohmann::json node_j;
+            node_j["instance_id"] = id;
+            node_j["type"] = node->getNodeType();
+            node_j["creation_info"] = node->getCreationInfo();
+
+            std::vector<uint8_t> state;
+            if (node->saveState(state)) {
+                node_j["state_data"] = utils::base64Encode(state);
+            } else {
+                node_j["state_data"] = "";
+            }
+            nodes_j.push_back(node_j);
+        }
+    }
+    j["nodes"] = nodes_j;
+
+    auto conns_j = nlohmann::json::array();
+    for (const auto& conn : _graph_processor.getConnections()) {
+        nlohmann::json conn_j;
+        conn_j["from_node"] = conn.from_node;
+        conn_j["from_port"] = conn.from_port;
+        conn_j["to_node"] = conn.to_node;
+        conn_j["to_port"] = conn.to_port;
+        conn_j["type"] = static_cast<int>(conn.type);
+        conn_j["scale"] = conn.scale;
+        conn_j["bypass"] = conn.bypass;
+        conns_j.push_back(conn_j);
+    }
+    j["connections"] = conns_j;
+
+    return j.dump();
+}
+
+auto ModuleRouter::deserializeGraph(const std::string& json_str) -> bool {
+    try {
+        auto j = nlohmann::json::parse(json_str);
+        clearGraph();
+
+        if (j.contains("transport")) {
+            _main_transport = j["transport"].get<TransportState>();
+        }
+
+        std::map<uint32_t, std::string> node_states;
+
+        if (j.contains("nodes")) {
+            for (const auto& node_j : j["nodes"]) {
+                uint32_t id = node_j["instance_id"];
+                std::string type = node_j["type"];
+                std::string creation_info = node_j["creation_info"];
+                std::string state_b64 = node_j.value("state_data", "");
+
+                uint32_t created_id = 0;
+                if (type == "plugin") {
+                    created_id = createPluginInstance(creation_info, id);
+                } else if (type == "special") {
+                    created_id = registerSpecialNode(creation_info, id);
+                } else if (type == "composite") {
+                    try {
+                        auto cfg_j = nlohmann::json::parse(creation_info);
+                        created_id = createCompositeInstance(cfg_j.get<CompositeConfig>(), id);
+                    } catch (...) {
+                        log("[ModuleRouter] ERROR: Failed to parse composite config for node ", id);
+                    }
+                }
+
+                if (created_id != 0 && !state_b64.empty()) {
+                    node_states[created_id] = state_b64;
+                }
+            }
+        }
+
+        // Apply states after all nodes are created
+        for (const auto& [id, state_b64] : node_states) {
+            if (auto* node = _graph_processor.getNode(id)) {
+                node->loadState(utils::base64Decode(state_b64));
+            }
+        }
+
+        if (j.contains("connections")) {
+            for (const auto& conn_j : j["connections"]) {
+                uint32_t from = conn_j["from_node"];
+                uint32_t to = conn_j["to_node"];
+                if (_graph_processor.getNode(from) && _graph_processor.getNode(to)) {
+                    auto type = static_cast<ConnectionType>(conn_j["type"].get<int>());
+                    float scale = conn_j.value("scale", 1.0f);
+                    bool bypass = conn_j.value("bypass", false);
+
+                    connectNodes(from, conn_j["from_port"], to, conn_j["to_port"], type);
+                    updateConnection(from, conn_j["from_port"], to, conn_j["to_port"], type, scale,
+                                     bypass);
+                }
+            }
+        }
+
+        pushNewState();
+        return true;
+    } catch (const std::exception& e) {
+        log("[ModuleRouter] ERROR: Deserialization failed: ", e.what());
+        return false;
+    }
 }
 
 auto ModuleRouter::getProcessingNode(uint32_t instance_id) const -> ProcessingNode* {

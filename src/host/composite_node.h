@@ -57,6 +57,8 @@ class CompositeNode final : public ProcessingNode {
     // Metadata Accessors
     void setInstanceId(uint32_t id) override { _instance_id = id; }
     [[nodiscard]] auto getInstanceId() const -> uint32_t override { return _instance_id; }
+    [[nodiscard]] auto getNodeType() const -> std::string override { return "composite"; }
+    [[nodiscard]] auto getCreationInfo() const -> std::string override;
     [[nodiscard]] auto getAudioPorts(bool is_input) const
         -> const std::vector<AudioPortInfo>& override;
     [[nodiscard]] auto getParameters() const
@@ -139,6 +141,8 @@ class CompositeNode final : public ProcessingNode {
     BoundaryNode* _input_proxy_node = nullptr;
     std::unique_ptr<BoundaryNode> _output_proxy_node_owned;
     BoundaryNode* _output_proxy_node = nullptr;
+
+    CompositeConfig _config;
 
     // Snapshot mechanism for internal graph state
     moodycamel::ReaderWriterQueue<std::unique_ptr<GraphProcessor::RenderState>> _pending_states;

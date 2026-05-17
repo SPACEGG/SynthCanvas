@@ -55,6 +55,10 @@ class InternalNodeBase : public ProcessingNode {
     // Metadata
     void setInstanceId(uint32_t id) override { _instance_id = id; }
     [[nodiscard]] auto getInstanceId() const -> uint32_t override { return _instance_id; }
+    [[nodiscard]] virtual auto getNodeType() const -> std::string override { return "special"; }
+    [[nodiscard]] virtual auto getCreationInfo() const -> std::string override {
+        return _node_type_name;
+    }
     [[nodiscard]] auto getAudioPorts(bool is_input) const
         -> const std::vector<AudioPortInfo>& override;
     [[nodiscard]] auto getParameters() const
@@ -92,6 +96,7 @@ class InternalNodeBase : public ProcessingNode {
     bool _is_active = false;
     bool _processing_enabled = true;
     int32_t _current_sample_rate = 44100;
+    std::string _node_type_name;
 };
 
 }  // namespace synth_canvas::host

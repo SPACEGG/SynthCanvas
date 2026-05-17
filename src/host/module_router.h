@@ -27,12 +27,19 @@ class ModuleRouter {
     ~ModuleRouter();
 
     // Node Lifecycle
-    auto createPluginInstance(const std::string& path) -> uint32_t;
-    auto createCompositeInstance(const CompositeConfig& config) -> uint32_t;
+    auto createPluginInstance(const std::string& path,
+                              uint32_t forced_id = constants::kClapInvalidId) -> uint32_t;
+    auto createCompositeInstance(const CompositeConfig& config,
+                                 uint32_t forced_id = constants::kClapInvalidId) -> uint32_t;
     void destroyInstance(uint32_t instance_id);
-    auto registerSpecialNode(const std::string& type) -> uint32_t;
+    auto registerSpecialNode(const std::string& type,
+                             uint32_t forced_id = constants::kClapInvalidId) -> uint32_t;
 
     // Connectivity
+    void clearGraph();
+    auto serializeGraph() const -> std::string;
+    auto deserializeGraph(const std::string& json_str) -> bool;
+
     void connectNodes(uint32_t from_node, uint32_t from_port, uint32_t to_node, uint32_t to_port,
                       ConnectionType type = ConnectionType::kAudio);
     void disconnectNodes(uint32_t from_node, uint32_t from_port, uint32_t to_node, uint32_t to_port,

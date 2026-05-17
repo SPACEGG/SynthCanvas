@@ -2,9 +2,12 @@
 
 #include <cstring>
 
+#include "logger.h"
+
 namespace synth_canvas::host {
 
 StepperNode::StepperNode() {
+    _node_type_name = "stepper";
     // 1. Register Parameters
     addParameter(kParamSteps, "Steps", "Logic", 1.0, kMaxSteps, 4.0,
                  CLAP_PARAM_IS_AUTOMATABLE | CLAP_PARAM_IS_STEPPED);
@@ -115,17 +118,13 @@ void StepperNode::process() {
 }
 
 auto StepperNode::saveState(std::vector<uint8_t>& data) -> bool {
-    // 1. Save base class state (parameters) first
-    std::vector<uint8_t> base_state;
-    if (!InternalNodeBase::saveState(base_state)) return false;
+    size_t start_size = data.size();
+    
+    // 1. Save base class state FIRST to align with Godot UI expectations
+    // InternalNodeBase::saveState appends a [Size(4)] + [ParamCount(4)] + [Params] block.
+    if (!InternalNodeBase::saveState(data)) return false;
 
-    auto base_size = static_cast<uint32_t>(base_state.size());
-    const auto* p_bsize = reinterpret_cast<const uint8_t*>(&base_size);
-    data.insert(data.end(), p_bsize, p_bsize + sizeof(uint32_t));
-    data.insert(data.end(), base_state.begin(), base_state.end());
-
-    // 2. Save Stepper-specific matrix state
-    // 64 bytes for 32 x uint16_t matrix
+    // 2. Save Stepper-specific matrix state (fixed 64 bytes)
     size_t start = data.size();
     data.resize(start + (kMaxSteps * sizeof(uint16_t)));
 
@@ -135,25 +134,39 @@ auto StepperNode::saveState(std::vector<uint8_t>& data) -> bool {
     }
 
     std::memcpy(data.data() + start, buffer.data(), buffer.size() * sizeof(uint16_t));
+    
+    log("[StepperNode] saveState: Total size = ", (data.size() - start_size));
+
     return true;
 }
 
 auto StepperNode::loadState(const std::vector<uint8_t>& data) -> bool {
-    if (data.size() < sizeof(uint32_t)) return false;
+    log("[StepperNode] loadState: Received data size = ", data.size());
+    
+    if (data.size() < sizeof(uint32_t)) {
+        log("[StepperNode] ERROR: loadState failed, data too small.");
+        return false;
+    }
 
-    // 1. Load base class state
-    uint32_t base_size = 0;
-    std::memcpy(&base_size, data.data(), sizeof(uint32_t));
+    // 1. Locate the start of Stepper-specific data using the parent's block size header
+    uint32_t base_block_size = 0;
+    std::memcpy(&base_block_size, data.data(), sizeof(uint32_t));
+    log("[StepperNode] loadState: Parent block size header = ", base_block_size);
 
-    if (data.size() < sizeof(uint32_t) + base_size) return false;
+    // Pass the whole data to InternalNodeBase; it will only read up to base_block_size
+    if (data.size() >= base_block_size && base_block_size > 0) {
+        if (!InternalNodeBase::loadState(data)) {
+            log("[StepperNode] Base state load failed or skipped.");
+        }
+    }
 
-    std::vector<uint8_t> base_state(data.begin() + sizeof(uint32_t),
-                                    data.begin() + sizeof(uint32_t) + base_size);
-    if (!InternalNodeBase::loadState(base_state)) return false;
-
-    // 2. Load Stepper-specific matrix state
-    size_t offset = sizeof(uint32_t) + base_size;
-    if (data.size() < offset + (kMaxSteps * sizeof(uint16_t))) return false;
+    size_t offset = base_block_size;
+    
+    // Check if there is matrix data appended (UI might send only parameters or a dummy header)
+    if (data.size() < offset + (kMaxSteps * sizeof(uint16_t))) {
+        log("[StepperNode] No matrix data found at offset ", offset, ". (Likely parameter update only)");
+        return true;
+    }
 
     std::array<uint16_t, kMaxSteps> buffer;
     std::memcpy(buffer.data(), data.data() + offset, buffer.size() * sizeof(uint16_t));
@@ -161,8 +174,12 @@ auto StepperNode::loadState(const std::vector<uint8_t>& data) -> bool {
     for (uint32_t i = 0; i < kMaxSteps; ++i) {
         _matrix[i].store(buffer[i], std::memory_order_relaxed);
     }
+    
+    log("[StepperNode] loadState: Matrix successfully restored from offset ", offset);
+
     return true;
 }
+
 auto StepperNode::getAudioPorts(bool is_input) const -> const std::vector<AudioPortInfo>& {
     if (is_input) {
         return _input_ports;

@@ -9,6 +9,7 @@
 namespace synth_canvas::host {
 
 MidiInputNode::MidiInputNode() {
+    _node_type_name = "midi_input";
     try {
         _midi_in = std::make_unique<rt::midi::RtMidiIn>();
         // Ignore sysex, timing, or active sensing messages by default.

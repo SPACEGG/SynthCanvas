@@ -39,6 +39,7 @@ static auto getSyncIndex(double value) -> int {
 }
 
 LFONode::LFONode() : _rng(std::random_device{}()) {
+    _node_type_name = "lfo";
     // Add parameters with default values and ranges
     addParameter(kFreq, "Frequency", "lfo", kMinFreq, kMaxFreq, 1.0);
     addParameter(kWaveform, "Waveform", "lfo", 0.0, 4.0, 0.0);
