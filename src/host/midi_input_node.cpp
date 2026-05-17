@@ -9,6 +9,7 @@
 namespace synth_canvas::host {
 
 MidiInputNode::MidiInputNode() {
+    _node_type_name = "midi_input";
     try {
         _midi_in = std::make_unique<rt::midi::RtMidiIn>();
         // Ignore sysex, timing, or active sensing messages by default.
@@ -20,7 +21,7 @@ MidiInputNode::MidiInputNode() {
 
     // Initialize parameters
     addParameter(0, "Port Index", "midi", 0.0, 255.0, 0.0, CLAP_PARAM_IS_STEPPED);
-    
+
     // Setup ports
     addEventPort("MIDI Out", false);
 }
@@ -73,12 +74,46 @@ void MidiInputNode::midiCallback(double time_stamp, std::vector<unsigned char>* 
     auto* node = static_cast<MidiInputNode*>(user_data);
     if (!message || message->empty()) return;
 
-    RawMidiMessage raw;
-    raw.arrival_time = std::chrono::high_resolution_clock::now();
-    raw.size = std::min(static_cast<size_t>(4), message->size());
-    std::copy(message->begin(), message->begin() + raw.size, raw.data.begin());
+    auto arrival_time = std::chrono::high_resolution_clock::now();
+    size_t i = 0;
+    while (i < message->size()) {
+        uint8_t status = (*message)[i];
+        if (status < 0x80) {
+            i++;
+            continue;
+        }
 
-    node->_message_queue.try_enqueue(raw);
+        size_t len = 0;
+        if (status < 0xF0) {
+            static constexpr std::array<int, 7> channel_msg_lens = {3, 3, 3, 3, 2, 2, 3};
+            len = channel_msg_lens[(status >> 4) - 8];
+        } else {
+            if (status == 0xF0) {  // SysEx
+                len = 1;
+                while (i + len < message->size() && (*message)[i + len] != 0xF7) {
+                    len++;
+                }
+                if (i + len < message->size()) len++;
+            } else if (status == 0xF1 || status == 0xF3) {
+                len = 2;
+            } else if (status == 0xF2) {
+                len = 3;
+            } else {
+                len = 1;
+            }
+        }
+
+        size_t actual_len = std::min(len, message->size() - i);
+        if (actual_len == 0) break;
+
+        RawMidiMessage raw;
+        raw.arrival_time = arrival_time;
+        raw.size = std::min(static_cast<size_t>(4), actual_len);
+        std::copy(message->begin() + i, message->begin() + i + raw.size, raw.data.begin());
+
+        node->_message_queue.try_enqueue(raw);
+        i += actual_len;
+    }
 }
 
 void MidiInputNode::errorCallback(rt::midi::RtMidiError::Type type, const std::string& error_text,
