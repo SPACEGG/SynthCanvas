@@ -6,6 +6,7 @@
 #include "constants.h"
 #include "logger.h"
 #include "plugin_host.h"
+#include "utils/json_converters.h"
 
 namespace synth_canvas::host {
 
@@ -29,6 +30,11 @@ CompositeNode::~CompositeNode() {
     }
     while (_released_states.try_dequeue(state)) {
     }
+}
+
+auto CompositeNode::getCreationInfo() const -> std::string {
+    nlohmann::json j = _config;
+    return j.dump();
 }
 
 void CompositeNode::activate(int32_t sample_rate, int32_t block_size) {
@@ -95,7 +101,7 @@ void CompositeNode::processBegin(int num_frames) {
 
 void CompositeNode::processEvents(int num_frames) {
     if (!_is_active || !_current_state) return;
-    
+
     // Defer to GraphRenderer's renderEvents once we implement it
     _renderer.renderEvents(*_current_state, _internal_buffers, num_frames, nullptr);
 }
@@ -235,13 +241,9 @@ auto CompositeNode::saveState(std::vector<uint8_t>& data) -> bool {
 
     if (states.empty()) return true;
 
-    // Return directly if internal node is unique.
-    if (states.size() == 1) {
-        data = std::move(states[0].second);
-        return true;
-    }
-
     // Multi-node state: Package with "COMP" magic header.
+    // NOTE: We now always use this structured format even for a single node
+    // to avoid ambiguity in loadState (broadcast logic).
     const char* magic = "COMP";
     data.insert(data.end(), magic, magic + 4);
 
@@ -306,6 +308,7 @@ auto CompositeNode::loadState(const std::vector<uint8_t>& data) -> bool {
         }
     }
 
+    syncExternalParameterValues();
     return true;
 }
 
@@ -356,6 +359,7 @@ void CompositeNode::pollMainThread() {
 }
 
 auto CompositeNode::load(const CompositeConfig& config) -> bool {
+    _config = config;
     setupBoundaryNodes();
 
     std::map<std::string, uint32_t> alias_to_id;
@@ -431,6 +435,19 @@ void CompositeNode::refreshParameterMetadata() {
                     std::strncpy(_external_params[ext_idx]->info.name, param_id.c_str(),
                                  CLAP_NAME_SIZE);
                 }
+            }
+        }
+    }
+}
+
+void CompositeNode::syncExternalParameterValues() {
+    for (size_t i = 0; i < _external_params.size(); ++i) {
+        if (auto& slot = _external_params[i]) {
+            auto target = getInternalParameterTarget(static_cast<clap_id>(i));
+            if (target.node) {
+                double actual_val = target.node->getParameterBaseValue(target.internal_id);
+                slot->base_value.store(actual_val, std::memory_order_relaxed);
+                slot->current_value.store(actual_val, std::memory_order_relaxed);
             }
         }
     }

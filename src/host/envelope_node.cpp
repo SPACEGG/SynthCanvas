@@ -7,6 +7,7 @@
 namespace synth_canvas::host {
 
 EnvelopeNode::EnvelopeNode() {
+    _node_type_name = "envelope";
     addParameter(kAttack, "Attack", "env", 0.1, 10000.0, 10.0);
     addParameter(kDecay, "Decay", "env", 0.1, 10000.0, 100.0);
     addParameter(kSustain, "Sustain", "env", 0.0, 1.0, 0.5);

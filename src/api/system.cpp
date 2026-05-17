@@ -1,5 +1,7 @@
 #include "system.h"
 
+#include <thread>
+
 #include "types.h"
 
 #if defined(__ANDROID__)
@@ -352,8 +354,7 @@ auto System::getPorts(uint32_t instance_id, bool is_input) -> PortList {
         ConnectionType type = ConnectionType::kAudio;
         if (port.is_modulation) {
             type = ConnectionType::kModulation;
-        } else if (port.clap_info.port_type &&
-                   std::string(port.clap_info.port_type) == "event") {
+        } else if (port.clap_info.port_type && std::string(port.clap_info.port_type) == "event") {
             type = ConnectionType::kEvent;
         }
 
@@ -437,6 +438,53 @@ auto System::getTransportState() const -> const TransportState& {
     if (_pimpl->module_router) return _pimpl->module_router->getTransportState();
 #endif
     return _pimpl->transport_state;
+}
+
+auto System::saveProject() -> std::string {
+#if defined(__ANDROID__)
+    if (_pimpl->module_router) return _pimpl->module_router->serializeGraph();
+#endif
+    return "{}";
+}
+
+auto System::loadProject(const std::string& json_str) -> bool {
+#if defined(__ANDROID__)
+    if (!_pimpl->module_router || !_pimpl->audio_engine) return false;
+
+    stopAudio();
+    // Wait for audio engine to stop
+    while (_pimpl->audio_engine->isRunning()) {
+        std::this_thread::yield();
+    }
+
+    bool success = _pimpl->module_router->deserializeNodes(json_str);
+
+    // 1. Re-attach callbacks and activate all nodes FIRST to finalize ports
+    for (uint32_t id : _pimpl->module_router->getProcessOrder()) {
+        if (auto* node = _pimpl->module_router->getProcessingNode(id)) {
+            node->on_params_rescan = [this](uint32_t instance_id) {
+                if (_pimpl->on_params_rescan) _pimpl->on_params_rescan(instance_id);
+            };
+            node->on_ports_changed = [this](uint32_t instance_id) {
+                if (_pimpl->module_router) _pimpl->module_router->updateNodePorts(instance_id);
+            };
+
+            int32_t rate = _pimpl->audio_engine->getSampleRate();
+            int32_t frames = _pimpl->audio_engine->getFramesPerBlock();
+            _pimpl->module_router->activateNode(id, rate, frames);
+        }
+    }
+
+    // 2. Restore connections ONLY AFTER nodes are activated and ports are ready
+    if (success) {
+        success = _pimpl->module_router->deserializeConnections(json_str);
+    }
+
+    startAudio();
+    return success;
+#else
+    return false;
+#endif
 }
 
 void System::setTempo(double bpm) {

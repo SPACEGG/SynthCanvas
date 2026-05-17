@@ -4,6 +4,8 @@
 #include <cmath>
 #include <cstring>
 
+#include "logger.h"
+
 namespace synth_canvas::host {
 
 InternalNodeBase::InternalNodeBase() { _output_buffer.owns_memory = true; }
@@ -64,10 +66,18 @@ void InternalNodeBase::setParameterValue(const std::string& param_id, double val
 }
 
 auto InternalNodeBase::saveState(std::vector<uint8_t>& data) -> bool {
+    // 1. Reserve 4 bytes for the total block size
+    size_t start_offset = data.size();
+    uint32_t placeholder_size = 0;
+    const auto* p_placeholder = reinterpret_cast<const uint8_t*>(&placeholder_size);
+    data.insert(data.end(), p_placeholder, p_placeholder + sizeof(uint32_t));
+
+    // 2. Save parameter count
     auto param_count = static_cast<uint32_t>(_parameters.size());
     const auto* p_count = reinterpret_cast<const uint8_t*>(&param_count);
     data.insert(data.end(), p_count, p_count + sizeof(uint32_t));
 
+    // 3. Save parameters
     for (const auto& param : _parameters) {
         uint32_t id = param->info.id;
         double val = param->base_value.load(std::memory_order_relaxed);
@@ -78,17 +88,36 @@ auto InternalNodeBase::saveState(std::vector<uint8_t>& data) -> bool {
         const auto* p_val = reinterpret_cast<const uint8_t*>(&val);
         data.insert(data.end(), p_val, p_val + sizeof(double));
     }
+
+    // 4. Update the total block size at the start
+    uint32_t total_block_size = static_cast<uint32_t>(data.size() - start_offset);
+    std::memcpy(data.data() + start_offset, &total_block_size, sizeof(uint32_t));
+
     return true;
 }
 
 auto InternalNodeBase::loadState(const std::vector<uint8_t>& data) -> bool {
-    if (data.size() < sizeof(uint32_t)) return false;
+    if (data.size() < sizeof(uint32_t)) {
+        return false;
+    }
 
+    // 1. Read the total block size
+    uint32_t total_block_size = 0;
+    std::memcpy(&total_block_size, data.data(), sizeof(uint32_t));
+
+    if (data.size() < total_block_size) {
+        return false;
+    }
+
+    // 2. Read parameter count
     uint32_t param_count = 0;
-    std::memcpy(&param_count, data.data(), sizeof(uint32_t));
+    std::memcpy(&param_count, data.data() + sizeof(uint32_t), sizeof(uint32_t));
 
-    size_t offset = sizeof(uint32_t);
-    if (data.size() < offset + param_count * (sizeof(uint32_t) + sizeof(double))) return false;
+    size_t offset = sizeof(uint32_t) * 2;
+    // Safety check: ensure we don't read past the block size
+    if (total_block_size < offset + param_count * (sizeof(uint32_t) + sizeof(double))) {
+        return false;
+    }
 
     for (uint32_t i = 0; i < param_count; ++i) {
         uint32_t id = 0;
@@ -102,6 +131,7 @@ auto InternalNodeBase::loadState(const std::vector<uint8_t>& data) -> bool {
 
         setParameterValue(id, val);
     }
+    
     return true;
 }
 

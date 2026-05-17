@@ -55,6 +55,10 @@ void SynthCanvasAudioSystem::_bind_methods() {
     godot::ClassDB::bind_method(godot::D_METHOD("set_state", "instance_id", "data"),
                                 &SynthCanvasAudioSystem::setState);
 
+    godot::ClassDB::bind_method(godot::D_METHOD("save_project"), &SynthCanvasAudioSystem::saveProject);
+    godot::ClassDB::bind_method(godot::D_METHOD("load_project", "json_str"),
+                                &SynthCanvasAudioSystem::loadProject);
+
     godot::ClassDB::bind_method(
         godot::D_METHOD("play_note_from_node", "from_node_id", "note", "velocity"),
         &SynthCanvasAudioSystem::playNoteFromNode);
@@ -387,6 +391,16 @@ auto SynthCanvasAudioSystem::getParameterText(uint32_t instance_id, const godot:
         return {_system->getParameterText(instance_id, s.utf8().get_data(), value).c_str()};
     }
     return {std::to_string(value).c_str()};
+}
+
+auto SynthCanvasAudioSystem::saveProject() -> godot::String {
+    if (!_system) return "{}";
+    return {_system->saveProject().c_str()};
+}
+
+auto SynthCanvasAudioSystem::loadProject(const godot::String& json_str) -> bool {
+    if (!_system) return false;
+    return _system->loadProject(json_str.utf8().get_data());
 }
 
 auto SynthCanvasAudioSystem::getState(uint32_t instance_id) -> godot::PackedByteArray {

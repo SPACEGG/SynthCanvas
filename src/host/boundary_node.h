@@ -59,6 +59,8 @@ class BoundaryNode : public ProcessingNode {
 
     void setInstanceId(uint32_t id) override { _instance_id = id; }
     [[nodiscard]] auto getInstanceId() const -> uint32_t override { return _instance_id; }
+    [[nodiscard]] auto getNodeType() const -> std::string override { return "boundary"; }
+    [[nodiscard]] auto getCreationInfo() const -> std::string override;
 
     [[nodiscard]] auto getAudioPorts(bool is_input) const
         -> const std::vector<AudioPortInfo>& override;

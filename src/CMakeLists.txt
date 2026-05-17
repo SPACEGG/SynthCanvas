@@ -5,6 +5,7 @@
 
 set(CORE_SOURCES
     api/system.cpp
+    utils/base64.cpp
 )
 
 if(ANDROID)
@@ -34,7 +35,13 @@ add_library(synth_canvas_core STATIC ${CORE_SOURCES})
 target_include_directories(synth_canvas_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/api
+    ${CMAKE_CURRENT_SOURCE_DIR}/utils
     ${CORE_DIR}
+)
+
+# External libraries (JSON, etc.)
+target_include_directories(synth_canvas_core SYSTEM PUBLIC
+    ${CORE_DIR}/libs/json
 )
 
 if(ANDROID)

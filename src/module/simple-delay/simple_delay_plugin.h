@@ -47,6 +47,11 @@ class SimpleDelayPlugin
         -> bool override;
     void paramsFlush(const clap_input_events* in, const clap_output_events* out) noexcept override;
 
+    // --- State ---
+    [[nodiscard]] auto implementsState() const noexcept -> bool override { return true; }
+    auto stateSave(const clap_ostream* os) noexcept -> bool override;
+    auto stateLoad(const clap_istream* is) noexcept -> bool override;
+
     // --- Processing ---
     auto process(const clap_process* process) noexcept -> clap_process_status override;
 

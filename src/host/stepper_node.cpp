@@ -2,9 +2,12 @@
 
 #include <cstring>
 
+#include "logger.h"
+
 namespace synth_canvas::host {
 
 StepperNode::StepperNode() {
+    _node_type_name = "stepper";
     // 1. Register Parameters
     addParameter(kParamSteps, "Steps", "Logic", 1.0, kMaxSteps, 4.0,
                  CLAP_PARAM_IS_AUTOMATABLE | CLAP_PARAM_IS_STEPPED);
@@ -35,6 +38,18 @@ void StepperNode::activate(int32_t sample_rate, int32_t block_size) {
     InternalNodeBase::activate(sample_rate, block_size);
     // Reset playback state on activation
     _current_index.store(-1, std::memory_order_relaxed);
+}
+
+void StepperNode::processBegin(int num_frames) {
+    InternalNodeBase::processBegin(num_frames);
+
+    // Apply pending matrix updates from UI or Project Load
+    if (_pending_update.load(std::memory_order_acquire)) {
+        for (uint32_t i = 0; i < kMaxSteps; ++i) {
+            _matrix[i].store(_pending_matrix[i], std::memory_order_relaxed);
+        }
+        _pending_update.store(false, std::memory_order_release);
+    }
 }
 
 void StepperNode::setParameterValue(clap_id param_id, double value) {
@@ -115,54 +130,60 @@ void StepperNode::process() {
 }
 
 auto StepperNode::saveState(std::vector<uint8_t>& data) -> bool {
-    // 1. Save base class state (parameters) first
-    std::vector<uint8_t> base_state;
-    if (!InternalNodeBase::saveState(base_state)) return false;
+    // 1. Save base class state FIRST to align with Godot UI expectations
+    // InternalNodeBase::saveState appends a [Size(4)] + [ParamCount(4)] + [Params] block.
+    if (!InternalNodeBase::saveState(data)) return false;
 
-    auto base_size = static_cast<uint32_t>(base_state.size());
-    const auto* p_bsize = reinterpret_cast<const uint8_t*>(&base_size);
-    data.insert(data.end(), p_bsize, p_bsize + sizeof(uint32_t));
-    data.insert(data.end(), base_state.begin(), base_state.end());
-
-    // 2. Save Stepper-specific matrix state
-    // 64 bytes for 32 x uint16_t matrix
+    // 2. Save Stepper-specific matrix state (fixed 64 bytes)
+    // CRITICAL: If a pending update exists (just loaded but not yet processed by audio thread),
+    // we must return the pending matrix to prevent UI data loss.
+    bool has_pending = _pending_update.load(std::memory_order_acquire);
+    
     size_t start = data.size();
     data.resize(start + (kMaxSteps * sizeof(uint16_t)));
 
     std::array<uint16_t, kMaxSteps> buffer;
     for (uint32_t i = 0; i < kMaxSteps; ++i) {
-        buffer[i] = _matrix[i].load(std::memory_order_relaxed);
+        if (has_pending) {
+            buffer[i] = _pending_matrix[i];
+        } else {
+            buffer[i] = _matrix[i].load(std::memory_order_relaxed);
+        }
     }
 
     std::memcpy(data.data() + start, buffer.data(), buffer.size() * sizeof(uint16_t));
+    
     return true;
 }
 
 auto StepperNode::loadState(const std::vector<uint8_t>& data) -> bool {
-    if (data.size() < sizeof(uint32_t)) return false;
-
-    // 1. Load base class state
-    uint32_t base_size = 0;
-    std::memcpy(&base_size, data.data(), sizeof(uint32_t));
-
-    if (data.size() < sizeof(uint32_t) + base_size) return false;
-
-    std::vector<uint8_t> base_state(data.begin() + sizeof(uint32_t),
-                                    data.begin() + sizeof(uint32_t) + base_size);
-    if (!InternalNodeBase::loadState(base_state)) return false;
-
-    // 2. Load Stepper-specific matrix state
-    size_t offset = sizeof(uint32_t) + base_size;
-    if (data.size() < offset + (kMaxSteps * sizeof(uint16_t))) return false;
-
-    std::array<uint16_t, kMaxSteps> buffer;
-    std::memcpy(buffer.data(), data.data() + offset, buffer.size() * sizeof(uint16_t));
-
-    for (uint32_t i = 0; i < kMaxSteps; ++i) {
-        _matrix[i].store(buffer[i], std::memory_order_relaxed);
+    if (data.size() < sizeof(uint32_t)) {
+        return false;
     }
+
+    // 1. Locate the start of Stepper-specific data using the parent's block size header
+    uint32_t base_block_size = 0;
+    std::memcpy(&base_block_size, data.data(), sizeof(uint32_t));
+
+    // Pass the whole data to InternalNodeBase; it will only read up to base_block_size
+    if (data.size() >= base_block_size && base_block_size > 0) {
+        InternalNodeBase::loadState(data);
+    }
+
+    size_t offset = base_block_size;
+    
+    // Check if there is matrix data appended (UI might send only parameters or a dummy header)
+    if (data.size() < offset + (kMaxSteps * sizeof(uint16_t))) {
+        return true;
+    }
+
+    // Store in pending buffer to be applied by audio thread
+    std::memcpy(_pending_matrix.data(), data.data() + offset, kMaxSteps * sizeof(uint16_t));
+    _pending_update.store(true, std::memory_order_release);
+    
     return true;
 }
+
 auto StepperNode::getAudioPorts(bool is_input) const -> const std::vector<AudioPortInfo>& {
     if (is_input) {
         return _input_ports;

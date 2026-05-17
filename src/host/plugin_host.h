@@ -84,6 +84,8 @@ class PluginHost final : public ProcessingNode, public BaseHost {
     // --- ProcessingNode Metadata Accessors ---
     void setInstanceId(uint32_t id) override { _instance_id = id; }
     [[nodiscard]] auto getInstanceId() const -> uint32_t override { return _instance_id; }
+    [[nodiscard]] auto getNodeType() const -> std::string override { return "plugin"; }
+    [[nodiscard]] auto getCreationInfo() const -> std::string override { return _plugin_path; }
     [[nodiscard]] auto getAudioPorts(bool is_input) const
         -> const std::vector<AudioPortInfo>& override {
         return is_input ? _audio_input_ports : _audio_output_ports;
@@ -102,6 +104,7 @@ class PluginHost final : public ProcessingNode, public BaseHost {
     // --- Plugin Loading ---
     auto load(const std::string& path, int plugin_index) -> bool;
     void unload();
+    void syncParameterValues();
 
     // --- Internal Getters ---
     [[nodiscard]] auto isPluginProcessing() const -> bool;
@@ -162,6 +165,7 @@ class PluginHost final : public ProcessingNode, public BaseHost {
     void generatePluginInputEvents();
     void handlePluginOutputEvents();
 
+    std::string _plugin_path;
     void* _library_handle = nullptr;
     const clap_plugin_entry* _plugin_entry = nullptr;
     const clap_plugin_factory* _plugin_factory = nullptr;
@@ -196,6 +200,8 @@ class PluginHost final : public ProcessingNode, public BaseHost {
     std::vector<AudioPortInfo> _audio_output_ports;
 
     std::vector<AudioBuffer> _output_buffers;
+
+    std::vector<uint8_t> _cached_state;
 
     std::vector<std::unique_ptr<ParameterSlot>> _params;
     std::unordered_map<clap_id, size_t> _param_id_to_index;

@@ -22,6 +22,7 @@ public:
     ~StepperNode() override = default;
 
     void activate(int32_t sample_rate, int32_t block_size) override;
+    void processBegin(int num_frames) override;
     void setParameterValue(clap_id param_id, double value) override;
     void queueEvent(const PluginEvent& event) override;
     void process() override;
@@ -35,6 +36,11 @@ private:
     void updateActivePortsMetadata();
 
     std::array<std::atomic<uint16_t>, kMaxSteps> _matrix;
+    
+    // Buffer for pending updates from UI or Project Load
+    std::array<uint16_t, kMaxSteps> _pending_matrix;
+    std::atomic<bool> _pending_update{false};
+
     std::atomic<int32_t> _active_steps{4};
     std::atomic<int32_t> _active_ports{2};
     std::atomic<int32_t> _current_index{-1};

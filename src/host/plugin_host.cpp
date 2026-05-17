@@ -338,6 +338,7 @@ void PluginHost::scanAudioPorts() {
 auto PluginHost::load(const std::string& path, int plugin_index) -> bool {
     unload();
 
+    _plugin_path = path;
     logMessage(CLAP_LOG_INFO, ("Attempting to load plugin: " + path).c_str());
 
 #if defined(_WIN32)
@@ -649,17 +650,35 @@ auto PluginHost::saveState(std::vector<uint8_t>& data) -> bool {
 
     if (!state_ext) return true;  // Not an error if the plugin doesn't have state
 
+    std::vector<uint8_t> plugin_data;
+    plugin_data.reserve(1024);
     clap_ostream stream;
-    stream.ctx = &data;
+    stream.ctx = &plugin_data;
     stream.write = clapOStreamWrite;
 
-    return state_ext->save(_plugin->clapPlugin(), &stream);
+    if (state_ext->save(_plugin->clapPlugin(), &stream) && !plugin_data.empty()) {
+        data = std::move(plugin_data);
+        _cached_state = data;  // Update cache
+        return true;
+    } else {
+        // Fallback: If plugin is loading asynchronously, return the cached state
+        if (!_cached_state.empty()) {
+            data = _cached_state;
+            logMessage(CLAP_LOG_INFO, "[PluginHost] Plugin failed to return state, using cache.");
+            return true;
+        }
+    }
+
+    return false;
 }
 
 auto PluginHost::loadState(const std::vector<uint8_t>& data) -> bool {
     checkForMainThread();
 
     if (!_plugin) return false;
+
+    // Cache the state immediately to protect against UI Pulls during async loading
+    _cached_state = data;
 
     auto* state_ext = static_cast<const clap_plugin_state_t*>(
         _plugin->clapPlugin()->get_extension(_plugin->clapPlugin(), CLAP_EXT_STATE));
@@ -671,7 +690,27 @@ auto PluginHost::loadState(const std::vector<uint8_t>& data) -> bool {
     stream.ctx = &ctx;
     stream.read = clapIStreamRead;
 
-    return state_ext->load(_plugin->clapPlugin(), &stream);
+    bool success = state_ext->load(_plugin->clapPlugin(), &stream);
+    if (success) {
+        syncParameterValues();
+    }
+    return success;
+}
+
+void PluginHost::syncParameterValues() {
+    if (!_plugin) return;
+
+    auto* params_ext = static_cast<const clap_plugin_params_t*>(
+        _plugin->clapPlugin()->get_extension(_plugin->clapPlugin(), CLAP_EXT_PARAMS));
+    if (!params_ext) return;
+
+    for (auto& slot : _params) {
+        double value = 0;
+        if (params_ext->get_value(_plugin->clapPlugin(), slot->info.id, &value)) {
+            slot->base_value.store(value, std::memory_order_relaxed);
+            slot->current_value.store(value, std::memory_order_relaxed);
+        }
+    }
 }
 
 auto PluginHost::getParameterBaseValue(clap_id param_id) const -> double {
