@@ -228,7 +228,7 @@ auto FilterPlugin::stateSave(const clap_ostream* os) noexcept -> bool {
 
 auto FilterPlugin::stateLoad(const clap_istream* is) noexcept -> bool {
     std::array<char, 1024> buffer;
-    int64_t result = is->read(is, buffer.data(), sizeof(buffer.data()) - 1);
+    int64_t result = is->read(is, buffer.data(), buffer.size() - 1);
     if (result <= 0) return false;
     buffer[result] = '\0';
 
@@ -239,17 +239,22 @@ auto FilterPlugin::stateLoad(const clap_istream* is) noexcept -> bool {
         size_t pos = pair.find('=');
         if (pos == std::string::npos) continue;
         std::string key = pair.substr(0, pos);
-        double val = std::stod(pair.substr(pos + 1));
-        if (key == "cutoff") {
-            _cutoff_hz = val;
-        } else if (key == "res") {
-            _resonance = val;
-        } else if (key == "mode") {
-            _mode = val;
-        } else if (key == "slope") {
-            _slope = val;
-        } else if (key == "mix") {
-            _mix = val;
+        std::string val_str = pair.substr(pos + 1);
+        try {
+            double val = std::stod(val_str);
+            if (key == "cutoff") {
+                _cutoff_hz = val;
+            } else if (key == "res") {
+                _resonance = val;
+            } else if (key == "mode") {
+                _mode = val;
+            } else if (key == "slope") {
+                _slope = val;
+            } else if (key == "mix") {
+                _mix = val;
+            }
+        } catch (...) {
+            // Skip invalid values instead of crashing
         }
     }
 

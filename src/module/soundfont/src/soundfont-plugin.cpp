@@ -193,7 +193,7 @@ auto SoundfontPlugin::stateLoad(const clap_istream* is) noexcept -> bool {
     std::array<char, 1024> buffer;
     std::string state;
     int64_t read;
-    while ((read = is->read(is, buffer.data(), sizeof(buffer.data()))) > 0) {
+    while ((read = is->read(is, buffer.data(), buffer.size())) > 0) {
         state.append(buffer.data(), static_cast<size_t>(read));
     }
 

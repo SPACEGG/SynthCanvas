@@ -241,13 +241,9 @@ auto CompositeNode::saveState(std::vector<uint8_t>& data) -> bool {
 
     if (states.empty()) return true;
 
-    // Return directly if internal node is unique.
-    if (states.size() == 1) {
-        data = std::move(states[0].second);
-        return true;
-    }
-
     // Multi-node state: Package with "COMP" magic header.
+    // NOTE: We now always use this structured format even for a single node
+    // to avoid ambiguity in loadState (broadcast logic).
     const char* magic = "COMP";
     data.insert(data.end(), magic, magic + 4);
 
