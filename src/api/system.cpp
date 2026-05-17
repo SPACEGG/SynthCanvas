@@ -457,9 +457,9 @@ auto System::loadProject(const std::string& json_str) -> bool {
         std::this_thread::yield();
     }
 
-    bool success = _pimpl->module_router->deserializeGraph(json_str);
+    bool success = _pimpl->module_router->deserializeNodes(json_str);
 
-    // Re-attach callbacks and activate new nodes
+    // 1. Re-attach callbacks and activate all nodes FIRST to finalize ports
     for (uint32_t id : _pimpl->module_router->getProcessOrder()) {
         if (auto* node = _pimpl->module_router->getProcessingNode(id)) {
             node->on_params_rescan = [this](uint32_t instance_id) {
@@ -473,6 +473,11 @@ auto System::loadProject(const std::string& json_str) -> bool {
             int32_t frames = _pimpl->audio_engine->getFramesPerBlock();
             _pimpl->module_router->activateNode(id, rate, frames);
         }
+    }
+
+    // 2. Restore connections ONLY AFTER nodes are activated and ports are ready
+    if (success) {
+        success = _pimpl->module_router->deserializeConnections(json_str);
     }
 
     startAudio();

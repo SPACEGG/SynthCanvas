@@ -198,7 +198,7 @@ auto ModuleRouter::serializeGraph() const -> std::string {
     return j.dump();
 }
 
-auto ModuleRouter::deserializeGraph(const std::string& json_str) -> bool {
+auto ModuleRouter::deserializeNodes(const std::string& json_str) -> bool {
     try {
         auto j = nlohmann::json::parse(json_str);
         clearGraph();
@@ -243,11 +243,26 @@ auto ModuleRouter::deserializeGraph(const std::string& json_str) -> bool {
             }
         }
 
+        pushNewState();
+        return true;
+    } catch (const std::exception& e) {
+        log("[ModuleRouter] ERROR: deserializeNodes failed: ", e.what());
+        return false;
+    }
+}
+
+auto ModuleRouter::deserializeConnections(const std::string& json_str) -> bool {
+    try {
+        auto j = nlohmann::json::parse(json_str);
         if (j.contains("connections")) {
             for (const auto& conn_j : j["connections"]) {
                 uint32_t from = conn_j["from_node"];
                 uint32_t to = conn_j["to_node"];
-                if (_graph_processor.getNode(from) && _graph_processor.getNode(to)) {
+                
+                // Allow connections to the virtual speaker node (ID 0)
+                bool is_to_speaker = (to == constants::kAudioOutputNoteId);
+                
+                if (_graph_processor.getNode(from) && (is_to_speaker || _graph_processor.getNode(to))) {
                     auto type = static_cast<ConnectionType>(conn_j["type"].get<int>());
                     float scale = conn_j.value("scale", 1.0f);
                     bool bypass = conn_j.value("bypass", false);
@@ -255,14 +270,15 @@ auto ModuleRouter::deserializeGraph(const std::string& json_str) -> bool {
                     connectNodes(from, conn_j["from_port"], to, conn_j["to_port"], type);
                     updateConnection(from, conn_j["from_port"], to, conn_j["to_port"], type, scale,
                                      bypass);
+                } else {
+                    log("[ModuleRouter] Skipping connection ", from, "->", to, " (One or more nodes missing)");
                 }
             }
         }
-
         pushNewState();
         return true;
     } catch (const std::exception& e) {
-        log("[ModuleRouter] ERROR: Deserialization failed: ", e.what());
+        log("[ModuleRouter] ERROR: deserializeConnections failed: ", e.what());
         return false;
     }
 }
@@ -322,6 +338,8 @@ void ModuleRouter::pushNewState() {
 
 void ModuleRouter::connectNodes(uint32_t from_node, uint32_t from_port, uint32_t to_node,
                                 uint32_t to_port, ConnectionType type) {
+    log("[ModuleRouter] connectNodes: ", from_node, ":", from_port, " -> ", to_node, ":", to_port, " (type: ", static_cast<int>(type), ")");
+    
     if (getConnectionCount(to_node, to_port, type) >= constants::kMaxConnectionsPerPort) {
         log("[ModuleRouter] ERROR: Cannot connect. Max connections reached for target port.");
         return;
@@ -337,6 +355,7 @@ void ModuleRouter::connectNodes(uint32_t from_node, uint32_t from_port, uint32_t
 
 void ModuleRouter::disconnectNodes(uint32_t from_node, uint32_t from_port, uint32_t to_node,
                                    uint32_t to_port, ConnectionType type) {
+    log("[ModuleRouter] disconnectNodes: ", from_node, ":", from_port, " -> ", to_node, ":", to_port);
     _graph_processor.disconnect({.from_node = from_node,
                                  .from_port = from_port,
                                  .to_node = to_node,
@@ -348,6 +367,7 @@ void ModuleRouter::disconnectNodes(uint32_t from_node, uint32_t from_port, uint3
 void ModuleRouter::updateConnection(uint32_t from_node, uint32_t from_port, uint32_t to_node,
                                     uint32_t to_port, ConnectionType type, float scale,
                                     bool bypass) {
+    log("[ModuleRouter] updateConnection properties: ", from_node, "->", to_node, " scale=", scale, " bypass=", bypass);
     if (_graph_processor.setConnectionProperties({.from_node = from_node,
                                                   .from_port = from_port,
                                                   .to_node = to_node,

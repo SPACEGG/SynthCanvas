@@ -38,7 +38,8 @@ class ModuleRouter {
     // Connectivity
     void clearGraph();
     auto serializeGraph() const -> std::string;
-    auto deserializeGraph(const std::string& json_str) -> bool;
+    auto deserializeNodes(const std::string& json_str) -> bool;
+    auto deserializeConnections(const std::string& json_str) -> bool;
 
     void connectNodes(uint32_t from_node, uint32_t from_port, uint32_t to_node, uint32_t to_port,
                       ConnectionType type = ConnectionType::kAudio);
