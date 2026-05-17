@@ -130,8 +130,6 @@ void StepperNode::process() {
 }
 
 auto StepperNode::saveState(std::vector<uint8_t>& data) -> bool {
-    size_t start_size = data.size();
-    
     // 1. Save base class state FIRST to align with Godot UI expectations
     // InternalNodeBase::saveState appends a [Size(4)] + [ParamCount(4)] + [Params] block.
     if (!InternalNodeBase::saveState(data)) return false;
@@ -155,37 +153,27 @@ auto StepperNode::saveState(std::vector<uint8_t>& data) -> bool {
 
     std::memcpy(data.data() + start, buffer.data(), buffer.size() * sizeof(uint16_t));
     
-    log("[StepperNode] saveState: Total size = ", (data.size() - start_size), 
-        (has_pending ? " (FROM PENDING)" : ""));
-
     return true;
 }
 
 auto StepperNode::loadState(const std::vector<uint8_t>& data) -> bool {
-    log("[StepperNode] loadState: Received data size = ", data.size());
-    
     if (data.size() < sizeof(uint32_t)) {
-        log("[StepperNode] ERROR: loadState failed, data too small.");
         return false;
     }
 
     // 1. Locate the start of Stepper-specific data using the parent's block size header
     uint32_t base_block_size = 0;
     std::memcpy(&base_block_size, data.data(), sizeof(uint32_t));
-    log("[StepperNode] loadState: Parent block size header = ", base_block_size);
 
     // Pass the whole data to InternalNodeBase; it will only read up to base_block_size
     if (data.size() >= base_block_size && base_block_size > 0) {
-        if (!InternalNodeBase::loadState(data)) {
-            log("[StepperNode] Base state load failed or skipped.");
-        }
+        InternalNodeBase::loadState(data);
     }
 
     size_t offset = base_block_size;
     
     // Check if there is matrix data appended (UI might send only parameters or a dummy header)
     if (data.size() < offset + (kMaxSteps * sizeof(uint16_t))) {
-        log("[StepperNode] No matrix data found at offset ", offset, ". (Likely parameter update only)");
         return true;
     }
 
@@ -193,8 +181,6 @@ auto StepperNode::loadState(const std::vector<uint8_t>& data) -> bool {
     std::memcpy(_pending_matrix.data(), data.data() + offset, kMaxSteps * sizeof(uint16_t));
     _pending_update.store(true, std::memory_order_release);
     
-    log("[StepperNode] loadState: Matrix stored as PENDING from offset ", offset);
-
     return true;
 }
 

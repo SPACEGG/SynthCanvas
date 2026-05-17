@@ -93,39 +93,29 @@ auto InternalNodeBase::saveState(std::vector<uint8_t>& data) -> bool {
     uint32_t total_block_size = static_cast<uint32_t>(data.size() - start_offset);
     std::memcpy(data.data() + start_offset, &total_block_size, sizeof(uint32_t));
 
-    log("[InternalNodeBase] saveState: Total block size = ", total_block_size,
-        ", Param count = ", param_count);
-
     return true;
 }
 
 auto InternalNodeBase::loadState(const std::vector<uint8_t>& data) -> bool {
-    log("[InternalNodeBase] loadState called with data size: ", data.size());
-    
     if (data.size() < sizeof(uint32_t)) {
-        log("[InternalNodeBase] ERROR: loadState failed, data too small (", data.size(), ")");
         return false;
     }
 
     // 1. Read the total block size
     uint32_t total_block_size = 0;
     std::memcpy(&total_block_size, data.data(), sizeof(uint32_t));
-    log("[InternalNodeBase] loadState: Header says block size = ", total_block_size);
 
     if (data.size() < total_block_size) {
-        log("[InternalNodeBase] ERROR: loadState size mismatch. Actual: ", data.size(), ", Expected: ", total_block_size);
         return false;
     }
 
     // 2. Read parameter count
     uint32_t param_count = 0;
     std::memcpy(&param_count, data.data() + sizeof(uint32_t), sizeof(uint32_t));
-    log("[InternalNodeBase] loadState: Param count = ", param_count);
 
     size_t offset = sizeof(uint32_t) * 2;
     // Safety check: ensure we don't read past the block size
     if (total_block_size < offset + param_count * (sizeof(uint32_t) + sizeof(double))) {
-        log("[InternalNodeBase] ERROR: Block size (", total_block_size, ") is smaller than required for ", param_count, " params.");
         return false;
     }
 
@@ -142,7 +132,6 @@ auto InternalNodeBase::loadState(const std::vector<uint8_t>& data) -> bool {
         setParameterValue(id, val);
     }
     
-    log("[InternalNodeBase] loadState: Successfully restored ", param_count, " parameters.");
     return true;
 }
 

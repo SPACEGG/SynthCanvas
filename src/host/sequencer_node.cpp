@@ -262,8 +262,6 @@ void SequencerNode::queueEvent(const PluginEvent& event) {
 }
 
 auto SequencerNode::saveState(std::vector<uint8_t>& data) -> bool {
-    size_t start_size = data.size();
-
     // 1. Save base class state (parameters) FIRST to align with Godot UI expectations
     if (!InternalNodeBase::saveState(data)) return false;
 
@@ -283,35 +281,25 @@ auto SequencerNode::saveState(std::vector<uint8_t>& data) -> bool {
                     count * sizeof(NoteData));
     }
 
-    log("[SequencerNode] saveState: Total size = ", (data.size() - start_size), 
-        ", Pattern notes = ", count, (has_pending ? " (FROM PENDING)" : ""));
-
     return true;
 }
 
 auto SequencerNode::loadState(const std::vector<uint8_t>& data) -> bool {
-    log("[SequencerNode] loadState: Received data size = ", data.size());
-    
     if (data.size() < sizeof(uint32_t)) {
-        log("[SequencerNode] ERROR: loadState failed, data too small.");
         return false;
     }
 
     // 1. Locate the start of Sequencer-specific data using the parent's block size header
     uint32_t base_block_size = 0;
     std::memcpy(&base_block_size, data.data(), sizeof(uint32_t));
-    log("[SequencerNode] loadState: Parent block size = ", base_block_size);
 
     // Pass the whole data to InternalNodeBase; it will only read up to base_block_size
     if (data.size() >= base_block_size && base_block_size > 0) {
-        if (!InternalNodeBase::loadState(data)) {
-             log("[SequencerNode] Base state load failed or skipped.");
-        }
+        InternalNodeBase::loadState(data);
     }
 
     size_t offset = base_block_size;
     if (data.size() < offset + sizeof(uint32_t)) {
-        log("[SequencerNode] No pattern data found at offset ", offset, ". (Likely parameter update only)");
         return true; 
     }
 
@@ -319,10 +307,7 @@ auto SequencerNode::loadState(const std::vector<uint8_t>& data) -> bool {
     std::memcpy(&count, data.data() + offset, sizeof(uint32_t));
     offset += sizeof(uint32_t);
 
-    log("[SequencerNode] loadState: Header says pattern contains ", count, " notes.");
-
     if (data.size() < offset + (count * sizeof(NoteData))) {
-        log("[SequencerNode] ERROR: Data size is too small for ", count, " notes.");
         return false;
     }
 
@@ -333,8 +318,6 @@ auto SequencerNode::loadState(const std::vector<uint8_t>& data) -> bool {
     }
     _pending_update.store(true, std::memory_order_release);
     
-    log("[SequencerNode] loadState: Successfully restored ", count, " notes.");
-
     return true;
 }
 

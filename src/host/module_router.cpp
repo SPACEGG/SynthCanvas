@@ -338,8 +338,6 @@ void ModuleRouter::pushNewState() {
 
 void ModuleRouter::connectNodes(uint32_t from_node, uint32_t from_port, uint32_t to_node,
                                 uint32_t to_port, ConnectionType type) {
-    log("[ModuleRouter] connectNodes: ", from_node, ":", from_port, " -> ", to_node, ":", to_port, " (type: ", static_cast<int>(type), ")");
-    
     if (getConnectionCount(to_node, to_port, type) >= constants::kMaxConnectionsPerPort) {
         log("[ModuleRouter] ERROR: Cannot connect. Max connections reached for target port.");
         return;
@@ -355,7 +353,6 @@ void ModuleRouter::connectNodes(uint32_t from_node, uint32_t from_port, uint32_t
 
 void ModuleRouter::disconnectNodes(uint32_t from_node, uint32_t from_port, uint32_t to_node,
                                    uint32_t to_port, ConnectionType type) {
-    log("[ModuleRouter] disconnectNodes: ", from_node, ":", from_port, " -> ", to_node, ":", to_port);
     _graph_processor.disconnect({.from_node = from_node,
                                  .from_port = from_port,
                                  .to_node = to_node,
@@ -367,7 +364,6 @@ void ModuleRouter::disconnectNodes(uint32_t from_node, uint32_t from_port, uint3
 void ModuleRouter::updateConnection(uint32_t from_node, uint32_t from_port, uint32_t to_node,
                                     uint32_t to_port, ConnectionType type, float scale,
                                     bool bypass) {
-    log("[ModuleRouter] updateConnection properties: ", from_node, "->", to_node, " scale=", scale, " bypass=", bypass);
     if (_graph_processor.setConnectionProperties({.from_node = from_node,
                                                   .from_port = from_port,
                                                   .to_node = to_node,
