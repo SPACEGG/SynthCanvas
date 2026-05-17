@@ -104,6 +104,7 @@ class PluginHost final : public ProcessingNode, public BaseHost {
     // --- Plugin Loading ---
     auto load(const std::string& path, int plugin_index) -> bool;
     void unload();
+    void syncParameterValues();
 
     // --- Internal Getters ---
     [[nodiscard]] auto isPluginProcessing() const -> bool;

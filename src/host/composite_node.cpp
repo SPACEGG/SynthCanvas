@@ -312,6 +312,7 @@ auto CompositeNode::loadState(const std::vector<uint8_t>& data) -> bool {
         }
     }
 
+    syncExternalParameterValues();
     return true;
 }
 
@@ -438,6 +439,19 @@ void CompositeNode::refreshParameterMetadata() {
                     std::strncpy(_external_params[ext_idx]->info.name, param_id.c_str(),
                                  CLAP_NAME_SIZE);
                 }
+            }
+        }
+    }
+}
+
+void CompositeNode::syncExternalParameterValues() {
+    for (size_t i = 0; i < _external_params.size(); ++i) {
+        if (auto& slot = _external_params[i]) {
+            auto target = getInternalParameterTarget(static_cast<clap_id>(i));
+            if (target.node) {
+                double actual_val = target.node->getParameterBaseValue(target.internal_id);
+                slot->base_value.store(actual_val, std::memory_order_relaxed);
+                slot->current_value.store(actual_val, std::memory_order_relaxed);
             }
         }
     }

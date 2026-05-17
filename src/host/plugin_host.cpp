@@ -690,7 +690,27 @@ auto PluginHost::loadState(const std::vector<uint8_t>& data) -> bool {
     stream.ctx = &ctx;
     stream.read = clapIStreamRead;
 
-    return state_ext->load(_plugin->clapPlugin(), &stream);
+    bool success = state_ext->load(_plugin->clapPlugin(), &stream);
+    if (success) {
+        syncParameterValues();
+    }
+    return success;
+}
+
+void PluginHost::syncParameterValues() {
+    if (!_plugin) return;
+
+    auto* params_ext = static_cast<const clap_plugin_params_t*>(
+        _plugin->clapPlugin()->get_extension(_plugin->clapPlugin(), CLAP_EXT_PARAMS));
+    if (!params_ext) return;
+
+    for (auto& slot : _params) {
+        double value = 0;
+        if (params_ext->get_value(_plugin->clapPlugin(), slot->info.id, &value)) {
+            slot->base_value.store(value, std::memory_order_relaxed);
+            slot->current_value.store(value, std::memory_order_relaxed);
+        }
+    }
 }
 
 auto PluginHost::getParameterBaseValue(clap_id param_id) const -> double {
