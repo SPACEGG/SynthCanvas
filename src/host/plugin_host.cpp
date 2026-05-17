@@ -650,17 +650,35 @@ auto PluginHost::saveState(std::vector<uint8_t>& data) -> bool {
 
     if (!state_ext) return true;  // Not an error if the plugin doesn't have state
 
+    std::vector<uint8_t> plugin_data;
+    plugin_data.reserve(1024);
     clap_ostream stream;
-    stream.ctx = &data;
+    stream.ctx = &plugin_data;
     stream.write = clapOStreamWrite;
 
-    return state_ext->save(_plugin->clapPlugin(), &stream);
+    if (state_ext->save(_plugin->clapPlugin(), &stream) && !plugin_data.empty()) {
+        data = std::move(plugin_data);
+        _cached_state = data;  // Update cache
+        return true;
+    } else {
+        // Fallback: If plugin is loading asynchronously, return the cached state
+        if (!_cached_state.empty()) {
+            data = _cached_state;
+            logMessage(CLAP_LOG_INFO, "[PluginHost] Plugin failed to return state, using cache.");
+            return true;
+        }
+    }
+
+    return false;
 }
 
 auto PluginHost::loadState(const std::vector<uint8_t>& data) -> bool {
     checkForMainThread();
 
     if (!_plugin) return false;
+
+    // Cache the state immediately to protect against UI Pulls during async loading
+    _cached_state = data;
 
     auto* state_ext = static_cast<const clap_plugin_state_t*>(
         _plugin->clapPlugin()->get_extension(_plugin->clapPlugin(), CLAP_EXT_STATE));

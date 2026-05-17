@@ -200,6 +200,8 @@ class PluginHost final : public ProcessingNode, public BaseHost {
 
     std::vector<AudioBuffer> _output_buffers;
 
+    std::vector<uint8_t> _cached_state;
+
     std::vector<std::unique_ptr<ParameterSlot>> _params;
     std::unordered_map<clap_id, size_t> _param_id_to_index;
 };

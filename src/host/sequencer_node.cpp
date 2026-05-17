@@ -263,23 +263,28 @@ void SequencerNode::queueEvent(const PluginEvent& event) {
 
 auto SequencerNode::saveState(std::vector<uint8_t>& data) -> bool {
     size_t start_size = data.size();
-    
+
     // 1. Save base class state (parameters) FIRST to align with Godot UI expectations
     if (!InternalNodeBase::saveState(data)) return false;
 
-    // 2. Append Sequencer-specific pattern state
-    auto count = static_cast<uint32_t>(_active_pattern.size());
+    // 2. Append Sequencer-specific pattern state afterwards
+    // CRITICAL: If a pending update exists (just loaded but not yet processed by audio thread),
+    // we must return the pending pattern to prevent UI data loss.
+    bool has_pending = _pending_update.load(std::memory_order_acquire);
+    const auto& pattern_to_save = has_pending ? _pending_pattern : _active_pattern;
+
+    auto count = static_cast<uint32_t>(pattern_to_save.size());
     size_t start = data.size();
     data.resize(start + sizeof(uint32_t) + (count * sizeof(NoteData)));
 
     std::memcpy(data.data() + start, &count, sizeof(uint32_t));
     if (count > 0) {
-        std::memcpy(data.data() + start + sizeof(uint32_t), _active_pattern.data(),
+        std::memcpy(data.data() + start + sizeof(uint32_t), pattern_to_save.data(),
                     count * sizeof(NoteData));
     }
 
     log("[SequencerNode] saveState: Total size = ", (data.size() - start_size), 
-        ", Pattern notes = ", count);
+        ", Pattern notes = ", count, (has_pending ? " (FROM PENDING)" : ""));
 
     return true;
 }

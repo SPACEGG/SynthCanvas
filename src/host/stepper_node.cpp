@@ -40,6 +40,18 @@ void StepperNode::activate(int32_t sample_rate, int32_t block_size) {
     _current_index.store(-1, std::memory_order_relaxed);
 }
 
+void StepperNode::processBegin(int num_frames) {
+    InternalNodeBase::processBegin(num_frames);
+
+    // Apply pending matrix updates from UI or Project Load
+    if (_pending_update.load(std::memory_order_acquire)) {
+        for (uint32_t i = 0; i < kMaxSteps; ++i) {
+            _matrix[i].store(_pending_matrix[i], std::memory_order_relaxed);
+        }
+        _pending_update.store(false, std::memory_order_release);
+    }
+}
+
 void StepperNode::setParameterValue(clap_id param_id, double value) {
     InternalNodeBase::setParameterValue(param_id, value);
 
@@ -125,17 +137,26 @@ auto StepperNode::saveState(std::vector<uint8_t>& data) -> bool {
     if (!InternalNodeBase::saveState(data)) return false;
 
     // 2. Save Stepper-specific matrix state (fixed 64 bytes)
+    // CRITICAL: If a pending update exists (just loaded but not yet processed by audio thread),
+    // we must return the pending matrix to prevent UI data loss.
+    bool has_pending = _pending_update.load(std::memory_order_acquire);
+    
     size_t start = data.size();
     data.resize(start + (kMaxSteps * sizeof(uint16_t)));
 
     std::array<uint16_t, kMaxSteps> buffer;
     for (uint32_t i = 0; i < kMaxSteps; ++i) {
-        buffer[i] = _matrix[i].load(std::memory_order_relaxed);
+        if (has_pending) {
+            buffer[i] = _pending_matrix[i];
+        } else {
+            buffer[i] = _matrix[i].load(std::memory_order_relaxed);
+        }
     }
 
     std::memcpy(data.data() + start, buffer.data(), buffer.size() * sizeof(uint16_t));
     
-    log("[StepperNode] saveState: Total size = ", (data.size() - start_size));
+    log("[StepperNode] saveState: Total size = ", (data.size() - start_size), 
+        (has_pending ? " (FROM PENDING)" : ""));
 
     return true;
 }
@@ -168,14 +189,11 @@ auto StepperNode::loadState(const std::vector<uint8_t>& data) -> bool {
         return true;
     }
 
-    std::array<uint16_t, kMaxSteps> buffer;
-    std::memcpy(buffer.data(), data.data() + offset, buffer.size() * sizeof(uint16_t));
-
-    for (uint32_t i = 0; i < kMaxSteps; ++i) {
-        _matrix[i].store(buffer[i], std::memory_order_relaxed);
-    }
+    // Store in pending buffer to be applied by audio thread
+    std::memcpy(_pending_matrix.data(), data.data() + offset, kMaxSteps * sizeof(uint16_t));
+    _pending_update.store(true, std::memory_order_release);
     
-    log("[StepperNode] loadState: Matrix successfully restored from offset ", offset);
+    log("[StepperNode] loadState: Matrix stored as PENDING from offset ", offset);
 
     return true;
 }
