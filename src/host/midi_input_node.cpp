@@ -26,7 +26,9 @@ MidiInputNode::MidiInputNode() {
     addEventPort("MIDI Out", false);
 }
 
-MidiInputNode::~MidiInputNode() { deactivateInternal(); }
+MidiInputNode::~MidiInputNode() {
+    deactivateInternal();
+}
 
 void MidiInputNode::activate(int32_t sample_rate, int32_t block_size) {
     InternalNodeBase::activate(sample_rate, block_size);
@@ -34,7 +36,9 @@ void MidiInputNode::activate(int32_t sample_rate, int32_t block_size) {
     openPort(_port_index);
 }
 
-void MidiInputNode::deactivate() { deactivateInternal(); }
+void MidiInputNode::deactivate() {
+    deactivateInternal();
+}
 
 void MidiInputNode::deactivateInternal() {
     closePort();
@@ -59,7 +63,7 @@ void MidiInputNode::openPort(uint32_t port_index) {
 }
 
 void MidiInputNode::closePort() {
-    if (_midi_in && _midi_in->isPortOpen()) {
+    if (_midi_in) {
         try {
             _midi_in->cancelCallback();
             _midi_in->closePort();
@@ -118,6 +122,9 @@ void MidiInputNode::midiCallback(double time_stamp, std::vector<unsigned char>* 
 
 void MidiInputNode::errorCallback(rt::midi::RtMidiError::Type type, const std::string& error_text,
                                   void* user_data) {
+    if (type == rt::midi::RtMidiError::WARNING || type == rt::midi::RtMidiError::DEBUG_WARNING) {
+        return;
+    }
     log("[MidiInputNode] RtMidi ERROR [Type: ", static_cast<int>(type), "]: ", error_text);
     auto* node = static_cast<MidiInputNode*>(user_data);
     node->_pending_close.store(true, std::memory_order_relaxed);

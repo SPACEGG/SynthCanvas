@@ -44,8 +44,6 @@ class MidiInputNode : public InternalNodeBase {
     std::atomic<bool> _pending_close{false};
     int32_t _current_num_frames = 0;
 
-    std::unique_ptr<rt::midi::RtMidiIn> _midi_in;
-
     struct RawMidiMessage {
         std::chrono::high_resolution_clock::time_point arrival_time;
         std::array<uint8_t, 4> data;
@@ -61,6 +59,8 @@ class MidiInputNode : public InternalNodeBase {
     std::chrono::high_resolution_clock::time_point _block_start_time;
 
     uint32_t _port_index = 0;
+
+    std::unique_ptr<rt::midi::RtMidiIn> _midi_in;
 };
 
 }  // namespace synth_canvas::host
