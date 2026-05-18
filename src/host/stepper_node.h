@@ -1,16 +1,17 @@
 #ifndef SYNTH_CANVAS_HOST_STEPPER_NODE_H
 #define SYNTH_CANVAS_HOST_STEPPER_NODE_H
 
-#include <atomic>
 #include <array>
+#include <atomic>
 #include <vector>
 
 #include "internal_node_base.h"
 
+
 namespace synth_canvas::host {
 
 class StepperNode final : public InternalNodeBase {
-public:
+   public:
     static constexpr uint32_t kMaxSteps = 32;
     static constexpr uint32_t kMaxPorts = 16;
 
@@ -30,13 +31,14 @@ public:
     auto saveState(std::vector<uint8_t>& data) -> bool override;
     auto loadState(const std::vector<uint8_t>& data) -> bool override;
 
-    [[nodiscard]] auto getAudioPorts(bool is_input) const -> const std::vector<AudioPortInfo>& override;
+    [[nodiscard]] auto getAudioPorts(bool is_input) const
+        -> const std::vector<AudioPortInfo>& override;
 
-private:
+   private:
     void updateActivePortsMetadata();
 
     std::array<std::atomic<uint16_t>, kMaxSteps> _matrix;
-    
+
     // Buffer for pending updates from UI or Project Load
     std::array<uint16_t, kMaxSteps> _pending_matrix;
     std::atomic<bool> _pending_update{false};
@@ -48,6 +50,6 @@ private:
     std::vector<AudioPortInfo> _active_output_ports;
 };
 
-} // namespace synth_canvas::host
+}  // namespace synth_canvas::host
 
-#endif // SYNTH_CANVAS_HOST_STEPPER_NODE_H
+#endif  // SYNTH_CANVAS_HOST_STEPPER_NODE_H

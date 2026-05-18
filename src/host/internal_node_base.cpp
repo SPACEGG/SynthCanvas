@@ -4,8 +4,6 @@
 #include <cmath>
 #include <cstring>
 
-#include "logger.h"
-
 namespace synth_canvas::host {
 
 InternalNodeBase::InternalNodeBase() { _output_buffer.owns_memory = true; }
@@ -90,7 +88,7 @@ auto InternalNodeBase::saveState(std::vector<uint8_t>& data) -> bool {
     }
 
     // 4. Update the total block size at the start
-    uint32_t total_block_size = static_cast<uint32_t>(data.size() - start_offset);
+    auto total_block_size = static_cast<uint32_t>(data.size() - start_offset);
     std::memcpy(data.data() + start_offset, &total_block_size, sizeof(uint32_t));
 
     return true;
@@ -131,7 +129,7 @@ auto InternalNodeBase::loadState(const std::vector<uint8_t>& data) -> bool {
 
         setParameterValue(id, val);
     }
-    
+
     return true;
 }
 

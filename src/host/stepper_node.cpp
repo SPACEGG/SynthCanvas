@@ -2,8 +2,6 @@
 
 #include <cstring>
 
-#include "logger.h"
-
 namespace synth_canvas::host {
 
 StepperNode::StepperNode() {
@@ -138,7 +136,7 @@ auto StepperNode::saveState(std::vector<uint8_t>& data) -> bool {
     // CRITICAL: If a pending update exists (just loaded but not yet processed by audio thread),
     // we must return the pending matrix to prevent UI data loss.
     bool has_pending = _pending_update.load(std::memory_order_acquire);
-    
+
     size_t start = data.size();
     data.resize(start + (kMaxSteps * sizeof(uint16_t)));
 
@@ -152,7 +150,7 @@ auto StepperNode::saveState(std::vector<uint8_t>& data) -> bool {
     }
 
     std::memcpy(data.data() + start, buffer.data(), buffer.size() * sizeof(uint16_t));
-    
+
     return true;
 }
 
@@ -171,7 +169,7 @@ auto StepperNode::loadState(const std::vector<uint8_t>& data) -> bool {
     }
 
     size_t offset = base_block_size;
-    
+
     // Check if there is matrix data appended (UI might send only parameters or a dummy header)
     if (data.size() < offset + (kMaxSteps * sizeof(uint16_t))) {
         return true;
@@ -180,7 +178,7 @@ auto StepperNode::loadState(const std::vector<uint8_t>& data) -> bool {
     // Store in pending buffer to be applied by audio thread
     std::memcpy(_pending_matrix.data(), data.data() + offset, kMaxSteps * sizeof(uint16_t));
     _pending_update.store(true, std::memory_order_release);
-    
+
     return true;
 }
 

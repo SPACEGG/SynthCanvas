@@ -87,7 +87,8 @@ class ProcessingNode {
 
     // Direct Parameter Rescan Callback (invoked on the main thread when plugin metadata changes)
     std::function<void(uint32_t)> on_params_rescan;
-    // Port Count Change Callback (invoked on the main thread when a node's active port count changes)
+    // Port Count Change Callback (invoked on the main thread when a node's active port count
+    // changes)
     std::function<void(uint32_t)> on_ports_changed;
 };
 

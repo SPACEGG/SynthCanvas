@@ -300,7 +300,7 @@ auto SequencerNode::loadState(const std::vector<uint8_t>& data) -> bool {
 
     size_t offset = base_block_size;
     if (data.size() < offset + sizeof(uint32_t)) {
-        return true; 
+        return true;
     }
 
     uint32_t count;
@@ -317,7 +317,7 @@ auto SequencerNode::loadState(const std::vector<uint8_t>& data) -> bool {
         _pending_pattern.insert(_pending_pattern.end(), src, src + count);
     }
     _pending_update.store(true, std::memory_order_release);
-    
+
     return true;
 }
 

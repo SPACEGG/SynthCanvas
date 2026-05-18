@@ -7,7 +7,6 @@
 
 #include "internal_node_base.h"
 
-
 namespace synth_canvas::host {
 
 class SequencerNode final : public InternalNodeBase {

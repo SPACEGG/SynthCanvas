@@ -796,7 +796,7 @@ void PluginHost::processBegin(int nframes) {
 void PluginHost::processEvents(int nframes) {
     g_thread_type = ThreadType::kAudioThread;
     if (!_plugin || !isActive()) return;
-    
+
     // Process only events (num_frames = 0)
     _process.frames_count = 0;
     generatePluginInputEvents();

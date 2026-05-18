@@ -26,9 +26,7 @@ MidiInputNode::MidiInputNode() {
     addEventPort("MIDI Out", false);
 }
 
-MidiInputNode::~MidiInputNode() {
-    deactivateInternal();
-}
+MidiInputNode::~MidiInputNode() { deactivateInternal(); }
 
 void MidiInputNode::activate(int32_t sample_rate, int32_t block_size) {
     InternalNodeBase::activate(sample_rate, block_size);
@@ -36,9 +34,7 @@ void MidiInputNode::activate(int32_t sample_rate, int32_t block_size) {
     openPort(_port_index);
 }
 
-void MidiInputNode::deactivate() {
-    deactivateInternal();
-}
+void MidiInputNode::deactivate() { deactivateInternal(); }
 
 void MidiInputNode::deactivateInternal() {
     closePort();

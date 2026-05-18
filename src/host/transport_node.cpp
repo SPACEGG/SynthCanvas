@@ -6,8 +6,7 @@ namespace synth_canvas::host {
 
 TransportNode::TransportNode() {
     _node_type_name = "transport";
-    addParameter(kParamTempo, "Tempo", "Transport", 20.0, 300.0, 120.0,
-                 CLAP_PARAM_IS_AUTOMATABLE);
+    addParameter(kParamTempo, "Tempo", "Transport", 20.0, 300.0, 120.0, CLAP_PARAM_IS_AUTOMATABLE);
     addParameter(kParamPlaying, "Playing", "Transport", 0.0, 1.0, 0.0,
                  CLAP_PARAM_IS_AUTOMATABLE | CLAP_PARAM_IS_STEPPED);
 }
@@ -17,7 +16,7 @@ void TransportNode::processBegin(int num_frames) {
 
     if (_transport) {
         bool changed = false;
-        
+
         // Sync from global transport if different from what we last saw
         if (std::abs(_transport->tempo - _last_tempo) > 0.001) {
             _last_tempo = _transport->tempo;

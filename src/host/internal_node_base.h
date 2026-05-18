@@ -55,10 +55,8 @@ class InternalNodeBase : public ProcessingNode {
     // Metadata
     void setInstanceId(uint32_t id) override { _instance_id = id; }
     [[nodiscard]] auto getInstanceId() const -> uint32_t override { return _instance_id; }
-    [[nodiscard]] virtual auto getNodeType() const -> std::string override { return "special"; }
-    [[nodiscard]] virtual auto getCreationInfo() const -> std::string override {
-        return _node_type_name;
-    }
+    [[nodiscard]] auto getNodeType() const -> std::string override { return "special"; }
+    [[nodiscard]] auto getCreationInfo() const -> std::string override { return _node_type_name; }
     [[nodiscard]] auto getAudioPorts(bool is_input) const
         -> const std::vector<AudioPortInfo>& override;
     [[nodiscard]] auto getParameters() const

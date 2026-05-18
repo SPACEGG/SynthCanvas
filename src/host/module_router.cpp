@@ -258,11 +258,12 @@ auto ModuleRouter::deserializeConnections(const std::string& json_str) -> bool {
             for (const auto& conn_j : j["connections"]) {
                 uint32_t from = conn_j["from_node"];
                 uint32_t to = conn_j["to_node"];
-                
+
                 // Allow connections to the virtual speaker node (ID 0)
                 bool is_to_speaker = (to == constants::kAudioOutputNoteId);
-                
-                if (_graph_processor.getNode(from) && (is_to_speaker || _graph_processor.getNode(to))) {
+
+                if (_graph_processor.getNode(from) &&
+                    (is_to_speaker || _graph_processor.getNode(to))) {
                     auto type = static_cast<ConnectionType>(conn_j["type"].get<int>());
                     float scale = conn_j.value("scale", 1.0f);
                     bool bypass = conn_j.value("bypass", false);
@@ -271,7 +272,8 @@ auto ModuleRouter::deserializeConnections(const std::string& json_str) -> bool {
                     updateConnection(from, conn_j["from_port"], to, conn_j["to_port"], type, scale,
                                      bypass);
                 } else {
-                    log("[ModuleRouter] Skipping connection ", from, "->", to, " (One or more nodes missing)");
+                    log("[ModuleRouter] Skipping connection ", from, "->", to,
+                        " (One or more nodes missing)");
                 }
             }
         }

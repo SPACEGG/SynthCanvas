@@ -126,7 +126,7 @@ void GraphProcessor::topologicalSort() {
     while (_process_order.size() < _nodes.size()) {
         if (q.empty()) {
             // Cycle detected! Perform Smart Cycle Breaking.
-            
+
             // 1. Calculate active out-degree among remaining nodes
             std::unordered_map<uint32_t, int> active_out_degree;
             for (const auto& conn : _connections) {
@@ -144,7 +144,7 @@ void GraphProcessor::topologicalSort() {
             // DO NOT pick "victim" downstream nodes (active_out_degree == 0).
             for (const auto& [id, node] : _nodes) {
                 if (is_processed(id)) continue;
-                
+
                 // Skip nodes that don't point to any other unprocessed node
                 if (active_out_degree[id] == 0) continue;
 
@@ -155,7 +155,8 @@ void GraphProcessor::topologicalSort() {
                 }
             }
 
-            // Fallback 1: If all nodes in cycle have strong connections, just pick the lowest ID in cycle
+            // Fallback 1: If all nodes in cycle have strong connections, just pick the lowest ID in
+            // cycle
             if (best_node == 0xFFFFFFFF) {
                 for (const auto& [id, node] : _nodes) {
                     if (is_processed(id)) continue;
@@ -165,10 +166,10 @@ void GraphProcessor::topologicalSort() {
                     }
                 }
             }
-            
+
             // Fallback 2: Extreme edge case where everything left is a disconnected downstream node
             if (best_node == 0xFFFFFFFF) {
-                 for (const auto& [id, node] : _nodes) {
+                for (const auto& [id, node] : _nodes) {
                     if (is_processed(id)) continue;
                     if (best_node == 0xFFFFFFFF || id < best_node) {
                         best_node = id;
@@ -178,8 +179,9 @@ void GraphProcessor::topologicalSort() {
 
             if (best_node != 0xFFFFFFFF) {
                 q.push(best_node);
-            } else
+            } else {
                 break;
+            }
         }
 
         while (!q.empty()) {
