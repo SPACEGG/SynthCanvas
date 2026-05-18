@@ -33,6 +33,8 @@ void SynthCanvasAudioSystem::_bind_methods() {
                                 &SynthCanvasAudioSystem::setTempo);
     godot::ClassDB::bind_method(godot::D_METHOD("set_transport_playing", "playing"),
                                 &SynthCanvasAudioSystem::setTransportPlaying);
+    godot::ClassDB::bind_method(godot::D_METHOD("get_transport_state"),
+                                &SynthCanvasAudioSystem::getTransportState);
     godot::ClassDB::bind_method(
         godot::D_METHOD("play_note", "instance_id", "note", "velocity", "note_id"),
         &SynthCanvasAudioSystem::playNote, DEFVAL(-1));
@@ -55,7 +57,8 @@ void SynthCanvasAudioSystem::_bind_methods() {
     godot::ClassDB::bind_method(godot::D_METHOD("set_state", "instance_id", "data"),
                                 &SynthCanvasAudioSystem::setState);
 
-    godot::ClassDB::bind_method(godot::D_METHOD("save_project"), &SynthCanvasAudioSystem::saveProject);
+    godot::ClassDB::bind_method(godot::D_METHOD("save_project"),
+                                &SynthCanvasAudioSystem::saveProject);
     godot::ClassDB::bind_method(godot::D_METHOD("load_project", "json_str"),
                                 &SynthCanvasAudioSystem::loadProject);
 
