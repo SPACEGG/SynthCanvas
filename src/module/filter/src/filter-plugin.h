@@ -56,6 +56,7 @@ class FilterPlugin : public clap::helpers::Plugin<clap::helpers::MisbehaviourHan
         kParamSlope,
         kParamMix,
         kParamDrive,
+        kParamGain,
         kParamCount
     };
 
@@ -70,18 +71,21 @@ class FilterPlugin : public clap::helpers::Plugin<clap::helpers::MisbehaviourHan
     double _slope{0.0};
     double _mix{1.0};
     double _drive_db{0.0};
+    double _gain_db{0.0};
 
     // Modulation
     double _cutoff_mod{0.0};
     double _resonance_mod{0.0};
     double _mix_mod{0.0};
     double _drive_mod{0.0};
+    double _gain_mod{0.0};
 
     // Smoothing
     double _current_cutoff{1000.0};
     double _current_resonance{0.5};
     double _current_mix{1.0};
     double _current_drive_linear{1.0};
+    double _current_gain_linear{1.0};
     double _smoothing_coeff{0.0};
 
     double _sample_rate{44100.0};

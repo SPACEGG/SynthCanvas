@@ -42,11 +42,12 @@ void SvfEngine::step(float& l, float& r, Mode mode, int num_stages) noexcept {
             double v3 = static_cast<double>(vin[c]) - stage.ic2eq[c];
             double v0 = _a1 * v3 - _ak * stage.ic1eq[c];
 
-            // Non-linearity
+            // Non-linearity: limit the HP signal
             v0 = std::tanh(v0);
 
-            double v1 = _a2 * v3 + _a1 * stage.ic1eq[c];
-            double v2 = _a3 * v3 + _a2 * stage.ic1eq[c] + stage.ic2eq[c];
+            // Derive other modes from the limited v0 to propagate distortion
+            double v1 = _g * v0 + stage.ic1eq[c];
+            double v2 = _g * v1 + stage.ic2eq[c];
 
             stage.ic1eq[c] = 2.0 * v1 - stage.ic1eq[c];
             stage.ic2eq[c] = 2.0 * v2 - stage.ic2eq[c];

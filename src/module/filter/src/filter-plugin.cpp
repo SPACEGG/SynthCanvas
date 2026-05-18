@@ -43,6 +43,7 @@ auto FilterPlugin::activate(double sample_rate, uint32_t min_frames_count,
     _current_resonance = _resonance;
     _current_mix = _mix;
     _current_drive_linear = std::pow(10.0, _drive_db / 20.0);
+    _current_gain_linear = std::pow(10.0, _gain_db / 20.0);
 
     _engine.reset();
 
@@ -120,6 +121,15 @@ auto FilterPlugin::paramsInfo(uint32_t index, clap_param_info* info) const noexc
             info->max_value = 36.0;
             info->default_value = 0.0;
             break;
+        case kParamGain:
+            info->id = kParamGain;
+            info->flags = CLAP_PARAM_IS_AUTOMATABLE | CLAP_PARAM_IS_MODULATABLE;
+            snprintf(info->name, sizeof(info->name), "Gain");
+            snprintf(info->module, sizeof(info->module), "Main");
+            info->min_value = -60.0;
+            info->max_value = 12.0;
+            info->default_value = 0.0;
+            break;
         default:
             return false;
     }
@@ -145,6 +155,9 @@ auto FilterPlugin::paramsValue(clap_id param_id, double* value) noexcept -> bool
             break;
         case kParamDrive:
             *value = _drive_db;
+            break;
+        case kParamGain:
+            *value = _gain_db;
             break;
         default:
             return false;
@@ -178,6 +191,7 @@ auto FilterPlugin::paramsValueToText(clap_id param_id, double value, char* displ
             ss << std::fixed << std::setprecision(2) << value * 100.0 << " %";
             break;
         case kParamDrive:
+        case kParamGain:
             ss << std::fixed << std::setprecision(1) << value << " dB";
             break;
         default:
@@ -226,6 +240,9 @@ void FilterPlugin::paramsFlush(const clap_input_events* in,
                 case kParamDrive:
                     _drive_db = ev->value;
                     break;
+                case kParamGain:
+                    _gain_db = ev->value;
+                    break;
             }
         }
     }
@@ -239,7 +256,8 @@ auto FilterPlugin::stateSave(const clap_ostream* os) noexcept -> bool {
         << "mode=" << _mode << ";"
         << "slope=" << _slope << ";"
         << "mix=" << _mix << ";"
-        << "drive=" << _drive_db << ";";
+        << "drive=" << _drive_db << ";"
+        << "gain=" << _gain_db << ";";
 
     std::string s = oss.str();
     int64_t result = os->write(os, s.c_str(), s.size());
@@ -274,6 +292,8 @@ auto FilterPlugin::stateLoad(const clap_istream* is) noexcept -> bool {
                 _mix = val;
             } else if (key == "drive") {
                 _drive_db = val;
+            } else if (key == "gain") {
+                _gain_db = val;
             }
         } catch (...) {
             // Skip invalid values instead of crashing
@@ -284,6 +304,7 @@ auto FilterPlugin::stateLoad(const clap_istream* is) noexcept -> bool {
     _current_resonance = _resonance;
     _current_mix = _mix;
     _current_drive_linear = std::pow(10.0, _drive_db / 20.0);
+    _current_gain_linear = std::pow(10.0, _gain_db / 20.0);
 
     return true;
 }
@@ -305,12 +326,15 @@ auto FilterPlugin::process(const clap_process* process) noexcept -> clap_process
         double target_mix = std::clamp(_mix + _mix_mod, 0.0, 1.0);
         double target_drive_db = std::clamp(_drive_db + _drive_mod, 0.0, 48.0);
         double target_drive_linear = std::pow(10.0, target_drive_db / 20.0);
+        double target_gain_db = std::clamp(_gain_db + _gain_mod, -60.0, 12.0);
+        double target_gain_linear = std::pow(10.0, target_gain_db / 20.0);
 
         // Smoothing
         _current_cutoff += _smoothing_coeff * (target_cutoff - _current_cutoff);
         _current_resonance += _smoothing_coeff * (target_resonance - _current_resonance);
         _current_mix += _smoothing_coeff * (target_mix - _current_mix);
         _current_drive_linear += _smoothing_coeff * (target_drive_linear - _current_drive_linear);
+        _current_gain_linear += _smoothing_coeff * (target_gain_linear - _current_gain_linear);
 
         // Update DSP coefficients
         int slope_idx = std::clamp(static_cast<int>(_slope + 0.5), 0, 2);
@@ -326,9 +350,9 @@ auto FilterPlugin::process(const clap_process* process) noexcept -> clap_process
         auto mode = static_cast<SvfEngine::Mode>(std::clamp(static_cast<int>(_mode + 0.5), 0, 5));
         _engine.step(l, r, mode, num_stages);
 
-        // Dry/Wet Mix
-        out[0][i] = dry_l + static_cast<float>(_current_mix) * (l - dry_l);
-        out[1][i] = dry_r + static_cast<float>(_current_mix) * (r - dry_r);
+        // Dry/Wet Mix and Output Gain
+        out[0][i] = (dry_l + static_cast<float>(_current_mix) * (l - dry_l)) * static_cast<float>(_current_gain_linear);
+        out[1][i] = (dry_r + static_cast<float>(_current_mix) * (r - dry_r)) * static_cast<float>(_current_gain_linear);
     }
 
     return CLAP_PROCESS_CONTINUE;
@@ -363,6 +387,9 @@ void FilterPlugin::handleEvents(const clap_input_events* in, uint32_t& event_ind
                     case kParamDrive:
                         _drive_db = ev->value;
                         break;
+                    case kParamGain:
+                        _gain_db = ev->value;
+                        break;
                 }
             } else if (header->type == CLAP_EVENT_PARAM_MOD) {
                 const auto* ev = reinterpret_cast<const clap_event_param_mod*>(header);
@@ -379,11 +406,15 @@ void FilterPlugin::handleEvents(const clap_input_events* in, uint32_t& event_ind
                     case kParamDrive:
                         _drive_mod = ev->amount;
                         break;
+                    case kParamGain:
+                        _gain_mod = ev->amount;
+                        break;
                 }
             }
         }
         event_index++;
     }
 }
+
 
 }  // namespace synth_canvas::filter_plugin
