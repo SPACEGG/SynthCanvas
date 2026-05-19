@@ -50,6 +50,8 @@ class SequencerNode final : public InternalNodeBase {
     void process() override;
 
     void setParameterValue(clap_id param_id, double value) override;
+    [[nodiscard]] auto getParameterText(clap_id param_id, double value) const
+        -> std::string override;
     void queueEvent(const PluginEvent& event) override;
 
     auto saveState(std::vector<uint8_t>& data) -> bool override;

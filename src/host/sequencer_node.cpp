@@ -4,8 +4,6 @@
 #include <cmath>
 #include <cstring>
 
-#include "logger.h"
-
 namespace synth_canvas::host {
 
 SequencerNode::SequencerNode() {
@@ -217,6 +215,40 @@ void SequencerNode::setParameterValue(clap_id param_id, double value) {
             break;
         default:
             break;
+    }
+}
+
+auto SequencerNode::getParameterText(clap_id param_id, double value) const -> std::string {
+    switch (param_id) {
+        case kParamSteps:
+            return std::to_string(static_cast<int>(value));
+        case kParamTime: {
+            switch (static_cast<int>(value)) {
+                case 0:
+                    return "1/4";
+                case 1:
+                    return "1/8";
+                case 2:
+                    return "1/8T";
+                case 3:
+                    return "1/16";
+                case 4:
+                    return "1/16T";
+                case 5:
+                    return "1/32";
+                default:
+                    return "1/8";
+            }
+        }
+        case kParamSwing:
+            return std::to_string(static_cast<int>(std::round(value * 100))) + "%";
+        case kParamRestart:
+            return value > 0.5 ? "On" : "Off";
+        case kParamCurrentStep:
+            if (value < 0) return "None";
+            return std::to_string(static_cast<int>(value));
+        default:
+            return InternalNodeBase::getParameterText(param_id, value);
     }
 }
 
