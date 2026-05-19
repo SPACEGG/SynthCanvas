@@ -1,6 +1,7 @@
 #ifndef SYNTH_CANVAS_HOST_INTERNAL_NODE_BASE_H
 #define SYNTH_CANVAS_HOST_INTERNAL_NODE_BASE_H
 
+#include <array>
 #include <memory>
 #include <string>
 #include <vector>
@@ -9,6 +10,21 @@
 #include "readerwriterqueue.h"
 
 namespace synth_canvas::host {
+
+enum class MappingType { Linear, Logarithmic };
+
+/**
+ * Configuration for mapping normalized (0.0~1.0) parameters to functional DSP values.
+ */
+struct ParameterConfig {
+    MappingType type = MappingType::Linear;
+    double min_functional = 0.0;
+    double max_functional = 1.0;
+    std::string unit_suffix;
+
+    [[nodiscard]] auto toFunctional(double normalized) const -> double;
+    [[nodiscard]] auto toNormalized(double functional) const -> double;
+};
 
 /**
  * Base class for internal C++ DSP modules (LFO, Envelope, etc.).
@@ -70,10 +86,23 @@ class InternalNodeBase : public ProcessingNode {
     [[nodiscard]] auto isActive() const -> bool override { return _is_active; }
 
    protected:
-    // Protected helpers for derived classes
+    // Parameter Helpers
     auto getParameterSlot(clap_id param_id) -> ParameterSlot*;
+
+    /** Registers a continuous parameter with automatic 0.0~1.0 normalization and mapping. */
     void addParameter(clap_id id, const std::string& name, const std::string& module,
-                      double min_val, double max_val, double def_val, uint32_t flags = 0);
+                      double def_normalized, const ParameterConfig& config, uint32_t flags = 0);
+
+    /** Registers a discrete integer parameter (bypasses normalization). */
+    void addSteppedParameter(clap_id id, const std::string& name, const std::string& module,
+                             double min_val, double max_val, double def_val, uint32_t flags = 0);
+
+    /** Consumes block-level modulation events up to the specified sample index. */
+    void updateParametersForSample(uint32_t sample_index);
+
+    /** Returns the mapped functional value for a parameter (O(1) lookup). */
+    [[nodiscard]] auto getFunctionalValue(clap_id param_id) const -> double;
+
     void addAudioPort(const std::string& name, bool is_input, uint32_t channel_count = 2,
                       bool is_mod = false, clap_id target_param_id = -1);
     void addEventPort(const std::string& name, bool is_input);
@@ -90,6 +119,20 @@ class InternalNodeBase : public ProcessingNode {
     std::vector<std::unique_ptr<moodycamel::ReaderWriterQueue<PluginEvent>>> _output_event_queues;
     moodycamel::ReaderWriterQueue<PluginEvent> _output_events_to_main{constants::kEventQueueSize};
 
+    // Fast Parameter Mapping
+    static constexpr uint32_t kMaxInternalParams = 32;
+    std::array<ParameterConfig, kMaxInternalParams> _param_configs;
+    std::array<bool, kMaxInternalParams> _param_is_mapped = {false};
+
+    // Sample-accurate modulation tracking
+    struct ModEvent {
+        clap_id param_id;
+        double value;
+        uint32_t sample_offset;
+    };
+    std::vector<ModEvent> _mod_events;
+    size_t _current_mod_event_idx = 0;
+
     uint32_t _instance_id = 0;
     bool _is_active = false;
     bool _processing_enabled = true;
@@ -100,3 +143,4 @@ class InternalNodeBase : public ProcessingNode {
 }  // namespace synth_canvas::host
 
 #endif  // SYNTH_CANVAS_HOST_INTERNAL_NODE_BASE_H
+

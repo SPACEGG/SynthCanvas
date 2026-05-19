@@ -3,8 +3,24 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <iomanip>
+#include <sstream>
 
 namespace synth_canvas::host {
+
+auto ParameterConfig::toFunctional(double normalized) const -> double {
+    if (type == MappingType::Logarithmic) {
+        return min_functional * std::pow(max_functional / min_functional, normalized);
+    }
+    return min_functional + normalized * (max_functional - min_functional);
+}
+
+auto ParameterConfig::toNormalized(double functional) const -> double {
+    if (type == MappingType::Logarithmic) {
+        return std::log(functional / min_functional) / std::log(max_functional / min_functional);
+    }
+    return (functional - min_functional) / (max_functional - min_functional);
+}
 
 InternalNodeBase::InternalNodeBase() { _output_buffer.owns_memory = true; }
 
@@ -20,11 +36,14 @@ void InternalNodeBase::deactivate() { _is_active = false; }
 void InternalNodeBase::processBegin(int num_frames) {
     _output_buffer.frames = num_frames;
     _output_buffer.clear();
+
+    // Reset modulation tracking for the new block
+    _mod_events.clear();
+    _current_mod_event_idx = 0;
 }
 
 void InternalNodeBase::processEvents(int num_frames) {
-    // Default implementation: do nothing. Derived classes (like SequencerNode)
-    // can override this to re-run event generation logic during re-injections.
+    // Default implementation: do nothing.
 }
 
 void InternalNodeBase::processEnd(int num_frames) {
@@ -42,15 +61,16 @@ void InternalNodeBase::reserveOutputBuffers(uint32_t count) {
 
 void InternalNodeBase::setPorts(uint32_t num_inputs, clap_audio_buffer* inputs,
                                 uint32_t num_outputs, clap_audio_buffer* outputs) {
-    // Internal nodes usually manage their own buffers,
-    // but we can map the framework's output pointers if needed.
-    // For now, we rely on getOutputBuffer() for internal routing.
 }
 
 void InternalNodeBase::setParameterValue(clap_id param_id, double value) {
     if (auto* slot = getParameterSlot(param_id)) {
         slot->base_value.store(value, std::memory_order_relaxed);
-        slot->current_value.store(value, std::memory_order_relaxed);
+        // Note: current_value should ideally be updated during DSP loop via updateParametersForSample,
+        // but for main-thread queries or immediate updates, we sync it here too.
+        double mod = slot->modulation_value.load(std::memory_order_relaxed);
+        double combined = std::clamp(value + mod, slot->info.min_value, slot->info.max_value);
+        slot->current_value.store(combined, std::memory_order_relaxed);
     }
 }
 
@@ -59,23 +79,19 @@ void InternalNodeBase::setParameterValue(const std::string& param_id, double val
         auto id = static_cast<clap_id>(std::stoul(param_id));
         setParameterValue(id, value);
     } catch (...) {
-        // Handle non-numeric string IDs if necessary, or log error
     }
 }
 
 auto InternalNodeBase::saveState(std::vector<uint8_t>& data) -> bool {
-    // 1. Reserve 4 bytes for the total block size
     size_t start_offset = data.size();
     uint32_t placeholder_size = 0;
     const auto* p_placeholder = reinterpret_cast<const uint8_t*>(&placeholder_size);
     data.insert(data.end(), p_placeholder, p_placeholder + sizeof(uint32_t));
 
-    // 2. Save parameter count
     auto param_count = static_cast<uint32_t>(_parameters.size());
     const auto* p_count = reinterpret_cast<const uint8_t*>(&param_count);
     data.insert(data.end(), p_count, p_count + sizeof(uint32_t));
 
-    // 3. Save parameters
     for (const auto& param : _parameters) {
         uint32_t id = param->info.id;
         double val = param->base_value.load(std::memory_order_relaxed);
@@ -87,7 +103,6 @@ auto InternalNodeBase::saveState(std::vector<uint8_t>& data) -> bool {
         data.insert(data.end(), p_val, p_val + sizeof(double));
     }
 
-    // 4. Update the total block size at the start
     auto total_block_size = static_cast<uint32_t>(data.size() - start_offset);
     std::memcpy(data.data() + start_offset, &total_block_size, sizeof(uint32_t));
 
@@ -99,7 +114,6 @@ auto InternalNodeBase::loadState(const std::vector<uint8_t>& data) -> bool {
         return false;
     }
 
-    // 1. Read the total block size
     uint32_t total_block_size = 0;
     std::memcpy(&total_block_size, data.data(), sizeof(uint32_t));
 
@@ -107,12 +121,10 @@ auto InternalNodeBase::loadState(const std::vector<uint8_t>& data) -> bool {
         return false;
     }
 
-    // 2. Read parameter count
     uint32_t param_count = 0;
     std::memcpy(&param_count, data.data() + sizeof(uint32_t), sizeof(uint32_t));
 
     size_t offset = sizeof(uint32_t) * 2;
-    // Safety check: ensure we don't read past the block size
     if (total_block_size < offset + param_count * (sizeof(uint32_t) + sizeof(double))) {
         return false;
     }
@@ -134,16 +146,8 @@ auto InternalNodeBase::loadState(const std::vector<uint8_t>& data) -> bool {
 }
 
 void InternalNodeBase::applyModulation(clap_id param_id, double value, uint32_t sample_offset) {
-    if (auto* slot = getParameterSlot(param_id)) {
-        slot->modulation_value.store(value, std::memory_order_relaxed);
-        slot->has_modulation = std::abs(value) > 1e-6;
-
-        // Update current value: base + mod (clamped to info range)
-        double base = slot->base_value.load(std::memory_order_relaxed);
-        double combined = base + value;
-        combined = std::max(slot->info.min_value, std::min(slot->info.max_value, combined));
-        slot->current_value.store(combined, std::memory_order_relaxed);
-    }
+    // Record the modulation event for sample-accurate processing
+    _mod_events.push_back({param_id, value, sample_offset});
 }
 
 auto InternalNodeBase::getParameterBaseValue(clap_id param_id) const -> double {
@@ -198,11 +202,16 @@ auto InternalNodeBase::getParameterSlot(clap_id param_id) -> ParameterSlot* {
 }
 
 auto InternalNodeBase::getParameterText(clap_id param_id, double value) const -> std::string {
+    if (param_id < kMaxInternalParams && _param_is_mapped[param_id]) {
+        double functional = _param_configs[param_id].toFunctional(value);
+        std::stringstream ss;
+        ss << std::fixed << std::setprecision(2) << functional << _param_configs[param_id].unit_suffix;
+        return ss.str();
+    }
     return std::to_string(value);
 }
 
 void InternalNodeBase::queueEvent(const PluginEvent& event) {
-    // Default implementation: do nothing
 }
 
 auto InternalNodeBase::getAudioPorts(bool is_input) const -> const std::vector<AudioPortInfo>& {
@@ -210,8 +219,35 @@ auto InternalNodeBase::getAudioPorts(bool is_input) const -> const std::vector<A
 }
 
 void InternalNodeBase::addParameter(clap_id id, const std::string& name, const std::string& module,
-                                    double min_val, double max_val, double def_val,
+                                    double def_normalized, const ParameterConfig& config,
                                     uint32_t flags) {
+    auto slot = std::make_unique<ParameterSlot>();
+    slot->info.id = id;
+    std::strncpy(slot->info.name, name.c_str(), sizeof(slot->info.name) - 1);
+    std::strncpy(slot->info.module, module.c_str(), sizeof(slot->info.module) - 1);
+
+    // Continuous parameters are always 0.0 ~ 1.0 in normalized space
+    slot->info.min_value = 0.0;
+    slot->info.max_value = 1.0;
+    slot->info.default_value = std::clamp(def_normalized, 0.0, 1.0);
+    slot->info.flags = CLAP_PARAM_IS_MODULATABLE | flags;
+
+    slot->base_value.store(slot->info.default_value);
+    slot->current_value.store(slot->info.default_value);
+    slot->modulation_value.store(0.0);
+
+    _parameters.push_back(std::move(slot));
+
+    // Store mapping config for fast functional value access
+    if (id < kMaxInternalParams) {
+        _param_configs[id] = config;
+        _param_is_mapped[id] = true;
+    }
+}
+
+void InternalNodeBase::addSteppedParameter(clap_id id, const std::string& name,
+                                           const std::string& module, double min_val,
+                                           double max_val, double def_val, uint32_t flags) {
     auto slot = std::make_unique<ParameterSlot>();
     slot->info.id = id;
     std::strncpy(slot->info.name, name.c_str(), sizeof(slot->info.name) - 1);
@@ -219,13 +255,41 @@ void InternalNodeBase::addParameter(clap_id id, const std::string& name, const s
     slot->info.min_value = min_val;
     slot->info.max_value = max_val;
     slot->info.default_value = def_val;
-    slot->info.flags = CLAP_PARAM_IS_MODULATABLE | flags;
+    slot->info.flags = CLAP_PARAM_IS_STEPPED | flags;
 
     slot->base_value.store(def_val);
     slot->current_value.store(def_val);
     slot->modulation_value.store(0.0);
 
     _parameters.push_back(std::move(slot));
+
+    if (id < kMaxInternalParams) {
+        _param_is_mapped[id] = false;
+    }
+}
+
+void InternalNodeBase::updateParametersForSample(uint32_t sample_index) {
+    while (_current_mod_event_idx < _mod_events.size() &&
+           _mod_events[_current_mod_event_idx].sample_offset <= sample_index) {
+        const auto& ev = _mod_events[_current_mod_event_idx];
+        if (auto* slot = getParameterSlot(ev.param_id)) {
+            slot->modulation_value.store(ev.value, std::memory_order_relaxed);
+            slot->has_modulation = std::abs(ev.value) > 1e-6;
+
+            double base = slot->base_value.load(std::memory_order_relaxed);
+            double combined = std::clamp(base + ev.value, slot->info.min_value, slot->info.max_value);
+            slot->current_value.store(combined, std::memory_order_relaxed);
+        }
+        _current_mod_event_idx++;
+    }
+}
+
+auto InternalNodeBase::getFunctionalValue(clap_id param_id) const -> double {
+    double normalized = getParameterCurrentValue(param_id);
+    if (param_id < kMaxInternalParams && _param_is_mapped[param_id]) {
+        return _param_configs[param_id].toFunctional(normalized);
+    }
+    return normalized;
 }
 
 void InternalNodeBase::addAudioPort(const std::string& name, bool is_input, uint32_t channel_count,
@@ -249,9 +313,6 @@ void InternalNodeBase::addAudioPort(const std::string& name, bool is_input, uint
 }
 
 void InternalNodeBase::addEventPort(const std::string& name, bool is_input) {
-    // Note: We use the same AudioPortInfo structure for now but set port_type to something else if
-    // needed. However, the GraphProcessor expects nodes to have ports. For internal nodes, we just
-    // need to ensure _output_event_queues has a queue for every output port index.
     AudioPortInfo port;
     port.index = static_cast<uint32_t>(is_input ? _input_ports.size() : _output_ports.size());
     port.is_input = is_input;
@@ -261,7 +322,7 @@ void InternalNodeBase::addEventPort(const std::string& name, bool is_input) {
     std::strncpy(port.clap_info.name, name.c_str(), sizeof(port.clap_info.name) - 1);
     port.clap_info.channel_count = 0;
     port.clap_info.flags = CLAP_AUDIO_PORT_IS_MAIN;
-    port.clap_info.port_type = "event";  // Custom type or use CLAP_PORT_MIDI
+    port.clap_info.port_type = "event";
 
     if (is_input) {
         _input_ports.push_back(port);
