@@ -111,6 +111,8 @@ void GainPlugin::paramsFlush(const clap_input_events* in, const clap_output_even
     uint32_t size = in->size(in);
     for (uint32_t i = 0; i < size; ++i) {
         const clap_event_header_t* hdr = in->get(in, i);
+        if (hdr->space_id != CLAP_CORE_EVENT_SPACE_ID) continue;
+
         if (hdr->type == CLAP_EVENT_PARAM_VALUE) {
             auto* ev = reinterpret_cast<const clap_event_param_value*>(hdr);
             if (ev->param_id == kParamGain) {
@@ -124,6 +126,42 @@ void GainPlugin::paramsFlush(const clap_input_events* in, const clap_output_even
         }
     }
     updateTargetGain();
+}
+
+auto GainPlugin::stateSave(const clap_ostream* os) noexcept -> bool {
+    std::ostringstream oss;
+    oss.imbue(std::locale::classic());
+    oss << "gain=" << _gain_normalized << ";";
+
+    std::string s = oss.str();
+    int64_t result = os->write(os, s.c_str(), s.size());
+    return result == static_cast<int64_t>(s.size());
+}
+
+auto GainPlugin::stateLoad(const clap_istream* is) noexcept -> bool {
+    std::array<char, 256> buffer;
+    int64_t result = is->read(is, buffer.data(), buffer.size() - 1);
+    if (result <= 0) return false;
+    buffer[result] = '\0';
+
+    std::string s(buffer.data());
+    std::string pair;
+    std::stringstream ss(s);
+    while (std::getline(ss, pair, ';')) {
+        size_t pos = pair.find('=');
+        if (pos == std::string::npos) continue;
+        std::string key = pair.substr(0, pos);
+        std::string val_str = pair.substr(pos + 1);
+        try {
+            double val = std::stod(val_str);
+            if (key == "gain") {
+                _gain_normalized = val;
+            }
+        } catch (...) {
+        }
+    }
+    updateTargetGain();
+    return true;
 }
 
 auto GainPlugin::process(const clap_process* process) noexcept -> clap_process_status {
@@ -147,17 +185,19 @@ auto GainPlugin::process(const clap_process* process) noexcept -> clap_process_s
             const clap_event_header_t* hdr = in_events->get(in_events, ev_idx);
             if (hdr->time > i) break;
 
-            if (hdr->type == CLAP_EVENT_PARAM_VALUE) {
-                auto* ev = reinterpret_cast<const clap_event_param_value*>(hdr);
-                if (ev->param_id == kParamGain) {
-                    _gain_normalized = ev->value;
-                    updateTargetGain();
-                }
-            } else if (hdr->type == CLAP_EVENT_PARAM_MOD) {
-                auto* ev = reinterpret_cast<const clap_event_param_mod*>(hdr);
-                if (ev->param_id == kParamGain) {
-                    _modulation_normalized = ev->amount;
-                    updateTargetGain();
+            if (hdr->space_id == CLAP_CORE_EVENT_SPACE_ID) {
+                if (hdr->type == CLAP_EVENT_PARAM_VALUE) {
+                    auto* ev = reinterpret_cast<const clap_event_param_value*>(hdr);
+                    if (ev->param_id == kParamGain) {
+                        _gain_normalized = ev->value;
+                        updateTargetGain();
+                    }
+                } else if (hdr->type == CLAP_EVENT_PARAM_MOD) {
+                    auto* ev = reinterpret_cast<const clap_event_param_mod*>(hdr);
+                    if (ev->param_id == kParamGain) {
+                        _modulation_normalized = ev->amount;
+                        updateTargetGain();
+                    }
                 }
             }
             ev_idx++;
