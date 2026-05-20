@@ -66,6 +66,7 @@ public:
         kParamSlideTime,
         kParamAttack,
         kParamRelease,
+        kParamGain,
         kParamCount
     };
 

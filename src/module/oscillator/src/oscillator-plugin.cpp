@@ -40,6 +40,7 @@ OscillatorPlugin::OscillatorPlugin(const std::string& plugin_path, const clap_ho
     _params[kParamSlideTime].store(0.1);
     _params[kParamAttack].store(0.01);
     _params[kParamRelease].store(0.1);
+    _params[kParamGain].store(60.0 / 72.0);  // 0 dB
 }
 
 auto OscillatorPlugin::activate(double sample_rate, uint32_t min_frames_count,
@@ -153,6 +154,14 @@ auto OscillatorPlugin::paramsInfo(uint32_t index, clap_param_info* info) const n
             info->default_value = 0.1;
             info->flags |= mod;
             break;
+        case kParamGain:
+            info->id = kParamGain;
+            snprintf(info->name, sizeof(info->name), "Gain");
+            info->min_value = 0.0;
+            info->max_value = 1.0;
+            info->default_value = 60.0 / 72.0;  // 0 dB
+            info->flags |= mod;
+            break;
         default:
             return false;
     }
@@ -197,6 +206,9 @@ auto OscillatorPlugin::paramsValueToText(clap_id param_id, double value, char* d
         case kParamRelease:
             ss << std::fixed << std::setprecision(1) << (0.1 * std::pow(100000.0, value)) << " ms";
             break;
+        case kParamGain:
+            ss << std::fixed << std::setprecision(1) << (-60.0 + value * 72.0) << " dB";
+            break;
         default:
             return false;
     }
@@ -227,6 +239,9 @@ auto OscillatorPlugin::paramsTextToValue(clap_id param_id, const char* display,
         case kParamAttack:
         case kParamRelease:
             *value = std::clamp(std::log10(parsed / 0.1) / std::log10(100000.0), 0.0, 1.0);
+            break;
+        case kParamGain:
+            *value = std::clamp((parsed + 60.0) / 72.0, 0.0, 1.0);
             break;
         default:
             *value = parsed;
@@ -311,6 +326,12 @@ auto OscillatorPlugin::process(const clap_process* process) noexcept -> clap_pro
 
         double total_pitch_offset = pitch_offset + (_pitch_bend * 2.0);
 
+        // Calculate output gain multiplier
+        double gain_norm =
+            std::clamp(_params[kParamGain].load() + _param_mods[kParamGain].load(), 0.0, 1.0);
+        double gain_db = -60.0 + gain_norm * 72.0;
+        auto gain_multiplier = static_cast<float>(std::pow(10.0, gain_db / 20.0));
+
         for (auto& voice : _voices) {
             if (!voice.active) continue;
 
@@ -326,8 +347,10 @@ auto OscillatorPlugin::process(const clap_process* process) noexcept -> clap_pro
             double hz = 440.0 * std::pow(2.0, (voice.current_freq_key - 69.0) / 12.0);
             float v_l, v_r;
             voice.processSample(waveform, uni_count, uni_detune, pw, hz, _sample_rate, v_l, v_r);
-            out_l[i] += v_l;
-            out_r[i] += v_r;
+
+            // Sum voices and apply final gain
+            out_l[i] += v_l * gain_multiplier;
+            out_r[i] += v_r * gain_multiplier;
         }
     }
 
