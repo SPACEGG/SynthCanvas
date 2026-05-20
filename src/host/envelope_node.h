@@ -8,52 +8,37 @@
 
 namespace synth_canvas::host {
 
+enum class ADSRState { kIdle, kAttack, kDecay, kSustain, kRelease };
+
+struct ADSRInstance {
+    ADSRState stage = ADSRState::kIdle;
+    double current_value = 0.0;
+    double start_value = 0.0;
+    double target_value = 0.0;
+    double phase = 0.0;
+    double phase_inc = 0.0;
+    double curve = 0.0;
+    double peak_amplitude = 1.0;
+};
+
 /**
- * Polyphonic Envelope Node (ADSR)
- * Emits CLAP_EVENT_PARAM_MOD events instead of audio.
- * Features exponential curves, soft-takeover, and velocity mapping.
+ * Monophonic Envelope Node (ADSR).
+ * Outputs a 0.0 to 1.0 modulation signal via an audio buffer.
  */
-class EnvelopeNode : public InternalNodeBase {
+class EnvelopeNode final : public InternalNodeBase {
    public:
-    enum ParamId : clap_id {
-        kAttack = 0,       // ms
-        kDecay = 1,        // ms
-        kSustain = 2,      // 0.0 ~ 1.0
-        kRelease = 3,      // ms
-        kAttackCurve = 4,  // -1.0 (Log) to 1.0 (Exp)
+    enum ParameterId {
+        kAttack = 0,
+        kDecay = 1,
+        kSustain = 2,
+        kRelease = 3,
+        kAttackCurve = 4,
         kDecayCurve = 5,
         kReleaseCurve = 6,
-        kVelocityAmp = 7,   // 0.0 ~ 1.0 (Amount of velocity affecting peak amplitude)
-        kVelocityTime = 8,  // 0.0 ~ 1.0 (Amount of velocity reducing attack time)
-        kAmount = 9,        // -1.0 ~ 1.0
-        kBypass = 10,       // Gate mode
-        kVoiceMaster = 11   // Send NOTE_CHOKE on completion
-    };
-
-    struct ADSRState {
-        enum Stage { kIdle, kAttack, kDecay, kSustain, kRelease };
-        Stage stage = kIdle;
-
-        double current_value = 0.0;
-        double start_value = 0.0;
-        double target_value = 0.0;
-
-        double phase = 0.0;      // 0.0 to 1.0 within the current stage
-        double phase_inc = 0.0;  // Linear increment per sample
-        double curve = 0.0;      // Cached curvature for the stage
-
-        // Calculated targets based on velocity
-        double peak_amplitude = 1.0;
-    };
-
-    struct VoiceState {
-        int32_t note_id = -1;
-        int16_t key = -1;
-        int16_t channel = -1;
-        uint32_t last_active_time = 0;  // For oldest-stealing
-        bool active = false;
-
-        ADSRState adsr;
+        kVelocityAmp = 7,
+        kVelocityTime = 8,
+        kAmount = 9,
+        kBypass = 10
     };
 
     EnvelopeNode();
@@ -67,25 +52,18 @@ class EnvelopeNode : public InternalNodeBase {
         -> std::string override;
 
    private:
-    void triggerNoteOn(int16_t key, int16_t channel, int32_t note_id, double velocity);
-    void triggerNoteOff(int16_t key, int32_t note_id);
-    auto findFreeVoice() -> VoiceState*;
-    auto findVoice(int16_t key, int32_t note_id) -> VoiceState*;
-    auto getOldestVoice() -> VoiceState*;
+    void triggerNoteOn(int16_t key, int16_t channel, int32_t note_id, double velocity, uint32_t offset);
+    void triggerNoteOff(int16_t key, int32_t note_id, uint32_t offset);
 
-    [[nodiscard]] auto calculateCoeff(double time_ms, double curve) const -> double;
-    void processVoice(VoiceState& voice, uint32_t frame_index);
-    void pushModulationEvent(const VoiceState& voice, uint32_t frame_index);
-    void pushNoteChokeEvent(const VoiceState& voice, uint32_t frame_index);
+    // Monophonic State
+    ADSRInstance _adsr;
+    int16_t _current_key = -1;
 
-    std::array<VoiceState, constants::kMaxInternalPolyphony> _voices;
-    uint32_t _voice_counter = 0;  // Incremented on each Note-ON for oldest-stealing
-
-    // Cached parameter values (read once per block for performance)
-    double _cached_attack = 0.0;
-    double _cached_decay = 0.0;
-    double _cached_sustain = 0.0;
-    double _cached_release = 0.0;
+    // Cached Parameters (Functional values)
+    double _cached_attack = 10.0;
+    double _cached_decay = 100.0;
+    double _cached_sustain = 0.5;
+    double _cached_release = 500.0;
     double _cached_a_curve = 0.0;
     double _cached_d_curve = 0.0;
     double _cached_r_curve = 0.0;
@@ -93,7 +71,6 @@ class EnvelopeNode : public InternalNodeBase {
     double _cached_vel_time = 0.0;
     double _cached_amount = 1.0;
     bool _cached_bypass = false;
-    bool _cached_voice_master = false;
 };
 
 }  // namespace synth_canvas::host
