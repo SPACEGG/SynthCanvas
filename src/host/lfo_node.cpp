@@ -28,8 +28,7 @@ static constexpr std::array<SyncOption, 10> kSyncOptions = {
 static constexpr double kMinFreq = 0.01;
 static constexpr double kMaxFreq = 20.0;
 
-static auto getSyncIndex(double value) -> int {
-    double normalized = (value - kMinFreq) / (kMaxFreq - kMinFreq);
+static auto getSyncIndex(double normalized) -> int {
     auto index = static_cast<int>(normalized * static_cast<double>(kSyncOptions.size()));
     if (index >= static_cast<int>(kSyncOptions.size())) {
         index = static_cast<int>(kSyncOptions.size()) - 1;
@@ -40,14 +39,31 @@ static auto getSyncIndex(double value) -> int {
 
 LFONode::LFONode() : _rng(std::random_device{}()) {
     _node_type_name = "lfo";
-    // Add parameters with default values and ranges
-    addParameter(kFreq, "Frequency", "lfo", kMinFreq, kMaxFreq, 1.0);
-    addParameter(kWaveform, "Waveform", "lfo", 0.0, 4.0, 0.0);
-    addParameter(kSync, "Sync", "lfo", 0.0, 1.0, 0.0);
-    addParameter(kRetrigger, "Retrigger", "lfo", 0.0, 1.0, 0.0);
-    addParameter(kAmplitude, "Amplitude", "lfo", 0.0, 1.0, 1.0);
-    addParameter(kOffset, "Offset", "lfo", -1.0, 1.0, 0.0);
-    addParameter(kSmoothing, "Smoothing", "lfo", 0.0, 100.0, 5.0);
+
+    ParameterConfig freq_config{.type = MappingType::Logarithmic,
+                                .min_functional = kMinFreq,
+                                .max_functional = kMaxFreq,
+                                .unit_suffix = " Hz"};
+    ParameterConfig amp_config{.type = MappingType::Linear,
+                               .min_functional = 0.0,
+                               .max_functional = 1.0,
+                               .unit_suffix = ""};
+    ParameterConfig offset_config{.type = MappingType::Linear,
+                                  .min_functional = -1.0,
+                                  .max_functional = 1.0,
+                                  .unit_suffix = ""};
+    ParameterConfig smooth_config{.type = MappingType::Linear,
+                                  .min_functional = 0.0,
+                                  .max_functional = 100.0,
+                                  .unit_suffix = " ms"};
+
+    addParameter(kFreq, "Frequency", "lfo", freq_config.toNormalized(1.0), freq_config);
+    addSteppedParameter(kWaveform, "Waveform", "lfo", 0.0, 4.0, 0.0);
+    addSteppedParameter(kSync, "Sync", "lfo", 0.0, 1.0, 0.0);
+    addSteppedParameter(kRetrigger, "Retrigger", "lfo", 0.0, 1.0, 0.0);
+    addParameter(kAmplitude, "Amplitude", "lfo", 1.0, amp_config);
+    addParameter(kOffset, "Offset", "lfo", 0.0, offset_config);
+    addParameter(kSmoothing, "Smoothing", "lfo", smooth_config.toNormalized(5.0), smooth_config);
 
     // Setup ports
     addAudioPort("Note In", true, 0, false);
@@ -71,38 +87,40 @@ void LFONode::process() {
     auto* out_buf = _output_buffer.data32[0];
     int frames = _output_buffer.frames;
 
-    // Get current parameter values (using current_value which includes modulation)
-    double freq = getParameterCurrentValue(kFreq);
-    int waveform = static_cast<int>(getParameterCurrentValue(kWaveform));
-    bool sync = getParameterCurrentValue(kSync) > 0.5;
-    bool retrigger_enabled = getParameterCurrentValue(kRetrigger) > 0.5;
-    auto amp = static_cast<float>(getParameterCurrentValue(kAmplitude));
-    auto offset = static_cast<float>(getParameterCurrentValue(kOffset));
-    auto smoothing_ms = static_cast<float>(getParameterCurrentValue(kSmoothing));
-
-    // Update smoothing coefficient if parameter changed
-    if (std::abs(smoothing_ms - _current_smoothing_ms) > 0.001f) {
-        _current_smoothing_ms = smoothing_ms;
-        updateSmoothingCoeff();
-    }
-
-    // Handle retrigger
-    if (_retrigger_queued) {
-        if (retrigger_enabled) {
-            _phase = 0.0;
-            _last_random_phase = -1.0;
-        }
-        _retrigger_queued = false;
-    }
-
-    double phase_inc = freq / _current_sample_rate;
-
     for (int i = 0; i < frames; ++i) {
+        // 1. Sample-accurate parameter updates
+        updateParametersForSample(i);
+
+        // 2. Refresh parameters for this sample
+        double freq_normalized = getParameterCurrentValue(kFreq);
+        double freq_functional = getFunctionalValue(kFreq);
+        int waveform = static_cast<int>(getParameterCurrentValue(kWaveform));
+        bool sync = getParameterCurrentValue(kSync) > 0.5;
+        bool retrigger_enabled = getParameterCurrentValue(kRetrigger) > 0.5;
+        auto amp = static_cast<float>(getFunctionalValue(kAmplitude));
+        auto offset = static_cast<float>(getFunctionalValue(kOffset));
+        auto smoothing_ms = static_cast<float>(getFunctionalValue(kSmoothing));
+
+        // Update smoothing coefficient if parameter changed
+        if (std::abs(smoothing_ms - _current_smoothing_ms) > 0.001f) {
+            _current_smoothing_ms = smoothing_ms;
+            updateSmoothingCoeff();
+        }
+
+        // Handle retrigger
+        if (_retrigger_queued) {
+            if (retrigger_enabled) {
+                _phase = 0.0;
+                _last_random_phase = -1.0;
+            }
+            _retrigger_queued = false;
+        }
+
         double current_sample_phase = _phase;
 
         if (sync && _transport) {
             // In sync mode, phase is absolute based on song position
-            double actual_freq = kSyncOptions[getSyncIndex(freq)].multiplier;
+            double actual_freq = kSyncOptions[getSyncIndex(freq_normalized)].multiplier;
             current_sample_phase = std::fmod(_transport->song_pos_beats * actual_freq, 1.0);
             if (current_sample_phase < 0) current_sample_phase += 1.0;
         }
@@ -117,6 +135,7 @@ void LFONode::process() {
 
         // Increment phase for next sample (only used in Hz mode)
         if (!sync) {
+            double phase_inc = freq_functional / _current_sample_rate;
             _phase += phase_inc;
             if (_phase >= 1.0) _phase -= 1.0;
         }
@@ -171,45 +190,29 @@ auto LFONode::getParameterText(clap_id param_id, double value) const -> std::str
             if (sync) {
                 return kSyncOptions[getSyncIndex(value)].label;
             } else {
-                std::array<char, 32> buf{};
-                snprintf(buf.data(), buf.size(), "%.2f Hz", value);
-                return {buf.data()};
+                // Use base class mapping for Hz mode (Logarithmic)
+                return InternalNodeBase::getParameterText(param_id, value);
             }
         }
         case kWaveform: {
             int wave = static_cast<int>(value);
             switch (wave) {
-                case 0:
-                    return "Sine";
-                case 1:
-                    return "Triangle";
-                case 2:
-                    return "Square";
-                case 3:
-                    return "Saw";
-                case 4:
-                    return "Random";
-                default:
-                    return "Unknown";
+                case 0: return "Sine";
+                case 1: return "Triangle";
+                case 2: return "Square";
+                case 3: return "Saw";
+                case 4: return "Random";
+                default: return "Unknown";
             }
         }
         case kSync:
-            return value > 0.5 ? "On" : "Off";
         case kRetrigger:
             return value > 0.5 ? "On" : "Off";
-        case kAmplitude: {
-            std::array<char, 32> buf{};
-            snprintf(buf.data(), buf.size(), "%.1f%%", value * 100.0);
-            return {buf.data()};
-        }
-        case kSmoothing: {
-            std::array<char, 32> buf{};
-            snprintf(buf.data(), buf.size(), "%.1f ms", value);
-            return {buf.data()};
-        }
         default:
-            return std::to_string(value);
+            // Use InternalNodeBase mapping for Amplitude, Offset, and Smoothing
+            return InternalNodeBase::getParameterText(param_id, value);
     }
 }
+
 
 }  // namespace synth_canvas::host

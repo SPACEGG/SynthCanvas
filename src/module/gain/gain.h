@@ -43,9 +43,9 @@ class GainPlugin : public clap::helpers::Plugin<clap::helpers::MisbehaviourHandl
    private:
     void updateTargetGain() noexcept;
 
-    // Parameters
-    double _gain_db = 0.0;
-    double _modulation_db = 0.0;
+    // Parameters (Normalized 0.0 ~ 1.0)
+    double _gain_normalized = 60.0 / 72.0;  // Default 0 dB
+    double _modulation_normalized = 0.0;
 
     // Internal state for DSP
     double _sample_rate = 0.0;

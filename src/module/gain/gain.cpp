@@ -36,8 +36,8 @@ auto GainPlugin::activate(double sample_rate, uint32_t min_frames_count,
 
     // Calculate smoothing coefficient for ~15ms time constant
     // alpha = 1 - exp(-1 / (fs * tau))
-    const double kTau = 0.015;
-    _smoothing_coeff = 1.0 - std::exp(-1.0 / (_sample_rate * kTau));
+    const double tau = 0.015;
+    _smoothing_coeff = 1.0 - std::exp(-1.0 / (_sample_rate * tau));
 
     // Initialize gain states
     updateTargetGain();
@@ -68,15 +68,15 @@ auto GainPlugin::paramsInfo(uint32_t index, clap_param_info* info) const noexcep
     info->flags = CLAP_PARAM_IS_AUTOMATABLE | CLAP_PARAM_IS_MODULATABLE;
     snprintf(info->name, sizeof(info->name), "Gain");
     snprintf(info->module, sizeof(info->module), "Main");
-    info->min_value = -60.0;
-    info->max_value = 12.0;
-    info->default_value = 0.0;
+    info->min_value = 0.0;
+    info->max_value = 1.0;
+    info->default_value = 60.0 / 72.0;  // 0 dB
     return true;
 }
 
 auto GainPlugin::paramsValue(clap_id param_id, double* value) noexcept -> bool {
     if (param_id != kParamGain) return false;
-    *value = _gain_db;
+    *value = _gain_normalized;
     return true;
 }
 
@@ -84,8 +84,9 @@ auto GainPlugin::paramsValueToText(clap_id param_id, double value, char* display
                                    uint32_t size) noexcept -> bool {
     if (param_id != kParamGain) return false;
 
+    double functional_db = -60.0 + value * 72.0;
     std::stringstream ss;
-    ss << std::fixed << std::setprecision(1) << value << " dB";
+    ss << std::fixed << std::setprecision(1) << functional_db << " dB";
     strncpy(display, ss.str().c_str(), size - 1);
     display[size - 1] = '\0';
     return true;
@@ -99,7 +100,8 @@ auto GainPlugin::paramsTextToValue(clap_id param_id, const char* display, double
     double parsed = strtod(display, &end);
     if (end == display) return false;
 
-    *value = std::clamp(parsed, -60.0, 12.0);
+    double clamped_db = std::clamp(parsed, -60.0, 12.0);
+    *value = (clamped_db + 60.0) / 72.0;
     return true;
 }
 
@@ -112,12 +114,12 @@ void GainPlugin::paramsFlush(const clap_input_events* in, const clap_output_even
         if (hdr->type == CLAP_EVENT_PARAM_VALUE) {
             auto* ev = reinterpret_cast<const clap_event_param_value*>(hdr);
             if (ev->param_id == kParamGain) {
-                _gain_db = ev->value;
+                _gain_normalized = ev->value;
             }
         } else if (hdr->type == CLAP_EVENT_PARAM_MOD) {
             auto* ev = reinterpret_cast<const clap_event_param_mod*>(hdr);
             if (ev->param_id == kParamGain) {
-                _modulation_db = ev->amount;
+                _modulation_normalized = ev->amount;
             }
         }
     }
@@ -125,13 +127,13 @@ void GainPlugin::paramsFlush(const clap_input_events* in, const clap_output_even
 }
 
 auto GainPlugin::process(const clap_process* process) noexcept -> clap_process_status {
-    const uint32_t kFrames = process->frames_count;
-    const uint32_t kInPorts = process->audio_inputs_count;
-    const uint32_t kOutPorts = process->audio_outputs_count;
+    const uint32_t frames = process->frames_count;
+    const uint32_t in_ports = process->audio_inputs_count;
+    const uint32_t out_ports = process->audio_outputs_count;
 
-    if (kOutPorts == 0) return CLAP_PROCESS_CONTINUE;
+    if (out_ports == 0) return CLAP_PROCESS_CONTINUE;
 
-    float** inputs = (kInPorts > 0) ? process->audio_inputs[0].data32 : nullptr;
+    float** inputs = (in_ports > 0) ? process->audio_inputs[0].data32 : nullptr;
     float** outputs = process->audio_outputs[0].data32;
     uint32_t channels = process->audio_outputs[0].channel_count;
 
@@ -139,7 +141,7 @@ auto GainPlugin::process(const clap_process* process) noexcept -> clap_process_s
     uint32_t ev_idx = 0;
     uint32_t num_events = in_events ? in_events->size(in_events) : 0;
 
-    for (uint32_t i = 0; i < kFrames; ++i) {
+    for (uint32_t i = 0; i < frames; ++i) {
         // Handle sample-accurate parameter events
         while (ev_idx < num_events) {
             const clap_event_header_t* hdr = in_events->get(in_events, ev_idx);
@@ -148,13 +150,13 @@ auto GainPlugin::process(const clap_process* process) noexcept -> clap_process_s
             if (hdr->type == CLAP_EVENT_PARAM_VALUE) {
                 auto* ev = reinterpret_cast<const clap_event_param_value*>(hdr);
                 if (ev->param_id == kParamGain) {
-                    _gain_db = ev->value;
+                    _gain_normalized = ev->value;
                     updateTargetGain();
                 }
             } else if (hdr->type == CLAP_EVENT_PARAM_MOD) {
                 auto* ev = reinterpret_cast<const clap_event_param_mod*>(hdr);
                 if (ev->param_id == kParamGain) {
-                    _modulation_db = ev->amount;
+                    _modulation_normalized = ev->amount;
                     updateTargetGain();
                 }
             }
@@ -175,8 +177,9 @@ auto GainPlugin::process(const clap_process* process) noexcept -> clap_process_s
 }
 
 void GainPlugin::updateTargetGain() noexcept {
-    double total_gain_db = std::clamp(_gain_db + _modulation_db, -60.0, 12.0);
-    _target_gain_linear = std::pow(10.0, total_gain_db / 20.0);
+    double total_normalized = std::clamp(_gain_normalized + _modulation_normalized, 0.0, 1.0);
+    double total_db = -60.0 + total_normalized * 72.0;
+    _target_gain_linear = std::pow(10.0, total_db / 20.0);
 }
 
 }  // namespace synth_canvas::gain_plugin

@@ -8,15 +8,19 @@ namespace synth_canvas::host {
 
 SequencerNode::SequencerNode() {
     _node_type_name = "sequencer";
-    addParameter(kParamSteps, "Steps", "Logic", 1.0, 32.0, 8.0,
-                 CLAP_PARAM_IS_AUTOMATABLE | CLAP_PARAM_IS_STEPPED);
-    addParameter(kParamTime, "Time", "Logic", 0.0, 5.0, 1.0,
-                 CLAP_PARAM_IS_AUTOMATABLE | CLAP_PARAM_IS_STEPPED);
-    addParameter(kParamSwing, "Swing", "Logic", 0.0, 0.75, 0.0, CLAP_PARAM_IS_AUTOMATABLE);
-    addParameter(kParamRestart, "Restart", "Logic", 0.0, 1.0, 1.0,
-                 CLAP_PARAM_IS_AUTOMATABLE | CLAP_PARAM_IS_STEPPED);
-    addParameter(kParamCurrentStep, "Current Step", "Logic", -1.0, 31.0, -1.0,
-                 CLAP_PARAM_IS_READONLY | CLAP_PARAM_IS_STEPPED);
+
+    ParameterConfig swing_config{.type = MappingType::Linear,
+                                 .min_functional = 0.0,
+                                 .max_functional = 0.75,
+                                 .unit_suffix = "%"};
+
+    addSteppedParameter(kParamSteps, "Steps", "Logic", 1.0, 32.0, 8.0, CLAP_PARAM_IS_AUTOMATABLE);
+    addSteppedParameter(kParamTime, "Time", "Logic", 0.0, 5.0, 1.0, CLAP_PARAM_IS_AUTOMATABLE);
+    addParameter(kParamSwing, "Swing", "Logic", 0.0, swing_config, CLAP_PARAM_IS_AUTOMATABLE);
+    addSteppedParameter(kParamRestart, "Restart", "Logic", 0.0, 1.0, 1.0,
+                        CLAP_PARAM_IS_AUTOMATABLE);
+    addSteppedParameter(kParamCurrentStep, "Current Step", "Logic", -1.0, 31.0, -1.0,
+                        CLAP_PARAM_IS_READONLY);
 
     addEventPort("Trigger IN", true);
     addEventPort("Note OUT", false);     // Port 0
@@ -84,9 +88,11 @@ void SequencerNode::process() {
     uint32_t num_frames = _output_buffer.frames;
     double block_beats = static_cast<double>(num_frames) / samples_per_beat;
 
+    // Note: For Sequencer, we currently process at block-level parameters for stability,
+    // but using getFunctionalValue() ensures we get the latest mapped values.
     double step_duration = getStepDurationBeats();
-    double swing_factor = _swing.load(std::memory_order_relaxed);
-    int32_t active_steps = _active_steps.load(std::memory_order_relaxed);
+    double swing_factor = getFunctionalValue(kParamSwing);
+    auto active_steps = static_cast<int32_t>(getFunctionalValue(kParamSteps));
 
     uint32_t first_active_idx = 0xFFFFFFFF;
     for (uint32_t i = 0; i < kMaxInstances; ++i) {
@@ -208,7 +214,7 @@ void SequencerNode::setParameterValue(clap_id param_id, double value) {
             _time_enum.store(static_cast<int32_t>(value), std::memory_order_relaxed);
             break;
         case kParamSwing:
-            _swing.store(value, std::memory_order_relaxed);
+            // Handled via getFunctionalValue in process()
             break;
         case kParamRestart:
             _restart_mode.store(value > 0.5, std::memory_order_relaxed);

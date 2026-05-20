@@ -6,7 +6,6 @@
 
 #include "svf-engine.h"
 
-
 namespace synth_canvas::filter_plugin {
 
 class FilterPlugin : public clap::helpers::Plugin<clap::helpers::MisbehaviourHandler::Terminate,
@@ -64,24 +63,26 @@ class FilterPlugin : public clap::helpers::Plugin<clap::helpers::MisbehaviourHan
     void handleEvents(const clap_input_events* in, uint32_t& event_index,
                       uint32_t sample_index) noexcept;
 
-    // Parameters
-    double _cutoff_hz{1000.0};
-    double _resonance{0.5};
+    // Parameters (Normalized 0.0 ~ 1.0)
+    double _cutoff_normalized{0.5};
+    double _resonance_normalized{0.5};
+    double _mix_normalized{1.0};
+    double _drive_normalized{0.0};
+    double _gain_normalized{60.0 / 72.0};  // 0 dB
+
+    // Stepped Parameters
     double _mode{0.0};
     double _slope{0.0};
-    double _mix{1.0};
-    double _drive_db{0.0};
-    double _gain_db{0.0};
 
-    // Modulation
+    // Modulation (Normalized)
     double _cutoff_mod{0.0};
     double _resonance_mod{0.0};
     double _mix_mod{0.0};
     double _drive_mod{0.0};
     double _gain_mod{0.0};
 
-    // Smoothing
-    double _current_cutoff{1000.0};
+    // Smoothing (Functional domain)
+    double _current_cutoff_hz{1000.0};
     double _current_resonance{0.5};
     double _current_mix{1.0};
     double _current_drive_linear{1.0};

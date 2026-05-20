@@ -8,18 +8,38 @@ namespace synth_canvas::host {
 
 EnvelopeNode::EnvelopeNode() {
     _node_type_name = "envelope";
-    addParameter(kAttack, "Attack", "env", 0.1, 10000.0, 10.0);
-    addParameter(kDecay, "Decay", "env", 0.1, 10000.0, 100.0);
-    addParameter(kSustain, "Sustain", "env", 0.0, 1.0, 0.5);
-    addParameter(kRelease, "Release", "env", 0.1, 10000.0, 500.0);
-    addParameter(kAttackCurve, "A Curve", "env", -1.0, 1.0, 0.0);
-    addParameter(kDecayCurve, "D Curve", "env", -1.0, 1.0, 0.0);
-    addParameter(kReleaseCurve, "R Curve", "env", -1.0, 1.0, 0.0);
-    addParameter(kVelocityAmp, "Vel->Amp", "env", 0.0, 1.0, 1.0);
-    addParameter(kVelocityTime, "Vel->Atk", "env", 0.0, 1.0, 0.0);
-    addParameter(kAmount, "Amount", "env", -1.0, 1.0, 1.0);
-    addParameter(kBypass, "Bypass", "env", 0.0, 1.0, 0.0, CLAP_PARAM_IS_STEPPED);
-    addParameter(kVoiceMaster, "Voice Master", "env", 0.0, 1.0, 0.0, CLAP_PARAM_IS_STEPPED);
+
+    ParameterConfig time_config{.type = MappingType::Logarithmic,
+                                .min_functional = 0.1,
+                                .max_functional = 10000.0,
+                                .unit_suffix = " ms"};
+    ParameterConfig lin01_config{.type = MappingType::Linear,
+                                 .min_functional = 0.0,
+                                 .max_functional = 1.0,
+                                 .unit_suffix = ""};
+    ParameterConfig curve_config{.type = MappingType::Linear,
+                                 .min_functional = -1.0,
+                                 .max_functional = 1.0,
+                                 .unit_suffix = ""};
+    ParameterConfig amount_config{.type = MappingType::Linear,
+                                  .min_functional = -1.0,
+                                  .max_functional = 1.0,
+                                  .unit_suffix = ""};
+
+    addParameter(kAttack, "Attack", "env", time_config.toNormalized(10.0), time_config);
+    addParameter(kDecay, "Decay", "env", time_config.toNormalized(100.0), time_config);
+    addParameter(kSustain, "Sustain", "env", 0.5, lin01_config);
+    addParameter(kRelease, "Release", "env", time_config.toNormalized(500.0), time_config);
+    addParameter(kAttackCurve, "A Curve", "env", 0.5,
+                 curve_config);  // 0.5 normalized -> 0.0 functional
+    addParameter(kDecayCurve, "D Curve", "env", 0.5, curve_config);
+    addParameter(kReleaseCurve, "R Curve", "env", 0.5, curve_config);
+    addParameter(kVelocityAmp, "Vel->Amp", "env", 1.0, lin01_config);
+    addParameter(kVelocityTime, "Vel->Atk", "env", 0.0, lin01_config);
+    addParameter(kAmount, "Amount", "env", 1.0, amount_config);  // 1.0 normalized -> 1.0 functional
+
+    addSteppedParameter(kBypass, "Bypass", "env", 0.0, 1.0, 0.0);
+    addSteppedParameter(kVoiceMaster, "Voice Master", "env", 0.0, 1.0, 0.0);
 
     addAudioPort("Note In", true, 0, false);
     addAudioPort("Attack Mod", true, 1, true, kAttack);
@@ -44,25 +64,30 @@ void EnvelopeNode::activate(int32_t sample_rate, int32_t block_size) {
 void EnvelopeNode::process() {
     if (!_processing_enabled || !isActive()) return;
 
-    // 1. Update cached parameters
-    _cached_attack = getParameterCurrentValue(kAttack);
-    _cached_decay = getParameterCurrentValue(kDecay);
-    _cached_sustain = getParameterCurrentValue(kSustain);
-    _cached_release = getParameterCurrentValue(kRelease);
-    _cached_a_curve = getParameterCurrentValue(kAttackCurve);
-    _cached_d_curve = getParameterCurrentValue(kDecayCurve);
-    _cached_r_curve = getParameterCurrentValue(kReleaseCurve);
-    _cached_vel_amp = getParameterCurrentValue(kVelocityAmp);
-    _cached_vel_time = getParameterCurrentValue(kVelocityTime);
-    _cached_amount = getParameterCurrentValue(kAmount);
-    _cached_bypass = getParameterCurrentValue(kBypass) > 0.5;
-    _cached_voice_master = getParameterCurrentValue(kVoiceMaster) > 0.5;
+    int num_frames = _output_buffer.frames;
 
-    // 2. Process active voices
-    for (auto& voice : _voices) {
-        if (!voice.active) continue;
+    for (int i = 0; i < num_frames; ++i) {
+        // 1. Sample-accurate parameter updates
+        updateParametersForSample(i);
 
-        for (int i = 0; i < _output_buffer.frames; ++i) {
+        // 2. Refresh cached parameters for this sample
+        _cached_attack = getFunctionalValue(kAttack);
+        _cached_decay = getFunctionalValue(kDecay);
+        _cached_sustain = getFunctionalValue(kSustain);
+        _cached_release = getFunctionalValue(kRelease);
+        _cached_a_curve = getFunctionalValue(kAttackCurve);
+        _cached_d_curve = getFunctionalValue(kDecayCurve);
+        _cached_r_curve = getFunctionalValue(kReleaseCurve);
+        _cached_vel_amp = getFunctionalValue(kVelocityAmp);
+        _cached_vel_time = getFunctionalValue(kVelocityTime);
+        _cached_amount = getFunctionalValue(kAmount);
+        _cached_bypass = getFunctionalValue(kBypass) > 0.5;
+        _cached_voice_master = getFunctionalValue(kVoiceMaster) > 0.5;
+
+        // 3. Process active voices for this sample
+        for (auto& voice : _voices) {
+            if (!voice.active) continue;
+
             processVoice(voice, i);
 
             if (i % constants::kModulationStepSize == 0) {
@@ -259,29 +284,15 @@ void EnvelopeNode::pushNoteChokeEvent(const VoiceState& voice, uint32_t frame_in
 }
 
 auto EnvelopeNode::getParameterText(clap_id param_id, double value) const -> std::string {
-    std::array<char, 32> buf{};
     switch (param_id) {
-        case kAttack:
-        case kDecay:
-        case kRelease:
-            snprintf(buf.data(), buf.size(), "%.1f ms", value);
-            break;
-        case kSustain:
-        case kVelocityAmp:
-        case kVelocityTime:
-            snprintf(buf.data(), buf.size(), "%.1f%%", value * 100.0);
-            break;
-        case kAttackCurve:
-        case kDecayCurve:
-        case kReleaseCurve:
-            snprintf(buf.data(), buf.size(), "%.2f", value);
-            break;
+        case kBypass:
         case kVoiceMaster:
             return value > 0.5 ? "On" : "Off";
         default:
-            return std::to_string(value);
+            // Use InternalNodeBase mapping logic for all other parameters
+            return InternalNodeBase::getParameterText(param_id, value);
     }
-    return {buf.data()};
 }
+
 
 }  // namespace synth_canvas::host

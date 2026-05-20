@@ -10,7 +10,7 @@ namespace synth_canvas::soundfont_plugin {
 
 class SoundfontPlugin : public clap::helpers::Plugin<clap::helpers::MisbehaviourHandler::Terminate,
                                                      clap::helpers::CheckingLevel::Maximal> {
-public:
+   public:
     SoundfontPlugin(const std::string& plugin_path, const clap_host* host);
 
     static auto descriptor() -> const clap_plugin_descriptor*;
@@ -49,31 +49,25 @@ public:
     // Processing
     auto process(const clap_process* process) noexcept -> clap_process_status override;
 
-    enum ParamIds {
-        kParamPreset = 0,
-        kParamGain,
-        kParamPan,
-        kParamMidiChannel,
-        kParamCount
-    };
+    enum ParamIds { kParamPreset = 0, kParamGain, kParamPan, kParamMidiChannel, kParamCount };
 
-private:
+   private:
     void handleEvents(const clap_input_events* in, uint32_t& event_index,
                       uint32_t sample_index) noexcept;
 
     // Parameters
-    double _preset_index{0.0};
-    double _gain_db{0.0};
-    double _pan{0.0};
-    double _midi_channel{0.0};
+    double _preset_index{0.0};             // Stepped
+    double _gain_normalized{60.0 / 72.0};  // 0 dB
+    double _pan_normalized{0.5};           // Center
+    double _midi_channel{0.0};             // Stepped
 
-    // Modulation
+    // Modulation (Normalized)
     double _gain_mod{0.0};
     double _pan_mod{0.0};
 
-    // Current values for smoothing
-    float _current_gain{0.0f};
-    float _current_pan{0.0f};
+    // Current values for smoothing (Functional domain)
+    float _current_gain_db{0.0f};
+    float _current_pan{-0.0f};
 
     // Current values for engine updates
     int _current_preset{-1};
@@ -83,4 +77,4 @@ private:
     SoundfontEngine _engine;
 };
 
-} // namespace synth_canvas::soundfont_plugin
+}  // namespace synth_canvas::soundfont_plugin

@@ -35,13 +35,14 @@ auto SoundfontPlugin::descriptor() -> const clap_plugin_descriptor* {
 auto SoundfontPlugin::activate(double sample_rate, uint32_t min_frames_count,
                                uint32_t max_frames_count) noexcept -> bool {
     _engine.setSampleRate(static_cast<float>(sample_rate));
-    _current_gain = static_cast<float>(_gain_db);
-    _current_pan = static_cast<float>(_pan);
+
+    // Initialize functional domain targets from normalized
+    _current_gain_db = static_cast<float>(-60.0 + _gain_normalized * 72.0);
+    _current_pan = static_cast<float>(_pan_normalized * 2.0 - 1.0);
     _current_midi_channel = static_cast<int>(_midi_channel);
     return true;
 }
 
-//--- Ports
 auto SoundfontPlugin::audioPortsCount(bool is_input) const noexcept -> uint32_t {
     return is_input ? 0 : 1;
 }
@@ -74,7 +75,6 @@ auto SoundfontPlugin::notePortsInfo(uint32_t index, bool is_input,
     return true;
 }
 
-//--- Parameters
 auto SoundfontPlugin::paramsCount() const noexcept -> uint32_t { return kParamCount; }
 
 auto SoundfontPlugin::paramsInfo(uint32_t index, clap_param_info* info) const noexcept -> bool {
@@ -90,19 +90,19 @@ auto SoundfontPlugin::paramsInfo(uint32_t index, clap_param_info* info) const no
             return true;
         case kParamGain:
             info->id = kParamGain;
-            info->flags = CLAP_PARAM_IS_AUTOMATABLE;
-            info->min_value = -60.0;
-            info->max_value = 12.0;
-            info->default_value = 0.0;
-            std::strncpy(info->name, "Gain (dB)", sizeof(info->name));
+            info->flags = CLAP_PARAM_IS_AUTOMATABLE | CLAP_PARAM_IS_MODULATABLE;
+            info->min_value = 0.0;
+            info->max_value = 1.0;
+            info->default_value = 60.0 / 72.0;  // 0 dB
+            std::strncpy(info->name, "Gain", sizeof(info->name));
             std::strncpy(info->module, "", sizeof(info->module));
             return true;
         case kParamPan:
             info->id = kParamPan;
-            info->flags = CLAP_PARAM_IS_AUTOMATABLE;
-            info->min_value = -1.0;
+            info->flags = CLAP_PARAM_IS_AUTOMATABLE | CLAP_PARAM_IS_MODULATABLE;
+            info->min_value = 0.0;
             info->max_value = 1.0;
-            info->default_value = 0.0;
+            info->default_value = 0.5;
             std::strncpy(info->name, "Pan", sizeof(info->name));
             std::strncpy(info->module, "", sizeof(info->module));
             return true;
@@ -125,10 +125,10 @@ auto SoundfontPlugin::paramsValue(clap_id param_id, double* value) noexcept -> b
             *value = _preset_index;
             return true;
         case kParamGain:
-            *value = _gain_db;
+            *value = _gain_normalized;
             return true;
         case kParamPan:
-            *value = _pan;
+            *value = _pan_normalized;
             return true;
         case kParamMidiChannel:
             *value = _midi_channel;
@@ -151,8 +151,17 @@ auto SoundfontPlugin::paramsValueToText(clap_id param_id, double value, char* di
             return true;
         }
         case kParamGain:
-            std::snprintf(display, size, "%.1f dB", value);
+            std::snprintf(display, size, "%.1f dB", -60.0 + value * 72.0);
             return true;
+        case kParamPan: {
+            double p = value * 2.0 - 1.0;
+            if (std::abs(p) < 0.01) {
+                std::snprintf(display, size, "Center");
+            } else {
+                std::snprintf(display, size, "%.1f %s", std::abs(p) * 100.0, p < 0 ? "L" : "R");
+            }
+            return true;
+        }
         case kParamMidiChannel:
             std::snprintf(display, size, "%d", static_cast<int>(value) + 1);
             return true;
@@ -166,6 +175,16 @@ auto SoundfontPlugin::paramsTextToValue(clap_id param_id, const char* display,
         *value = std::atof(display);
         return true;
     }
+    if (param_id == kParamGain) {
+        double db = std::clamp(std::atof(display), -60.0, 12.0);
+        *value = (db + 60.0) / 72.0;
+        return true;
+    }
+    if (param_id == kParamPan) {
+        double p = std::clamp(std::atof(display), -1.0, 1.0);
+        *value = (p + 1.0) / 2.0;
+        return true;
+    }
     return false;
 }
 
@@ -175,13 +194,12 @@ void SoundfontPlugin::paramsFlush(const clap_input_events* in,
     handleEvents(in, event_index, 0);
 }
 
-//--- State
 auto SoundfontPlugin::stateSave(const clap_ostream* os) noexcept -> bool {
     std::ostringstream ss;
     ss << "path=" << _sf2_path << ";"
        << "preset=" << static_cast<int>(_preset_index) << ";"
-       << "gain=" << _gain_db << ";"
-       << "pan=" << _pan << ";"
+       << "gain=" << _gain_normalized << ";"
+       << "pan=" << _pan_normalized << ";"
        << "channel=" << static_cast<int>(_midi_channel) << ";";
 
     std::string state = ss.str();
@@ -192,9 +210,9 @@ auto SoundfontPlugin::stateSave(const clap_ostream* os) noexcept -> bool {
 auto SoundfontPlugin::stateLoad(const clap_istream* is) noexcept -> bool {
     std::array<char, 1024> buffer;
     std::string state;
-    int64_t read;
-    while ((read = is->read(is, buffer.data(), buffer.size())) > 0) {
-        state.append(buffer.data(), static_cast<size_t>(read));
+    int64_t read_bytes;
+    while ((read_bytes = is->read(is, buffer.data(), buffer.size())) > 0) {
+        state.append(buffer.data(), static_cast<size_t>(read_bytes));
     }
 
     std::string key, value;
@@ -215,9 +233,9 @@ auto SoundfontPlugin::stateLoad(const clap_istream* is) noexcept -> bool {
             } else if (key == "preset") {
                 _preset_index = std::atof(value.c_str());
             } else if (key == "gain") {
-                _gain_db = std::atof(value.c_str());
+                _gain_normalized = std::atof(value.c_str());
             } else if (key == "pan") {
-                _pan = std::atof(value.c_str());
+                _pan_normalized = std::atof(value.c_str());
             } else if (key == "channel") {
                 _midi_channel = std::atof(value.c_str());
                 _current_midi_channel = static_cast<int>(_midi_channel);
@@ -225,22 +243,16 @@ auto SoundfontPlugin::stateLoad(const clap_istream* is) noexcept -> bool {
         }
     }
 
-    // Apply values in correct order after parsing
-    if (path_changed) {
-        _engine.load(_sf2_path);
-    }
+    if (path_changed) _engine.load(_sf2_path);
     _engine.setPreset(_current_midi_channel, static_cast<int>(_preset_index));
 
-    _current_gain = static_cast<float>(_gain_db);
-    _current_pan = static_cast<float>(_pan);
+    _current_gain_db = static_cast<float>(-60.0 + _gain_normalized * 72.0);
+    _current_pan = static_cast<float>(_pan_normalized * 2.0 - 1.0);
 
-    // Notify host that parameters (especially preset names/count) might have changed
     _host.paramsRescan(CLAP_PARAM_RESCAN_ALL);
-
     return true;
 }
 
-//--- Processing
 auto SoundfontPlugin::process(const clap_process* process) noexcept -> clap_process_status {
     const uint32_t nframes = process->frames_count;
     const uint32_t nevents = process->in_events->size(process->in_events);
@@ -272,13 +284,16 @@ auto SoundfontPlugin::process(const clap_process* process) noexcept -> clap_proc
             uint32_t f = current_frame + i;
             const float smoothing_coeff = 0.005f;
 
-            auto target_gain = static_cast<float>(_gain_db + _gain_mod * 60.0);
-            float target_pan = std::clamp(static_cast<float>(_pan + _pan_mod), -1.0f, 1.0f);
+            double total_gain_norm = std::clamp(_gain_normalized + _gain_mod, 0.0, 1.0);
+            auto target_gain_db = static_cast<float>(-60.0 + total_gain_norm * 72.0);
 
-            _current_gain += (target_gain - _current_gain) * smoothing_coeff;
+            double total_pan_norm = std::clamp(_pan_normalized + _pan_mod, 0.0, 1.0);
+            auto target_pan = static_cast<float>(total_pan_norm * 2.0 - 1.0);
+
+            _current_gain_db += (target_gain_db - _current_gain_db) * smoothing_coeff;
             _current_pan += (target_pan - _current_pan) * smoothing_coeff;
 
-            float gain_lin = std::pow(10.0f, _current_gain / 20.0f);
+            float gain_lin = std::pow(10.0f, _current_gain_db / 20.0f);
             float pan_l = std::min(1.0f, 1.0f - _current_pan);
             float pan_r = std::min(1.0f, 1.0f + _current_pan);
 
@@ -324,15 +339,14 @@ void SoundfontPlugin::handleEvents(const clap_input_events* in, uint32_t& event_
                                               static_cast<int>(_preset_index));
                             break;
                         case kParamGain:
-                            _gain_db = ev->value;
+                            _gain_normalized = ev->value;
                             break;
                         case kParamPan:
-                            _pan = ev->value;
+                            _pan_normalized = ev->value;
                             break;
                         case kParamMidiChannel:
                             _midi_channel = ev->value;
                             _current_midi_channel = static_cast<int>(_midi_channel);
-                            // Re-apply preset to the new channel
                             _engine.setPreset(_current_midi_channel,
                                               static_cast<int>(_preset_index));
                             break;
@@ -359,7 +373,7 @@ void SoundfontPlugin::handleEvents(const clap_input_events* in, uint32_t& event_
                         if (msg == 0xE0) {  // Pitch Bend
                             int pb = ev->data[1] + (ev->data[2] << 7);
                             _engine.setPitchBend(chan, pb);
-                        } else if (msg == 0x90) {  // Note On fallback
+                        } else if (msg == 0x90) {
                             uint8_t key = ev->data[1];
                             uint8_t vel = ev->data[2];
                             if (vel > 0) {
@@ -367,7 +381,7 @@ void SoundfontPlugin::handleEvents(const clap_input_events* in, uint32_t& event_
                             } else {
                                 _engine.noteOff(chan, key);
                             }
-                        } else if (msg == 0x80) {  // Note Off fallback
+                        } else if (msg == 0x80) {
                             _engine.noteOff(chan, ev->data[1]);
                         }
                     }

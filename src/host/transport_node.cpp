@@ -6,10 +6,16 @@ namespace synth_canvas::host {
 
 TransportNode::TransportNode() {
     _node_type_name = "transport";
-    addParameter(kParamTempo, "Tempo", "Transport", 20.0, 300.0, 120.0, CLAP_PARAM_IS_AUTOMATABLE);
-    addParameter(kParamPlaying, "Playing", "Transport", 0.0, 1.0, 0.0,
-                 CLAP_PARAM_IS_AUTOMATABLE | CLAP_PARAM_IS_STEPPED);
+    ParameterConfig tempo_config{.type = MappingType::Linear,
+                                 .min_functional = 20.0,
+                                 .max_functional = 300.0,
+                                 .unit_suffix = ""};
+    addParameter(kParamTempo, "Tempo", "Transport", tempo_config.toNormalized(120.0), tempo_config,
+                 CLAP_PARAM_IS_AUTOMATABLE);
+    addSteppedParameter(kParamPlaying, "Playing", "Transport", 0.0, 1.0, 0.0,
+                        CLAP_PARAM_IS_AUTOMATABLE);
 }
+
 
 void TransportNode::processBegin(int num_frames) {
     InternalNodeBase::processBegin(num_frames);
@@ -29,7 +35,13 @@ void TransportNode::processBegin(int num_frames) {
 
         if (changed) {
             _is_syncing.store(true, std::memory_order_release);
-            setParameterValue(kParamTempo, _last_tempo);
+            // setParameterValue expectation depends on whether it's functional or normalized.
+            // InternalNodeBase::setParameterValue expects NORMALIZED if it's a mapped param.
+            auto* slot = getParameterSlot(kParamTempo);
+            if (slot) {
+                double normalized = _param_configs[kParamTempo].toNormalized(_last_tempo);
+                setParameterValue(kParamTempo, normalized);
+            }
             setParameterValue(kParamPlaying, _last_playing ? 1.0 : 0.0);
             _is_syncing.store(false, std::memory_order_release);
         }
@@ -53,11 +65,20 @@ void TransportNode::pollMainThread() {
 
     if (_needs_update_to_main.exchange(false, std::memory_order_acq_rel)) {
         if (on_transport_change_requested) {
-            double tempo = getParameterBaseValue(kParamTempo);
-            bool playing = getParameterBaseValue(kParamPlaying) > 0.5;
+            double tempo = getFunctionalValue(kParamTempo);
+            bool playing = getFunctionalValue(kParamPlaying) > 0.5;
             on_transport_change_requested(tempo, playing);
         }
     }
 }
+
+auto TransportNode::getParameterText(clap_id param_id, double value) const -> std::string {
+    if (param_id == kParamTempo) {
+        double functional = getFunctionalValue(kParamTempo);
+        return std::to_string(static_cast<int>(std::round(functional)));
+    }
+    return InternalNodeBase::getParameterText(param_id, value);
+}
+
 
 }  // namespace synth_canvas::host

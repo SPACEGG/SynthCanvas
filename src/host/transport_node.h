@@ -26,6 +26,9 @@ class TransportNode final : public InternalNodeBase {
     void pollMainThread() override;
     void setParameterValue(clap_id param_id, double value) override;
 
+    [[nodiscard]] auto getParameterText(clap_id param_id, double value) const
+        -> std::string override;
+
     // Callback used to notify the main thread of transport changes
     std::function<void(double tempo, bool playing)> on_transport_change_requested;
 

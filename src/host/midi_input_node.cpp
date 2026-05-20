@@ -20,7 +20,7 @@ MidiInputNode::MidiInputNode() {
     }
 
     // Initialize parameters
-    addParameter(0, "Port Index", "midi", 0.0, 255.0, 0.0, CLAP_PARAM_IS_STEPPED);
+    addSteppedParameter(0, "Port Index", "midi", 0.0, 255.0, 0.0);
 
     // Setup ports
     addEventPort("MIDI Out", false);

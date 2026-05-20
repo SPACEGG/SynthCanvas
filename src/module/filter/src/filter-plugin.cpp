@@ -5,6 +5,7 @@
 #include <cmath>
 #include <iomanip>
 #include <sstream>
+#include <string>
 
 namespace synth_canvas::filter_plugin {
 
@@ -35,15 +36,15 @@ auto FilterPlugin::activate(double sample_rate, uint32_t min_frames_count,
 
     _sample_rate = sample_rate;
 
-    // ~15ms time constant for smoothing
     const double tau = 0.015;
     _smoothing_coeff = 1.0 - std::exp(-1.0 / (_sample_rate * tau));
 
-    _current_cutoff = _cutoff_hz;
-    _current_resonance = _resonance;
-    _current_mix = _mix;
-    _current_drive_linear = std::pow(10.0, _drive_db / 20.0);
-    _current_gain_linear = std::pow(10.0, _gain_db / 20.0);
+    // Initialize functional targets from normalized defaults
+    _current_cutoff_hz = 20.0 * std::pow(1000.0, _cutoff_normalized);
+    _current_resonance = _resonance_normalized;
+    _current_mix = _mix_normalized;
+    _current_drive_linear = std::pow(10.0, (_drive_normalized * 36.0) / 20.0);
+    _current_gain_linear = std::pow(10.0, (-60.0 + _gain_normalized * 72.0) / 20.0);
 
     _engine.reset();
 
@@ -72,9 +73,9 @@ auto FilterPlugin::paramsInfo(uint32_t index, clap_param_info* info) const noexc
             info->flags = CLAP_PARAM_IS_AUTOMATABLE | CLAP_PARAM_IS_MODULATABLE;
             snprintf(info->name, sizeof(info->name), "Cutoff");
             snprintf(info->module, sizeof(info->module), "Main");
-            info->min_value = 20.0;
-            info->max_value = 20000.0;
-            info->default_value = 1000.0;
+            info->min_value = 0.0;
+            info->max_value = 1.0;
+            info->default_value = std::log10(1000.0 / 20.0) / 3.0;  // 1000 Hz
             break;
         case kParamResonance:
             info->id = kParamResonance;
@@ -91,7 +92,7 @@ auto FilterPlugin::paramsInfo(uint32_t index, clap_param_info* info) const noexc
             snprintf(info->name, sizeof(info->name), "Mode");
             snprintf(info->module, sizeof(info->module), "Main");
             info->min_value = 0.0;
-            info->max_value = 5.0;  // LP, HP, BP, Notch, Peak, All
+            info->max_value = 5.0;
             info->default_value = 0.0;
             break;
         case kParamSlope:
@@ -100,7 +101,7 @@ auto FilterPlugin::paramsInfo(uint32_t index, clap_param_info* info) const noexc
             snprintf(info->name, sizeof(info->name), "Slope");
             snprintf(info->module, sizeof(info->module), "Main");
             info->min_value = 0.0;
-            info->max_value = 2.0;  // 0: 12dB, 1: 24dB, 2: 48dB
+            info->max_value = 2.0;
             info->default_value = 0.0;
             break;
         case kParamMix:
@@ -118,7 +119,7 @@ auto FilterPlugin::paramsInfo(uint32_t index, clap_param_info* info) const noexc
             snprintf(info->name, sizeof(info->name), "Drive");
             snprintf(info->module, sizeof(info->module), "Main");
             info->min_value = 0.0;
-            info->max_value = 36.0;
+            info->max_value = 1.0;
             info->default_value = 0.0;
             break;
         case kParamGain:
@@ -126,9 +127,9 @@ auto FilterPlugin::paramsInfo(uint32_t index, clap_param_info* info) const noexc
             info->flags = CLAP_PARAM_IS_AUTOMATABLE | CLAP_PARAM_IS_MODULATABLE;
             snprintf(info->name, sizeof(info->name), "Gain");
             snprintf(info->module, sizeof(info->module), "Main");
-            info->min_value = -60.0;
-            info->max_value = 12.0;
-            info->default_value = 0.0;
+            info->min_value = 0.0;
+            info->max_value = 1.0;
+            info->default_value = 60.0 / 72.0;  // 0 dB
             break;
         default:
             return false;
@@ -139,10 +140,10 @@ auto FilterPlugin::paramsInfo(uint32_t index, clap_param_info* info) const noexc
 auto FilterPlugin::paramsValue(clap_id param_id, double* value) noexcept -> bool {
     switch (param_id) {
         case kParamCutoff:
-            *value = _cutoff_hz;
+            *value = _cutoff_normalized;
             break;
         case kParamResonance:
-            *value = _resonance;
+            *value = _resonance_normalized;
             break;
         case kParamMode:
             *value = _mode;
@@ -151,13 +152,13 @@ auto FilterPlugin::paramsValue(clap_id param_id, double* value) noexcept -> bool
             *value = _slope;
             break;
         case kParamMix:
-            *value = _mix;
+            *value = _mix_normalized;
             break;
         case kParamDrive:
-            *value = _drive_db;
+            *value = _drive_normalized;
             break;
         case kParamGain:
-            *value = _gain_db;
+            *value = _gain_normalized;
             break;
         default:
             return false;
@@ -170,7 +171,7 @@ auto FilterPlugin::paramsValueToText(clap_id param_id, double value, char* displ
     std::stringstream ss;
     switch (param_id) {
         case kParamCutoff:
-            ss << std::fixed << std::setprecision(1) << value << " Hz";
+            ss << std::fixed << std::setprecision(1) << (20.0 * std::pow(1000.0, value)) << " Hz";
             break;
         case kParamResonance:
             ss << std::fixed << std::setprecision(2) << value;
@@ -188,11 +189,13 @@ auto FilterPlugin::paramsValueToText(clap_id param_id, double value, char* displ
             break;
         }
         case kParamMix:
-            ss << std::fixed << std::setprecision(2) << value * 100.0 << " %";
+            ss << std::fixed << std::setprecision(1) << value * 100.0 << " %";
             break;
         case kParamDrive:
+            ss << std::fixed << std::setprecision(1) << value * 36.0 << " dB";
+            break;
         case kParamGain:
-            ss << std::fixed << std::setprecision(1) << value << " dB";
+            ss << std::fixed << std::setprecision(1) << (-60.0 + value * 72.0) << " dB";
             break;
         default:
             return false;
@@ -204,11 +207,31 @@ auto FilterPlugin::paramsValueToText(clap_id param_id, double value, char* displ
 
 auto FilterPlugin::paramsTextToValue(clap_id param_id, const char* display, double* value) noexcept
     -> bool {
-    // Simple implementation for basic parameters
     char* end;
     double parsed = strtod(display, &end);
     if (end == display) return false;
-    *value = parsed;
+
+    switch (param_id) {
+        case kParamCutoff:
+            parsed = std::clamp(parsed, 20.0, 20000.0);
+            *value = std::log10(parsed / 20.0) / 3.0;
+            break;
+        case kParamResonance:
+        case kParamMix:
+            *value = std::clamp(parsed, 0.0, 1.0);
+            break;
+        case kParamDrive:
+            parsed = std::clamp(parsed, 0.0, 36.0);
+            *value = parsed / 36.0;
+            break;
+        case kParamGain:
+            parsed = std::clamp(parsed, -60.0, 12.0);
+            *value = (parsed + 60.0) / 72.0;
+            break;
+        default:
+            *value = parsed;
+            break;
+    }
     return true;
 }
 
@@ -223,10 +246,10 @@ void FilterPlugin::paramsFlush(const clap_input_events* in,
             const auto* ev = reinterpret_cast<const clap_event_param_value*>(header);
             switch (ev->param_id) {
                 case kParamCutoff:
-                    _cutoff_hz = ev->value;
+                    _cutoff_normalized = ev->value;
                     break;
                 case kParamResonance:
-                    _resonance = ev->value;
+                    _resonance_normalized = ev->value;
                     break;
                 case kParamMode:
                     _mode = ev->value;
@@ -235,13 +258,13 @@ void FilterPlugin::paramsFlush(const clap_input_events* in,
                     _slope = ev->value;
                     break;
                 case kParamMix:
-                    _mix = ev->value;
+                    _mix_normalized = ev->value;
                     break;
                 case kParamDrive:
-                    _drive_db = ev->value;
+                    _drive_normalized = ev->value;
                     break;
                 case kParamGain:
-                    _gain_db = ev->value;
+                    _gain_normalized = ev->value;
                     break;
             }
         }
@@ -251,13 +274,13 @@ void FilterPlugin::paramsFlush(const clap_input_events* in,
 auto FilterPlugin::stateSave(const clap_ostream* os) noexcept -> bool {
     std::ostringstream oss;
     oss.imbue(std::locale::classic());
-    oss << "cutoff=" << _cutoff_hz << ";"
-        << "res=" << _resonance << ";"
+    oss << "cutoff=" << _cutoff_normalized << ";"
+        << "res=" << _resonance_normalized << ";"
         << "mode=" << _mode << ";"
         << "slope=" << _slope << ";"
-        << "mix=" << _mix << ";"
-        << "drive=" << _drive_db << ";"
-        << "gain=" << _gain_db << ";";
+        << "mix=" << _mix_normalized << ";"
+        << "drive=" << _drive_normalized << ";"
+        << "gain=" << _gain_normalized << ";";
 
     std::string s = oss.str();
     int64_t result = os->write(os, s.c_str(), s.size());
@@ -281,31 +304,23 @@ auto FilterPlugin::stateLoad(const clap_istream* is) noexcept -> bool {
         try {
             double val = std::stod(val_str);
             if (key == "cutoff") {
-                _cutoff_hz = val;
+                _cutoff_normalized = val;
             } else if (key == "res") {
-                _resonance = val;
+                _resonance_normalized = val;
             } else if (key == "mode") {
                 _mode = val;
             } else if (key == "slope") {
                 _slope = val;
             } else if (key == "mix") {
-                _mix = val;
+                _mix_normalized = val;
             } else if (key == "drive") {
-                _drive_db = val;
+                _drive_normalized = val;
             } else if (key == "gain") {
-                _gain_db = val;
+                _gain_normalized = val;
             }
         } catch (...) {
-            // Skip invalid values instead of crashing
         }
     }
-
-    _current_cutoff = _cutoff_hz;
-    _current_resonance = _resonance;
-    _current_mix = _mix;
-    _current_drive_linear = std::pow(10.0, _drive_db / 20.0);
-    _current_gain_linear = std::pow(10.0, _gain_db / 20.0);
-
     return true;
 }
 
@@ -320,28 +335,32 @@ auto FilterPlugin::process(const clap_process* process) noexcept -> clap_process
     for (uint32_t i = 0; i < nframes; ++i) {
         handleEvents(process->in_events, event_index, i);
 
-        // Target calculation with modulation
-        double target_cutoff = std::clamp(_cutoff_hz + _cutoff_mod, 20.0, 20000.0);
-        double target_resonance = std::clamp(_resonance + _resonance_mod, 0.0, 1.0);
-        double target_mix = std::clamp(_mix + _mix_mod, 0.0, 1.0);
-        double target_drive_db = std::clamp(_drive_db + _drive_mod, 0.0, 48.0);
+        // Map normalized + modulation to functional domain
+        double total_cutoff_norm = std::clamp(_cutoff_normalized + _cutoff_mod, 0.0, 1.0);
+        double target_cutoff_hz = 20.0 * std::pow(1000.0, total_cutoff_norm);
+
+        double target_resonance = std::clamp(_resonance_normalized + _resonance_mod, 0.0, 1.0);
+        double target_mix = std::clamp(_mix_normalized + _mix_mod, 0.0, 1.0);
+
+        double total_drive_norm = std::clamp(_drive_normalized + _drive_mod, 0.0, 1.0);
+        double target_drive_db = total_drive_norm * 36.0;
         double target_drive_linear = std::pow(10.0, target_drive_db / 20.0);
-        double target_gain_db = std::clamp(_gain_db + _gain_mod, -60.0, 12.0);
+
+        double total_gain_norm = std::clamp(_gain_normalized + _gain_mod, 0.0, 1.0);
+        double target_gain_db = -60.0 + total_gain_norm * 72.0;
         double target_gain_linear = std::pow(10.0, target_gain_db / 20.0);
 
         // Smoothing
-        _current_cutoff += _smoothing_coeff * (target_cutoff - _current_cutoff);
+        _current_cutoff_hz += _smoothing_coeff * (target_cutoff_hz - _current_cutoff_hz);
         _current_resonance += _smoothing_coeff * (target_resonance - _current_resonance);
         _current_mix += _smoothing_coeff * (target_mix - _current_mix);
         _current_drive_linear += _smoothing_coeff * (target_drive_linear - _current_drive_linear);
         _current_gain_linear += _smoothing_coeff * (target_gain_linear - _current_gain_linear);
 
-        // Update DSP coefficients
         int slope_idx = std::clamp(static_cast<int>(_slope + 0.5), 0, 2);
         int num_stages = (slope_idx == 2) ? 4 : (slope_idx == 1 ? 2 : 1);
-        _engine.setCoeff(_current_cutoff, _current_resonance, _sample_rate, num_stages);
+        _engine.setCoeff(_current_cutoff_hz, _current_resonance, _sample_rate, num_stages);
 
-        // DSP processing
         float l = in[0][i] * static_cast<float>(_current_drive_linear);
         float r = in[1][i] * static_cast<float>(_current_drive_linear);
         float dry_l = in[0][i];
@@ -350,11 +369,11 @@ auto FilterPlugin::process(const clap_process* process) noexcept -> clap_process
         auto mode = static_cast<SvfEngine::Mode>(std::clamp(static_cast<int>(_mode + 0.5), 0, 5));
         _engine.step(l, r, mode, num_stages);
 
-        // Dry/Wet Mix and Output Gain
-        out[0][i] = (dry_l + static_cast<float>(_current_mix) * (l - dry_l)) * static_cast<float>(_current_gain_linear);
-        out[1][i] = (dry_r + static_cast<float>(_current_mix) * (r - dry_r)) * static_cast<float>(_current_gain_linear);
+        out[0][i] = (dry_l + static_cast<float>(_current_mix) * (l - dry_l)) *
+                    static_cast<float>(_current_gain_linear);
+        out[1][i] = (dry_r + static_cast<float>(_current_mix) * (r - dry_r)) *
+                    static_cast<float>(_current_gain_linear);
     }
-
     return CLAP_PROCESS_CONTINUE;
 }
 
@@ -370,10 +389,10 @@ void FilterPlugin::handleEvents(const clap_input_events* in, uint32_t& event_ind
                 const auto* ev = reinterpret_cast<const clap_event_param_value*>(header);
                 switch (ev->param_id) {
                     case kParamCutoff:
-                        _cutoff_hz = ev->value;
+                        _cutoff_normalized = ev->value;
                         break;
                     case kParamResonance:
-                        _resonance = ev->value;
+                        _resonance_normalized = ev->value;
                         break;
                     case kParamMode:
                         _mode = ev->value;
@@ -382,13 +401,13 @@ void FilterPlugin::handleEvents(const clap_input_events* in, uint32_t& event_ind
                         _slope = ev->value;
                         break;
                     case kParamMix:
-                        _mix = ev->value;
+                        _mix_normalized = ev->value;
                         break;
                     case kParamDrive:
-                        _drive_db = ev->value;
+                        _drive_normalized = ev->value;
                         break;
                     case kParamGain:
-                        _gain_db = ev->value;
+                        _gain_normalized = ev->value;
                         break;
                 }
             } else if (header->type == CLAP_EVENT_PARAM_MOD) {
@@ -415,6 +434,5 @@ void FilterPlugin::handleEvents(const clap_input_events* in, uint32_t& event_ind
         event_index++;
     }
 }
-
 
 }  // namespace synth_canvas::filter_plugin

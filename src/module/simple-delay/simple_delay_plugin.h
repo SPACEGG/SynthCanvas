@@ -59,10 +59,15 @@ class SimpleDelayPlugin
     // Helper to handle parameter changes
     void handleParamValueEvent(const clap_event_param_value* param_value) noexcept;
 
-    // Delay parameters
-    double _delay_time = 0.5;  // seconds
-    double _feedback = 0.5;    // 0.0 to 1.0
-    double _mix = 0.5;         // 0.0 (dry) to 1.0 (wet)
+    // Delay parameters (Normalized 0.0 ~ 1.0)
+    double _delay_time_normalized = 0.25;  // 0.5s / 2.0s
+    double _feedback_normalized = 0.5;
+    double _mix_normalized = 0.5;
+
+    // Modulation (Normalized)
+    double _delay_time_mod = 0.0;
+    double _feedback_mod = 0.0;
+    double _mix_mod = 0.0;
 
     // Internal state
     double _sample_rate = 0.0;

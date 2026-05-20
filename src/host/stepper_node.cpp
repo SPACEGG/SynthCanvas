@@ -7,12 +7,12 @@ namespace synth_canvas::host {
 StepperNode::StepperNode() {
     _node_type_name = "stepper";
     // 1. Register Parameters
-    addParameter(kParamSteps, "Steps", "Logic", 1.0, kMaxSteps, 4.0,
-                 CLAP_PARAM_IS_AUTOMATABLE | CLAP_PARAM_IS_STEPPED);
-    addParameter(kParamPorts, "Ports", "Logic", 1.0, kMaxPorts, 2.0,
-                 CLAP_PARAM_IS_AUTOMATABLE | CLAP_PARAM_IS_STEPPED);
-    addParameter(kParamCurrentStep, "Current Step", "Logic", 0.0, kMaxSteps - 1, 0.0,
-                 CLAP_PARAM_IS_READONLY | CLAP_PARAM_IS_STEPPED);
+    addSteppedParameter(kParamSteps, "Steps", "Logic", 1.0, kMaxSteps, 4.0,
+                        CLAP_PARAM_IS_AUTOMATABLE);
+    addSteppedParameter(kParamPorts, "Ports", "Logic", 1.0, kMaxPorts, 2.0,
+                        CLAP_PARAM_IS_AUTOMATABLE);
+    addSteppedParameter(kParamCurrentStep, "Current Step", "Logic", 0.0, kMaxSteps - 1, 0.0,
+                        CLAP_PARAM_IS_READONLY);
 
     // 2. Register Trigger IN
     addEventPort("Trigger IN", true);
@@ -80,14 +80,18 @@ void StepperNode::setParameterValue(clap_id param_id, double value) {
 
 void StepperNode::queueEvent(const PluginEvent& event) {
     if (event.event.header.type == CLAP_EVENT_NOTE_ON) {
+        // Sync parameters for the sample this event occurred at
+        updateParametersForSample(event.event.header.time);
+
         // Trigger received: Advance step
-        int32_t steps = _active_steps.load(std::memory_order_relaxed);
+        auto steps = static_cast<int32_t>(getFunctionalValue(kParamSteps));
+        if (steps <= 0) steps = 1;
         int32_t next_index = (_current_index.load(std::memory_order_relaxed) + 1) % steps;
         _current_index.store(next_index, std::memory_order_relaxed);
 
         // Routing logic
         uint16_t bitmask = _matrix[next_index].load(std::memory_order_relaxed);
-        int32_t ports = _active_ports.load(std::memory_order_relaxed);
+        auto ports = static_cast<int32_t>(getFunctionalValue(kParamPorts));
 
         for (int32_t p = 0; p < ports; ++p) {
             if (bitmask & (1 << p)) {
@@ -117,9 +121,6 @@ void StepperNode::queueEvent(const PluginEvent& event) {
 
         // Push to main thread queue for GUI polling/signals
         _output_events_to_main.try_enqueue(gui_ev);
-    } else {
-        // Pass-through other events if necessary?
-        // For stepper, usually we only care about Trigger IN.
     }
 }
 
