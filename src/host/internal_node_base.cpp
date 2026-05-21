@@ -9,14 +9,14 @@
 namespace synth_canvas::host {
 
 auto ParameterConfig::toFunctional(double normalized) const -> double {
-    if (type == MappingType::Logarithmic) {
+    if (type == MappingType::kLogarithmic) {
         return min_functional * std::pow(max_functional / min_functional, normalized);
     }
     return min_functional + normalized * (max_functional - min_functional);
 }
 
 auto ParameterConfig::toNormalized(double functional) const -> double {
-    if (type == MappingType::Logarithmic) {
+    if (type == MappingType::kLogarithmic) {
         return std::log(functional / min_functional) / std::log(max_functional / min_functional);
     }
     return (functional - min_functional) / (max_functional - min_functional);
@@ -60,14 +60,14 @@ void InternalNodeBase::reserveOutputBuffers(uint32_t count) {
 }
 
 void InternalNodeBase::setPorts(uint32_t num_inputs, clap_audio_buffer* inputs,
-                                uint32_t num_outputs, clap_audio_buffer* outputs) {
-}
+                                uint32_t num_outputs, clap_audio_buffer* outputs) {}
 
 void InternalNodeBase::setParameterValue(clap_id param_id, double value) {
     if (auto* slot = getParameterSlot(param_id)) {
         slot->base_value.store(value, std::memory_order_relaxed);
-        // Note: current_value should ideally be updated during DSP loop via updateParametersForSample,
-        // but for main-thread queries or immediate updates, we sync it here too.
+        // Note: current_value should ideally be updated during DSP loop via
+        // updateParametersForSample, but for main-thread queries or immediate updates, we sync it
+        // here too.
         double mod = slot->modulation_value.load(std::memory_order_relaxed);
         double combined = std::clamp(value + mod, slot->info.min_value, slot->info.max_value);
         slot->current_value.store(combined, std::memory_order_relaxed);
@@ -205,14 +205,14 @@ auto InternalNodeBase::getParameterText(clap_id param_id, double value) const ->
     if (param_id < kMaxInternalParams && _param_is_mapped[param_id]) {
         double functional = _param_configs[param_id].toFunctional(value);
         std::stringstream ss;
-        ss << std::fixed << std::setprecision(2) << functional << _param_configs[param_id].unit_suffix;
+        ss << std::fixed << std::setprecision(2) << functional
+           << _param_configs[param_id].unit_suffix;
         return ss.str();
     }
     return std::to_string(value);
 }
 
-void InternalNodeBase::queueEvent(const PluginEvent& event) {
-}
+void InternalNodeBase::queueEvent(const PluginEvent& event) {}
 
 auto InternalNodeBase::getAudioPorts(bool is_input) const -> const std::vector<AudioPortInfo>& {
     return is_input ? _input_ports : _output_ports;
@@ -277,7 +277,8 @@ void InternalNodeBase::updateParametersForSample(uint32_t sample_index) {
             slot->has_modulation = std::abs(ev.value) > 1e-6;
 
             double base = slot->base_value.load(std::memory_order_relaxed);
-            double combined = std::clamp(base + ev.value, slot->info.min_value, slot->info.max_value);
+            double combined =
+                std::clamp(base + ev.value, slot->info.min_value, slot->info.max_value);
             slot->current_value.store(combined, std::memory_order_relaxed);
         }
         _current_mod_event_idx++;

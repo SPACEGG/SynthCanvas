@@ -11,13 +11,13 @@
 
 namespace synth_canvas::host {
 
-enum class MappingType { Linear, Logarithmic };
+enum class MappingType { kLinear, kLogarithmic };
 
 /**
  * Configuration for mapping normalized (0.0~1.0) parameters to functional DSP values.
  */
 struct ParameterConfig {
-    MappingType type = MappingType::Linear;
+    MappingType type = MappingType::kLinear;
     double min_functional = 0.0;
     double max_functional = 1.0;
     std::string unit_suffix;
@@ -143,4 +143,3 @@ class InternalNodeBase : public ProcessingNode {
 }  // namespace synth_canvas::host
 
 #endif  // SYNTH_CANVAS_HOST_INTERNAL_NODE_BASE_H
-
