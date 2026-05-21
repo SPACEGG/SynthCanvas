@@ -6,7 +6,7 @@ namespace synth_canvas::host {
 
 TransportNode::TransportNode() {
     _node_type_name = "transport";
-    ParameterConfig tempo_config{.type = MappingType::Linear,
+    ParameterConfig tempo_config{.type = MappingType::kLinear,
                                  .min_functional = 20.0,
                                  .max_functional = 300.0,
                                  .unit_suffix = ""};
@@ -15,7 +15,6 @@ TransportNode::TransportNode() {
     addSteppedParameter(kParamPlaying, "Playing", "Transport", 0.0, 1.0, 0.0,
                         CLAP_PARAM_IS_AUTOMATABLE);
 }
-
 
 void TransportNode::processBegin(int num_frames) {
     InternalNodeBase::processBegin(num_frames);
@@ -79,6 +78,5 @@ auto TransportNode::getParameterText(clap_id param_id, double value) const -> st
     }
     return InternalNodeBase::getParameterText(param_id, value);
 }
-
 
 }  // namespace synth_canvas::host

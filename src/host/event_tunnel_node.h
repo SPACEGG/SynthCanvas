@@ -16,6 +16,7 @@ class EventTunnelNode final : public InternalNodeBase {
     void activate(int32_t sample_rate, int32_t block_size) override;
     void deactivate() override;
     void process() override;
+    void queueEvent(const PluginEvent& event) override;
 
    private:
     std::array<std::array<int, 128>, 16> _note_active_counts{};

@@ -3,6 +3,7 @@
 #include "composite_node.h"
 #include "constants.h"
 #include "envelope_node.h"
+#include "event_tunnel_node.h"
 #include "lfo_node.h"
 #include "logger.h"
 #include "midi_input_node.h"
@@ -12,6 +13,7 @@
 #include "transport_node.h"
 #include "utils/base64.h"
 #include "utils/json_converters.h"
+
 
 namespace synth_canvas::host {
 

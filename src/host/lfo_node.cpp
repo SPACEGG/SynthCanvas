@@ -40,19 +40,19 @@ static auto getSyncIndex(double normalized) -> int {
 LFONode::LFONode() : _rng(std::random_device{}()) {
     _node_type_name = "lfo";
 
-    ParameterConfig freq_config{.type = MappingType::Logarithmic,
+    ParameterConfig freq_config{.type = MappingType::kLogarithmic,
                                 .min_functional = kMinFreq,
                                 .max_functional = kMaxFreq,
                                 .unit_suffix = " Hz"};
-    ParameterConfig amp_config{.type = MappingType::Linear,
+    ParameterConfig amp_config{.type = MappingType::kLinear,
                                .min_functional = 0.0,
                                .max_functional = 1.0,
                                .unit_suffix = ""};
-    ParameterConfig offset_config{.type = MappingType::Linear,
+    ParameterConfig offset_config{.type = MappingType::kLinear,
                                   .min_functional = -1.0,
                                   .max_functional = 1.0,
                                   .unit_suffix = ""};
-    ParameterConfig smooth_config{.type = MappingType::Linear,
+    ParameterConfig smooth_config{.type = MappingType::kLinear,
                                   .min_functional = 0.0,
                                   .max_functional = 100.0,
                                   .unit_suffix = " ms"};
@@ -197,12 +197,18 @@ auto LFONode::getParameterText(clap_id param_id, double value) const -> std::str
         case kWaveform: {
             int wave = static_cast<int>(value);
             switch (wave) {
-                case 0: return "Sine";
-                case 1: return "Triangle";
-                case 2: return "Square";
-                case 3: return "Saw";
-                case 4: return "Random";
-                default: return "Unknown";
+                case 0:
+                    return "Sine";
+                case 1:
+                    return "Triangle";
+                case 2:
+                    return "Square";
+                case 3:
+                    return "Saw";
+                case 4:
+                    return "Random";
+                default:
+                    return "Unknown";
             }
         }
         case kSync:
@@ -213,6 +219,5 @@ auto LFONode::getParameterText(clap_id param_id, double value) const -> std::str
             return InternalNodeBase::getParameterText(param_id, value);
     }
 }
-
 
 }  // namespace synth_canvas::host

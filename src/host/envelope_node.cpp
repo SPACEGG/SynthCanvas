@@ -9,19 +9,19 @@ namespace synth_canvas::host {
 EnvelopeNode::EnvelopeNode() {
     _node_type_name = "envelope";
 
-    ParameterConfig time_config{.type = MappingType::Logarithmic,
+    ParameterConfig time_config{.type = MappingType::kLogarithmic,
                                 .min_functional = 0.1,
                                 .max_functional = 10000.0,
                                 .unit_suffix = " ms"};
-    ParameterConfig lin01_config{.type = MappingType::Linear,
+    ParameterConfig lin01_config{.type = MappingType::kLinear,
                                  .min_functional = 0.0,
                                  .max_functional = 1.0,
                                  .unit_suffix = ""};
-    ParameterConfig curve_config{.type = MappingType::Linear,
+    ParameterConfig curve_config{.type = MappingType::kLinear,
                                  .min_functional = -1.0,
                                  .max_functional = 1.0,
                                  .unit_suffix = ""};
-    ParameterConfig amount_config{.type = MappingType::Linear,
+    ParameterConfig amount_config{.type = MappingType::kLinear,
                                   .min_functional = -1.0,
                                   .max_functional = 1.0,
                                   .unit_suffix = ""};
@@ -45,7 +45,7 @@ EnvelopeNode::EnvelopeNode() {
     addAudioPort("Sustain Mod", true, 1, true, kSustain);
     addAudioPort("Release Mod", true, 1, true, kRelease);
     addAudioPort("Amount Mod", true, 1, true, kAmount);
-    addAudioPort("Signal Out", false, 1, true); // Port 0: Modulation Output
+    addAudioPort("Signal Out", false, 1, true);  // Port 0: Modulation Output
 }
 
 void EnvelopeNode::activate(int32_t sample_rate, int32_t block_size) {
@@ -104,7 +104,8 @@ void EnvelopeNode::process() {
                     shaped_x = (curve_val > 0) ? std::pow(x, f) : 1.0 - std::pow(1.0 - x, f);
                 }
 
-                _adsr.current_value = _adsr.start_value + (_adsr.target_value - _adsr.start_value) * shaped_x;
+                _adsr.current_value =
+                    _adsr.start_value + (_adsr.target_value - _adsr.start_value) * shaped_x;
 
                 // Stage transitions
                 if (_adsr.phase >= 1.0) {
@@ -114,7 +115,8 @@ void EnvelopeNode::process() {
                             _adsr.start_value = 1.0;
                             _adsr.target_value = _cached_sustain;
                             _adsr.phase = 0.0;
-                            _adsr.phase_inc = 1.0 / (_current_sample_rate * (std::max(0.1, _cached_decay) * 0.001));
+                            _adsr.phase_inc = 1.0 / (_current_sample_rate *
+                                                     (std::max(0.1, _cached_decay) * 0.001));
                             _adsr.curve = _cached_d_curve;
                             break;
                         case ADSRState::kDecay:
@@ -126,14 +128,16 @@ void EnvelopeNode::process() {
                             _adsr.stage = ADSRState::kIdle;
                             _current_key = -1;
                             break;
-                        default: break;
+                        default:
+                            break;
                     }
                 }
             }
         }
 
         // 4. Final output
-        out_buf[i] = static_cast<float>(_adsr.current_value * _adsr.peak_amplitude * _cached_amount);
+        out_buf[i] =
+            static_cast<float>(_adsr.current_value * _adsr.peak_amplitude * _cached_amount);
     }
 }
 
@@ -146,7 +150,8 @@ void EnvelopeNode::queueEvent(const PluginEvent& event) {
     }
 }
 
-void EnvelopeNode::triggerNoteOn(int16_t key, int16_t channel, int32_t note_id, double velocity, uint32_t offset) {
+void EnvelopeNode::triggerNoteOn(int16_t key, int16_t channel, int32_t note_id, double velocity,
+                                 uint32_t offset) {
     // Sync parameters for the exact sample this event occurred at
     updateParametersForSample(offset);
 
@@ -176,7 +181,8 @@ void EnvelopeNode::triggerNoteOff(int16_t key, int32_t note_id, uint32_t offset)
             _adsr.start_value = _adsr.current_value;
             _adsr.target_value = 0.0;
             _adsr.phase = 0.0;
-            _adsr.phase_inc = 1.0 / (_current_sample_rate * (std::max(0.1, _cached_release) * 0.001));
+            _adsr.phase_inc =
+                1.0 / (_current_sample_rate * (std::max(0.1, _cached_release) * 0.001));
             _adsr.curve = _cached_r_curve;
         }
     }
