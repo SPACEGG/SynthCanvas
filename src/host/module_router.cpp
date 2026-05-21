@@ -120,6 +120,8 @@ auto ModuleRouter::registerSpecialNode(const std::string& type, uint32_t forced_
         node = std::make_unique<StepperNode>();
     } else if (type == "sequencer") {
         node = std::make_unique<SequencerNode>();
+    } else if (type == "event_tunnel") {
+        node = std::make_unique<EventTunnelNode>();
     } else if (type == "transport") {
         auto t_node = std::make_unique<TransportNode>();
         t_node->on_transport_change_requested = [this](double tempo, bool playing) {

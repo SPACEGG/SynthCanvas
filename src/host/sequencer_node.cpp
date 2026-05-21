@@ -9,7 +9,7 @@ namespace synth_canvas::host {
 SequencerNode::SequencerNode() {
     _node_type_name = "sequencer";
 
-    ParameterConfig swing_config{.type = MappingType::Linear,
+    ParameterConfig swing_config{.type = MappingType::kLinear,
                                  .min_functional = 0.0,
                                  .max_functional = 0.75,
                                  .unit_suffix = "%"};
