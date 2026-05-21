@@ -2,10 +2,6 @@
 	path = libs/oboe
 	url = https://github.com/google/oboe.git
 	branch = 1.10.0
-[submodule "src/gdextension/godot-cpp"]
-	path = src/gdextension/godot-cpp
-	url = https://github.com/godotengine/godot-cpp.git
-	branch = godot-4.5-stable
 [submodule "libs/clap"]
 	path = libs/clap
 	url = https://github.com/free-audio/clap.git
@@ -13,8 +9,12 @@
 [submodule "libs/clap-helpers"]
 	path = libs/clap-helpers
 	url = https://github.com/free-audio/clap-helpers.git
-	branch = main
+	# Fixed to commit: f6bedf6f9e87ae97cadc32e77c47d93c603ff308
 [submodule "libs/readerwriterqueue"]
 	path = libs/readerwriterqueue
 	url = https://github.com/cameron314/readerwriterqueue
 
+[submodule "libs/rtmidi"]
+	path = libs/rtmidi
+	url = https://github.com/thestk/rtmidi
+	branch = master

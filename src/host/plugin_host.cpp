@@ -1,5 +1,7 @@
 #include "plugin_host.h"
 
+#include <clap/ext/state.h>
+
 #include <clap/helpers/host.hxx>
 #include <clap/helpers/plugin-proxy.hxx>
 #include <clap/helpers/reducing-param-queue.hxx>
@@ -14,10 +16,36 @@
 #include <dlfcn.h>
 #endif
 
+#include <charconv>
 #include <thread>
 #include <utility>
 
 namespace synth_canvas::host {
+
+namespace {
+auto clapOStreamWrite(const clap_ostream* stream, const void* buffer, uint64_t size) -> int64_t {
+    auto* vec = static_cast<std::vector<uint8_t>*>(stream->ctx);
+    const auto* src = static_cast<const uint8_t*>(buffer);
+    vec->insert(vec->end(), src, src + size);
+    return static_cast<int64_t>(size);
+}
+
+struct IStreamContext {
+    const std::vector<uint8_t>* data;
+    uint64_t offset;
+};
+
+auto clapIStreamRead(const clap_istream* stream, void* buffer, uint64_t size) -> int64_t {
+    auto* ctx = static_cast<IStreamContext*>(stream->ctx);
+    uint64_t available = ctx->data->size() - ctx->offset;
+    uint64_t to_read = std::min(size, available);
+    if (to_read > 0) {
+        std::memcpy(buffer, ctx->data->data() + ctx->offset, to_read);
+        ctx->offset += to_read;
+    }
+    return static_cast<int64_t>(to_read);
+}
+}  // namespace
 
 enum class ThreadType {
     kUnknown,
@@ -31,25 +59,25 @@ void logMessage(clap_log_severity severity, const char* msg) {
     std::string prefix;
     switch (severity) {
         case CLAP_LOG_DEBUG:
-            prefix = "[DEBUG]";
+            prefix = "[PluginHost-DEBUG]";
             break;
         case CLAP_LOG_INFO:
-            prefix = "[INFO]";
+            prefix = "[PluginHost-INFO]";
             break;
         case CLAP_LOG_WARNING:
-            prefix = "[WARNING]";
+            prefix = "[PluginHost-WARNING]";
             break;
         case CLAP_LOG_ERROR:
-            prefix = "[ERROR]";
+            prefix = "[PluginHost-ERROR]";
             break;
         case CLAP_LOG_FATAL:
-            prefix = "[FATAL]";
+            prefix = "[PluginHost-FATAL]";
             break;
         case CLAP_LOG_HOST_MISBEHAVING:
-            prefix = "[HOST MISBEHAVING]";
+            prefix = "[PluginHost-HOST_MISBEHAVING]";
             break;
         default:
-            prefix = "[UNKNOWN]";
+            prefix = "[PluginHost-UNKNOWN]";
             break;
     }
     log(prefix, " ", msg);
@@ -139,7 +167,7 @@ void PluginHost::scanParameters() {
                ("Scanned " + std::to_string(_params.size()) + " parameters.").c_str());
 }
 
-auto PluginHost::getParameterSlot(clap_id param_id) -> PluginHost::ParameterSlot* {
+auto PluginHost::getParameterSlot(clap_id param_id) -> ParameterSlot* {
     auto it = _param_id_to_index.find(param_id);
     if (it != _param_id_to_index.end()) {
         return _params[it->second].get();
@@ -147,10 +175,40 @@ auto PluginHost::getParameterSlot(clap_id param_id) -> PluginHost::ParameterSlot
     return nullptr;
 }
 
+auto PluginHost::getParameterSlot(clap_id param_id) const -> const ParameterSlot* {
+    auto it = _param_id_to_index.find(param_id);
+    if (it != _param_id_to_index.end()) {
+        return _params[it->second].get();
+    }
+    return nullptr;
+}
+
+auto PluginHost::getParameterText(clap_id param_id, double value) const -> std::string {
+    if (!_plugin) return std::to_string(value);
+
+    auto params_ext = static_cast<const clap_plugin_params_t*>(
+        _plugin->clapPlugin()->get_extension(_plugin->clapPlugin(), CLAP_EXT_PARAMS));
+
+    if (!params_ext) return std::to_string(value);
+
+    // NOLINTNEXTLINE(modernize-avoid-c-arrays)
+    char display[CLAP_NAME_SIZE];
+    if (params_ext->value_to_text(_plugin->clapPlugin(), param_id, value, display,
+                                  sizeof(display))) {
+        return {display};
+    }
+
+    return std::to_string(value);
+}
+
 void PluginHost::paramsRescan(clap_param_rescan_flags flags) noexcept {
     logMessage(CLAP_LOG_INFO,
                ("Plugin requested parameter rescan with flags: " + std::to_string(flags)).c_str());
     scanParameters();
+
+    if (on_params_rescan) {
+        on_params_rescan(_instance_id);
+    }
 }
 
 void PluginHost::paramsClear(clap_id param_id, clap_param_clear_flags flags) noexcept {
@@ -181,31 +239,98 @@ void PluginHost::scanAudioPorts() {
     if (!audio_ports_ext) {
         logMessage(CLAP_LOG_WARNING,
                    "Plugin does not implement CLAP_EXT_AUDIO_PORTS. Assuming no audio ports.");
-        return;
-    }
+    } else {
+        _audio_input_ports_count = audio_ports_ext->count(_plugin->clapPlugin(), true);
+        _audio_output_ports_count = audio_ports_ext->count(_plugin->clapPlugin(), false);
 
-    _audio_input_ports_count = audio_ports_ext->count(_plugin->clapPlugin(), true);
-    _audio_output_ports_count = audio_ports_ext->count(_plugin->clapPlugin(), false);
+        for (uint32_t i = 0; i < _audio_input_ports_count; ++i) {
+            AudioPortInfo info;
+            info.index = i;
+            info.is_input = true;
+            if (audio_ports_ext->get(_plugin->clapPlugin(), i, true, &info.clap_info)) {
+                info.is_modulation = false;
+                info.target_param_id = -1;
+                _audio_input_ports.push_back(info);
+            }
+        }
 
-    for (uint32_t i = 0; i < _audio_input_ports_count; ++i) {
-        AudioPortInfo info;
-        info.index = i;
-        info.is_input = true;
-        info.is_modulation =
-            false;  // Audio inputs are for audio processing only. Modulation targets parameters.
-        if (audio_ports_ext->get(_plugin->clapPlugin(), i, true, &info.clap_info)) {
-            _audio_input_ports.push_back(info);
+        for (uint32_t i = 0; i < _audio_output_ports_count; ++i) {
+            AudioPortInfo info;
+            info.index = i;
+            info.is_input = false;
+            if (audio_ports_ext->get(_plugin->clapPlugin(), i, false, &info.clap_info)) {
+                info.is_modulation = false;
+                info.target_param_id = -1;
+                _audio_output_ports.push_back(info);
+            }
         }
     }
 
-    for (uint32_t i = 0; i < _audio_output_ports_count; ++i) {
-        AudioPortInfo info;
-        info.index = i;
-        info.is_input = false;
-        info.is_modulation = false;  // Audio outputs can be sources for modulation, but we treat
-                                     // them as generic audio ports for now.
-        if (audio_ports_ext->get(_plugin->clapPlugin(), i, false, &info.clap_info)) {
-            _audio_output_ports.push_back(info);
+    // Now, add artificial modulation ports from modulatable parameters
+    for (const auto& slot : _params) {
+        if (slot->info.flags & CLAP_PARAM_IS_MODULATABLE) {
+            AudioPortInfo mod_port;
+            mod_port.index = static_cast<uint32_t>(_audio_input_ports.size());
+            mod_port.is_input = true;
+            mod_port.is_modulation = true;
+            mod_port.target_param_id = slot->info.id;
+
+            // Fill clap_info for UI/metadata consistency
+            std::strncpy(mod_port.clap_info.name, slot->info.name, CLAP_NAME_SIZE);
+            mod_port.clap_info.id = mod_port.index;
+            mod_port.clap_info.channel_count = 1;
+            mod_port.clap_info.flags = CLAP_AUDIO_PORT_IS_MAIN;
+            mod_port.clap_info.port_type = CLAP_PORT_MONO;
+
+            _audio_input_ports.push_back(mod_port);
+        }
+    }
+
+    // Add Event ports
+    auto note_ports_ext = static_cast<const clap_plugin_note_ports_t*>(
+        _plugin->clapPlugin()->get_extension(_plugin->clapPlugin(), CLAP_EXT_NOTE_PORTS));
+
+    if (note_ports_ext) {
+        uint32_t note_in_count = note_ports_ext->count(_plugin->clapPlugin(), true);
+        for (uint32_t i = 0; i < note_in_count; ++i) {
+            clap_note_port_info note_info;
+            if (note_ports_ext->get(_plugin->clapPlugin(), i, true, &note_info)) {
+                AudioPortInfo port;
+                port.index = static_cast<uint32_t>(_audio_input_ports.size());
+                port.is_input = true;
+                port.is_modulation = false;
+                port.target_param_id = -1;
+
+                // Map NotePortInfo to AudioPortInfo structure
+                // Note: Note ports don't have id_out, we only use id and name.
+                port.clap_info.id = note_info.id;
+                std::strncpy(port.clap_info.name, note_info.name, sizeof(port.clap_info.name) - 1);
+                port.clap_info.channel_count = 16;  // Standard MIDI
+                port.clap_info.flags = CLAP_AUDIO_PORT_IS_MAIN;
+                port.clap_info.port_type = "event";
+
+                _audio_input_ports.push_back(port);
+            }
+        }
+
+        uint32_t note_out_count = note_ports_ext->count(_plugin->clapPlugin(), false);
+        for (uint32_t i = 0; i < note_out_count; ++i) {
+            clap_note_port_info note_info;
+            if (note_ports_ext->get(_plugin->clapPlugin(), i, false, &note_info)) {
+                AudioPortInfo port;
+                port.index = static_cast<uint32_t>(_audio_output_ports.size());
+                port.is_input = false;
+                port.is_modulation = false;
+                port.target_param_id = -1;
+
+                port.clap_info.id = note_info.id;
+                std::strncpy(port.clap_info.name, note_info.name, sizeof(port.clap_info.name) - 1);
+                port.clap_info.channel_count = 16;
+                port.clap_info.flags = CLAP_AUDIO_PORT_IS_MAIN;
+                port.clap_info.port_type = "event";
+
+                _audio_output_ports.push_back(port);
+            }
         }
     }
 }
@@ -213,13 +338,14 @@ void PluginHost::scanAudioPorts() {
 auto PluginHost::load(const std::string& path, int plugin_index) -> bool {
     unload();
 
+    _plugin_path = path;
     logMessage(CLAP_LOG_INFO, ("Attempting to load plugin: " + path).c_str());
 
 #if defined(_WIN32)
     _library_handle = LoadLibraryA(path.c_str());
     if (!_library_handle) {
-        log_message(CLAP_LOG_ERROR,
-                    ("Failed to load plugin library: " + std::to_string(GetLastError())).c_str());
+        logMessage(CLAP_LOG_ERROR,
+                   ("Failed to load plugin library: " + std::to_string(GetLastError())).c_str());
         return false;
     }
     _plugin_entry = reinterpret_cast<const struct clap_plugin_entry*>(
@@ -237,7 +363,7 @@ auto PluginHost::load(const std::string& path, int plugin_index) -> bool {
 
     if (!_plugin_entry) {
 #if defined(_WIN32)
-        log_message(CLAP_LOG_ERROR, "Unable to resolve entry point 'clap_entry'");
+        logMessage(CLAP_LOG_ERROR, "Unable to resolve entry point 'clap_entry'");
         FreeLibrary((HMODULE)_library_handle);
 #else
         logMessage(
@@ -309,8 +435,8 @@ auto PluginHost::load(const std::string& path, int plugin_index) -> bool {
                                ", index: " + std::to_string(plugin_index))
                                   .c_str());
 
-    const auto kRawPlugin = _plugin_factory->create_plugin(_plugin_factory, clapHost(), desc->id);
-    if (!kRawPlugin) {
+    const auto raw_plugin = _plugin_factory->create_plugin(_plugin_factory, clapHost(), desc->id);
+    if (!raw_plugin) {
         logMessage(CLAP_LOG_ERROR,
                    ("Could not create the plugin with id: " + std::string(desc->id)).c_str());
         _plugin_entry->deinit();
@@ -323,7 +449,7 @@ auto PluginHost::load(const std::string& path, int plugin_index) -> bool {
         return false;
     }
 
-    _plugin = std::make_unique<PluginProxy>(*kRawPlugin, *this);
+    _plugin = std::make_unique<PluginProxy>(*raw_plugin, *this);
 
     if (!_plugin->init()) {
         logMessage(CLAP_LOG_ERROR,
@@ -339,11 +465,11 @@ auto PluginHost::load(const std::string& path, int plugin_index) -> bool {
         return false;
     }
 
-    // Initial parameter scan
     scanParameters();
-
-    // Initial audio port scan
     scanAudioPorts();
+
+    // Reserve owned output buffers based on scanned port count
+    reserveOutputBuffers(_audio_output_ports_count);
 
     auto note_ports_ext = static_cast<const clap_plugin_note_ports_t*>(
         _plugin->clapPlugin()->get_extension(_plugin->clapPlugin(), CLAP_EXT_NOTE_PORTS));
@@ -397,11 +523,14 @@ void PluginHost::unload() {
     setPluginState(kInactive);
     logMessage(CLAP_LOG_INFO, "Plugin unloaded.");
 }
-auto PluginHost::canActivate() const -> bool { return _plugin != nullptr && !isPluginActive(); }
 
 void PluginHost::activate(int32_t sample_rate, int32_t block_size) {
     if (!_plugin) {
         return;
+    }
+
+    for (auto& buf : _output_buffers) {
+        buf.resize(constants::kDefaultChannelCount, block_size);
     }
 
     if (!_plugin->activate(sample_rate, 1, block_size)) {
@@ -410,6 +539,8 @@ void PluginHost::activate(int32_t sample_rate, int32_t block_size) {
         return;
     }
 
+    _input_events_data.reserve(constants::kEventQueueSize);
+
     _schedule_processing.store(true, std::memory_order_release);
 
     setPluginState(kActiveAndSleeping);
@@ -417,7 +548,7 @@ void PluginHost::activate(int32_t sample_rate, int32_t block_size) {
 }
 
 void PluginHost::deactivate() {
-    if (!isPluginActive()) {
+    if (!isActive()) {
         return;
     }
 
@@ -445,10 +576,12 @@ void PluginHost::setProcessingEnabled(bool enabled) {
     _schedule_processing.store(enabled, std::memory_order_release);
 }
 
+void PluginHost::setTransport(const TransportState* transport) { _transport = transport; }
+
 void PluginHost::setParameterValue(clap_id param_id, double value) {
-    // Update local parameter slot
     if (auto* slot = getParameterSlot(param_id)) {
         slot->base_value.store(value, std::memory_order_relaxed);
+        slot->current_value.store(value, std::memory_order_relaxed);
     }
 
     PluginEvent ev;
@@ -469,20 +602,180 @@ void PluginHost::setParameterValue(clap_id param_id, double value) {
     _input_events.try_enqueue(ev);
 }
 
+void PluginHost::setParameterValue(const std::string& param_id, double value) {
+    int32_t id = 0;
+    auto [ptr, ec] = std::from_chars(param_id.data(), param_id.data() + param_id.size(), id);
+
+    if (ec == std::errc()) {
+        setParameterValue(id, value);
+    } else if (ec == std::errc::invalid_argument) {
+        logMessage(CLAP_LOG_WARNING, "Param id not found.");
+    } else if (ec == std::errc::result_out_of_range) {
+        logMessage(CLAP_LOG_WARNING, "Param id out of range.");
+    }
+}
+
+void PluginHost::applyModulation(clap_id param_id, double value, uint32_t sample_offset) {
+    if (auto* slot = getParameterSlot(param_id)) {
+        double base = slot->base_value.load(std::memory_order_relaxed);
+        slot->modulation_value.store(value, std::memory_order_relaxed);
+        slot->current_value.store(base + value, std::memory_order_relaxed);
+    }
+
+    PluginEvent ev;
+    ev.event.header.size = sizeof(clap_event_param_mod);
+    ev.event.header.time = sample_offset;
+    ev.event.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+    ev.event.header.type = CLAP_EVENT_PARAM_MOD;
+    ev.event.header.flags = 0;
+
+    ev.event.param_mod.param_id = param_id;
+    ev.event.param_mod.amount = value;
+    ev.event.param_mod.cookie = nullptr;
+    ev.event.param_mod.note_id = constants::kClapInvalidId;
+    ev.event.param_mod.port_index = constants::kClapInvalidId;
+    ev.event.param_mod.key = constants::kClapInvalidId;
+    ev.event.param_mod.channel = constants::kClapInvalidId;
+
+    _input_events.try_enqueue(ev);
+}
+
+auto PluginHost::saveState(std::vector<uint8_t>& data) -> bool {
+    checkForMainThread();
+
+    if (!_plugin) return false;
+
+    auto* state_ext = static_cast<const clap_plugin_state_t*>(
+        _plugin->clapPlugin()->get_extension(_plugin->clapPlugin(), CLAP_EXT_STATE));
+
+    if (!state_ext) return true;  // Not an error if the plugin doesn't have state
+
+    std::vector<uint8_t> plugin_data;
+    plugin_data.reserve(1024);
+    clap_ostream stream;
+    stream.ctx = &plugin_data;
+    stream.write = clapOStreamWrite;
+
+    if (state_ext->save(_plugin->clapPlugin(), &stream) && !plugin_data.empty()) {
+        data = std::move(plugin_data);
+        _cached_state = data;  // Update cache
+        return true;
+    } else {
+        // Fallback: If plugin is loading asynchronously, return the cached state
+        if (!_cached_state.empty()) {
+            data = _cached_state;
+            logMessage(CLAP_LOG_INFO, "[PluginHost] Plugin failed to return state, using cache.");
+            return true;
+        }
+    }
+
+    return false;
+}
+
+auto PluginHost::loadState(const std::vector<uint8_t>& data) -> bool {
+    checkForMainThread();
+
+    if (!_plugin) return false;
+
+    // Cache the state immediately to protect against UI Pulls during async loading
+    _cached_state = data;
+
+    auto* state_ext = static_cast<const clap_plugin_state_t*>(
+        _plugin->clapPlugin()->get_extension(_plugin->clapPlugin(), CLAP_EXT_STATE));
+
+    if (!state_ext) return true;  // Not an error
+
+    IStreamContext ctx = {.data = &data, .offset = 0};
+    clap_istream stream;
+    stream.ctx = &ctx;
+    stream.read = clapIStreamRead;
+
+    bool success = state_ext->load(_plugin->clapPlugin(), &stream);
+    if (success) {
+        syncParameterValues();
+    }
+    return success;
+}
+
+void PluginHost::syncParameterValues() {
+    if (!_plugin) return;
+
+    auto* params_ext = static_cast<const clap_plugin_params_t*>(
+        _plugin->clapPlugin()->get_extension(_plugin->clapPlugin(), CLAP_EXT_PARAMS));
+    if (!params_ext) return;
+
+    for (auto& slot : _params) {
+        double value = 0;
+        if (params_ext->get_value(_plugin->clapPlugin(), slot->info.id, &value)) {
+            slot->base_value.store(value, std::memory_order_relaxed);
+            slot->current_value.store(value, std::memory_order_relaxed);
+        }
+    }
+}
+
+auto PluginHost::getParameterBaseValue(clap_id param_id) const -> double {
+    auto it = _param_id_to_index.find(param_id);
+    if (it != _param_id_to_index.end()) {
+        return _params[it->second]->base_value.load(std::memory_order_relaxed);
+    }
+    return 0.0;
+}
+
+auto PluginHost::getParameterCurrentValue(clap_id param_id) const -> double {
+    auto it = _param_id_to_index.find(param_id);
+    if (it != _param_id_to_index.end()) {
+        return _params[it->second]->current_value.load(std::memory_order_relaxed);
+    }
+    return 0.0;
+}
+
+auto PluginHost::getParameterModulationOffset(clap_id param_id) const -> double {
+    auto it = _param_id_to_index.find(param_id);
+    if (it != _param_id_to_index.end()) {
+        return _params[it->second]->modulation_value.load(std::memory_order_relaxed);
+    }
+    return 0.0;
+}
+
+void PluginHost::queueEvent(const PluginEvent& event) { _input_events.try_enqueue(event); }
+
+auto PluginHost::popOutputEvent(uint32_t port_index, PluginEvent& out_event) -> bool {
+    if (port_index == 0) {
+        return _output_events_to_audio.try_dequeue(out_event);
+    }
+    return false;
+}
+
+auto PluginHost::getOutputBuffer(uint32_t port_idx) -> AudioBuffer* {
+    if (port_idx < _output_buffers.size()) {
+        return &_output_buffers[port_idx];
+    }
+    return nullptr;
+}
+
+void PluginHost::reserveOutputBuffers(uint32_t count) {
+    if (count > _output_buffers.size()) {
+        _output_buffers.resize(count);
+        for (auto& buf : _output_buffers) {
+            buf.owns_memory = true;
+        }
+    }
+}
+
 void PluginHost::pollMainThread() {
     checkForMainThread();
 
     PluginEvent ev;
     while (_output_events_to_main.try_dequeue(ev)) {
         if (ev.event.header.type == CLAP_EVENT_PARAM_VALUE) {
-            // Update local parameter slot if value changed by plugin
             if (auto* slot = getParameterSlot(ev.event.param_value.param_id)) {
                 slot->base_value.store(ev.event.param_value.value, std::memory_order_relaxed);
+                slot->current_value.store(ev.event.param_value.value, std::memory_order_relaxed);
             }
+        }
 
-            if (on_parameter_changed) {
-                on_parameter_changed(ev.event.param_value.param_id, ev.event.param_value.value);
-            }
+        if (on_event_occured) {
+            on_event_occured(_instance_id, ev);
         }
     }
 }
@@ -500,82 +793,25 @@ void PluginHost::processBegin(int nframes) {
     _process.frames_count = nframes;
 }
 
-void PluginHost::processEnd(int nframes) {
-    g_thread_type = ThreadType::kUnknown;
-    _process.frames_count = nframes;
+void PluginHost::processEvents(int nframes) {
+    g_thread_type = ThreadType::kAudioThread;
+    if (!_plugin || !isActive()) return;
+
+    // Process only events (num_frames = 0)
+    _process.frames_count = 0;
+    generatePluginInputEvents();
+    _plugin->process(&_process);
+    handlePluginOutputEvents();
 }
 
-void PluginHost::processNoteOn(int sample_offset, int channel, int key, double velocity,
-                               int32_t note_id) {
-    if (!_plugin || !_has_note_input) return;
-
-    PluginEvent ev;
-    ev.event.header.size = sizeof(clap_event_note);
-    ev.event.header.time = sample_offset;
-    ev.event.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
-    ev.event.header.type = CLAP_EVENT_NOTE_ON;
-    ev.event.header.flags = 0;
-
-    ev.event.note.port_index = constants::kDefaultEventPortIndex;
-    ev.event.note.key = key;
-    ev.event.note.channel = channel;
-    ev.event.note.note_id = note_id;
-    ev.event.note.velocity = velocity;
-
-    _input_events.try_enqueue(ev);
-}
-
-void PluginHost::processNoteOff(int sample_offset, int channel, int key, double velocity,
-                                int32_t note_id) {
-    if (!_plugin || !_has_note_input) return;
-
-    PluginEvent ev;
-    ev.event.header.size = sizeof(clap_event_note);
-    ev.event.header.time = sample_offset;
-    ev.event.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
-    ev.event.header.type = CLAP_EVENT_NOTE_OFF;
-    ev.event.header.flags = 0;
-
-    ev.event.note.port_index = constants::kDefaultEventPortIndex;
-    ev.event.note.key = key;
-    ev.event.note.channel = channel;
-    ev.event.note.note_id = note_id;
-    ev.event.note.velocity = velocity;
-
-    _input_events.try_enqueue(ev);
-}
-
-void PluginHost::processParamModulation(clap_id param_id, double value, uint32_t sample_offset) {
-    // Update visualization state (atomic)
-    if (auto* slot = getParameterSlot(param_id)) {
-        slot->current_value.store(value, std::memory_order_relaxed);
-    }
-
-    // Generate CLAP event for the plugin
-    PluginEvent ev;
-    ev.event.header.size = sizeof(clap_event_param_mod);
-    ev.event.header.time = sample_offset;
-    ev.event.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
-    ev.event.header.type = CLAP_EVENT_PARAM_MOD;
-    ev.event.header.flags = 0;
-    ev.event.header.type = CLAP_EVENT_PARAM_VALUE;
-    ev.event.param_value.param_id = param_id;
-    ev.event.param_value.value = value;
-    ev.event.param_value.cookie = nullptr;
-    ev.event.param_value.note_id = constants::kClapInvalidId;
-    ev.event.param_value.port_index = constants::kClapInvalidId;
-    ev.event.param_value.key = constants::kClapInvalidId;
-    ev.event.param_value.channel = constants::kClapInvalidId;
-
-    _input_events.try_enqueue(ev);
-}
+void PluginHost::processEnd(int nframes) { g_thread_type = ThreadType::kUnknown; }
 
 void PluginHost::process() {
     checkForAudioThread();
 
     if (!_plugin) return;
 
-    if (!isPluginActive()) return;
+    if (!isActive()) return;
 
     bool should_process = _schedule_processing.load(std::memory_order_acquire);
     bool is_currently_processing = _is_processing_active.load(std::memory_order_relaxed);
@@ -602,14 +838,45 @@ void PluginHost::process() {
         return;
     }
 
-    _process.transport = nullptr;
+    clap_event_transport_t clap_transport = {0};
+    if (_transport) {
+        clap_transport.header.size = sizeof(clap_event_transport_t);
+        clap_transport.header.time = 0;
+        clap_transport.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+        clap_transport.header.type = CLAP_EVENT_TRANSPORT;
+        clap_transport.header.flags = 0;
+
+        clap_transport.flags = 0;
+        if (_transport->is_playing) {
+            clap_transport.flags |= CLAP_TRANSPORT_IS_PLAYING;
+        }
+
+        // CLAP uses 64-bit fixed point with 31-bit fractional part (CLAP_BEATTIME_FACTOR)
+        const auto factor = static_cast<double>(1LL << 31);
+
+        clap_transport.song_pos_beats =
+            static_cast<int64_t>(std::round(_transport->song_pos_beats * factor));
+
+        // Convert beats to seconds: seconds = (beats * 60) / tempo
+        double song_pos_seconds = (_transport->song_pos_beats * 60.0) / _transport->tempo;
+        clap_transport.song_pos_seconds =
+            static_cast<int64_t>(std::round(song_pos_seconds * factor));
+
+        clap_transport.tempo = _transport->tempo;
+        clap_transport.tsig_num = static_cast<uint16_t>(_transport->ts_num);
+        clap_transport.tsig_denom = static_cast<uint16_t>(_transport->ts_denom);
+
+        clap_transport.flags |= CLAP_TRANSPORT_HAS_TEMPO | CLAP_TRANSPORT_HAS_BEATS_TIMELINE |
+                                CLAP_TRANSPORT_HAS_SECONDS_TIMELINE |
+                                CLAP_TRANSPORT_HAS_TIME_SIGNATURE;
+
+        _process.transport = &clap_transport;
+    } else {
+        _process.transport = nullptr;
+    }
 
     _process.in_events = _ev_in.clapInputEvents();
     _process.out_events = _ev_out.clapOutputEvents();
-
-    // Note: Audio inputs/outputs are set via setPorts() called by AudioEngine before process().
-    // We should NOT override them here based on potentially outdated member variables like
-    // _audio_in/_audio_out.
 
     _ev_out.clear();
     generatePluginInputEvents();
@@ -620,14 +887,17 @@ void PluginHost::process() {
 
     _ev_out.clear();
     _ev_in.clear();
-
-    g_thread_type = ThreadType::kUnknown;
 }
 
 void PluginHost::generatePluginInputEvents() {
+    _input_events_data.clear();
     PluginEvent ev;
     while (_input_events.try_dequeue(ev)) {
-        _ev_in.push(&ev.event.header);
+        _input_events_data.push_back(ev);
+    }
+
+    for (auto& stored_ev : _input_events_data) {
+        _ev_in.push(&stored_ev.event.header);
     }
 }
 
@@ -654,6 +924,7 @@ void PluginHost::handlePluginOutputEvents() {
 
                 PluginEvent out_ev;
                 out_ev.event.note = *nev;
+                _output_events_to_main.try_enqueue(out_ev);
                 _output_events_to_audio.try_enqueue(out_ev);
                 break;
             }
@@ -663,7 +934,7 @@ void PluginHost::handlePluginOutputEvents() {
 
 void PluginHost::setPluginState(PluginState state) { _state = state; }
 
-auto PluginHost::isPluginActive() const -> bool {
+auto PluginHost::isActive() const -> bool {
     return _state != kInactive && _state != kInactiveWithError;
 }
 

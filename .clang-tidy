@@ -1,7 +1,7 @@
 ---
 Checks: "google-*,readability-identifier-naming,modernize-*"
 WarningsAsErrors: "*"
-HeaderFilterRegex: "src/(?!gdextension/godot-cpp|module/clap-saw-demo).*"
+HeaderFilterRegex: "(src|bindings)/(?!module/clap-saw-demo).*"
 FormatStyle: none
 CheckOptions:
   # --- Naming Conventions (Google Style with Custom Member Prefix) ---
@@ -61,6 +61,12 @@ CheckOptions:
     value: CamelCase
   - key: readability-identifier-naming.EnumConstantPrefix
     value: k
+
+  # Local Constants: lower_case (Same as local variable)
+  - key: readability-identifier-naming.LocalConstantCase
+    value: lower_case
+  - key: readability-identifier-naming.LocalConstantPrefix
+    value: ""
 
   # Macros: UPPER_CASE
   - key: readability-identifier-naming.MacroDefinitionCase

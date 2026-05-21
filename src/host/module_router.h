@@ -7,93 +7,97 @@
 #include <functional>
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
-#include "audio_buffer_manager.h"
 #include "constants.h"
+#include "graph_processor.h"
+#include "graph_types.h"
 #include "readerwriterqueue.h"
 
-// Forward declarations
-namespace synth_canvas::host {
-class PluginHost;
-}
-
 namespace synth_canvas::host {
 
-enum class ConnectionType {
-    kAudio,
-    kEvent,
-    kModulation,
-};
-
+// Global coordinator for the audio graph, managing node lifecycles
+// and synchronizing state with the AudioEngine.
 class ModuleRouter {
    public:
-    struct PortConnection {
-        uint32_t from_node;
-        uint32_t from_port;
-        uint32_t to_node;
-        uint32_t to_port;
-        ConnectionType type;
-    };
-
-    struct ModulationSource {
-        clap_id target_param_id;
-        uint32_t source_node_id;
-        uint32_t source_port_index;
-    };
-
-    struct AudioRenderState {
-        // TargetNodeID -> { TargetPortIndex -> List of Sources }
-        std::unordered_map<
-            uint32_t, std::unordered_map<uint32_t, std::vector<AudioBufferManager::PortSource>>>
-            input_audio_sources;
-        std::unordered_map<uint32_t, std::vector<ModulationSource>> input_modulations;
-        std::unordered_map<uint32_t, std::vector<PluginHost*>> output_event_targets;
-        std::vector<PluginHost*> sorted_modules;
-        std::vector<AudioBufferManager::PortSource> master_output_sources;
-        std::vector<PortConnection> connections;
-    };
+    // Re-use the RenderState defined in GraphProcessor
+    using AudioRenderState = GraphProcessor::RenderState;
 
     ModuleRouter();
     ~ModuleRouter();
 
-    auto createPluginInstance(const std::string& path) -> uint32_t;
-    void destroyPluginInstance(uint32_t instance_id);
-    auto registerSpecialNode() -> uint32_t;
+    // Node Lifecycle
+    auto createPluginInstance(const std::string& path,
+                              uint32_t forced_id = constants::kClapInvalidId) -> uint32_t;
+    auto createCompositeInstance(const CompositeConfig& config,
+                                 uint32_t forced_id = constants::kClapInvalidId) -> uint32_t;
+    void destroyInstance(uint32_t instance_id);
+    auto registerSpecialNode(const std::string& type,
+                             uint32_t forced_id = constants::kClapInvalidId) -> uint32_t;
+
+    // Connectivity
+    void clearGraph();
+    auto serializeGraph() const -> std::string;
+    auto deserializeNodes(const std::string& json_str) -> bool;
+    auto deserializeConnections(const std::string& json_str) -> bool;
+
     void connectNodes(uint32_t from_node, uint32_t from_port, uint32_t to_node, uint32_t to_port,
                       ConnectionType type = ConnectionType::kAudio);
     void disconnectNodes(uint32_t from_node, uint32_t from_port, uint32_t to_node, uint32_t to_port,
                          ConnectionType type = ConnectionType::kAudio);
+    void updateConnection(uint32_t from_node, uint32_t from_port, uint32_t to_node,
+                          uint32_t to_port, ConnectionType type, float scale, bool bypass);
+    auto getConnectionProperties(uint32_t from_node, uint32_t from_port, uint32_t to_node,
+                                 uint32_t to_port, ConnectionType type, float& out_scale,
+                                 bool& out_bypass) const -> bool;
 
-    auto getPluginInstance(uint32_t instance_id) const -> PluginHost*;
-    auto getProcessOrder() const -> const std::vector<uint32_t>& { return _process_order; }
-    auto getConnections() const -> const std::vector<PortConnection>& { return _connections; }
+    // Accessors
+    auto getProcessingNode(uint32_t instance_id) const -> ProcessingNode*;
+    auto getProcessOrder() const -> const std::vector<uint32_t>&;
+    auto getConnections() const -> const std::vector<PortConnection>&;
     auto getNextInstanceId() const -> uint32_t { return _next_instance_id.load(); }
 
+    // Maintenance
     void pollAllMainThreads();
-
     void pollResources();
 
+    // State Synchronization
     moodycamel::ReaderWriterQueue<std::unique_ptr<AudioRenderState>> pending_states;
     moodycamel::ReaderWriterQueue<std::unique_ptr<AudioRenderState>> released_states;
 
-    std::function<void(clap_id, double)> on_parameter_changed;
+    // Callbacks
+    void setEventCallback(std::function<void(uint32_t, const PluginEvent&)> cb);
 
-    void activatePlugin(uint32_t instance_id, int32_t sample_rate, int32_t frames_per_block);
-    void deactivatePlugin(uint32_t instance_id);
+    // Activation
+    void activateNode(uint32_t instance_id, int32_t sample_rate, int32_t frames_per_block);
+    void deactivateNode(uint32_t instance_id);
+
+    // Dynamic Port Updates
+    void updateNodePorts(uint32_t instance_id);
+
+    // Transport Control (Main Thread)
+    void setTempo(double bpm) { _main_transport.tempo = bpm; }
+    void setTransportPlaying(bool playing) { _main_transport.is_playing = playing; }
+    [[nodiscard]] auto getTransportState() const -> const TransportState& {
+        return _main_transport;
+    }
+
+    // Structural Callbacks
+    std::function<void(const PortConnection&)> on_connection_pruned;
+    std::function<void(uint32_t, uint32_t, uint32_t)> on_node_ports_changed;
 
    private:
-    std::unordered_map<uint32_t, std::unique_ptr<PluginHost>> _plugin_instances;
-    std::vector<std::unique_ptr<PluginHost>> _pending_deletion_plugins;
+    GraphProcessor _graph_processor;
+    std::vector<std::unique_ptr<ProcessingNode>> _pending_deletion_nodes;
+
+    TransportState _main_transport;
 
     std::atomic<uint32_t> _next_instance_id{constants::kInitialPluginInstanceId};
-    std::vector<PortConnection> _connections;
-    std::vector<uint32_t> _process_order;
-
-    void topologicalSort();
+    std::function<void(uint32_t, const PluginEvent&)> _on_event_occured;
 
     void pushNewState();
+    auto getConnectionCount(uint32_t to_node, uint32_t to_port, ConnectionType type) const
+        -> size_t;
 };
 
 }  // namespace synth_canvas::host

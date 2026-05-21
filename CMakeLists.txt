@@ -7,77 +7,69 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CORE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
-file(MAKE_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
-
 if(ANDROID)
-    set(GDE_SOURCES
-        ${CORE_DIR}/src/gdextension/register_types.cpp
-        ${CORE_DIR}/src/gdextension/synthcanvas_audio_system.cpp
-        ${CORE_DIR}/src/gdextension/synthcanvas_audio_system.h
-        ${CORE_DIR}/src/host/audio_engine.cpp
-        ${CORE_DIR}/src/host/audio_engine.h
-        ${CORE_DIR}/src/host/logger.cpp
-        ${CORE_DIR}/src/host/logger.h
-        ${CORE_DIR}/src/host/plugin_host.cpp
-        ${CORE_DIR}/src/host/plugin_host.h
-        ${CORE_DIR}/src/host/module_router.cpp
-        ${CORE_DIR}/src/host/module_router.h
-        ${CORE_DIR}/src/host/audio_buffer_manager.cpp
-        ${CORE_DIR}/src/host/audio_buffer_manager.h
-    )
-else()
-    # GDExtension interface with dummy implementation
-    set(GDE_SOURCES
-        ${CORE_DIR}/src/gdextension/register_types.cpp
-        ${CORE_DIR}/src/gdextension/synthcanvas_audio_system.cpp
-        ${CORE_DIR}/src/gdextension/synthcanvas_audio_system.h
-    )
+    # Enable Android MIDI (AMIDI) support in RtMidi submodule
+    set(RTMIDI_API_AMIDI ON CACHE BOOL "Force AMIDI support on Android" FORCE)
 endif()
 
-# Libraries
+# Prevent external libraries from overriding global build settings
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "Force static libraries by default" FORCE)
+
+find_package(Threads REQUIRED)
+
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+    add_compile_options(-pthread)
+    add_link_options(-pthread)
+endif()
+
+file(MAKE_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
+
+## Subdirectories
+
+# External Libraries
 add_subdirectory(libs/clap)
 add_subdirectory(libs/clap-helpers)
 add_subdirectory(libs/readerwriterqueue)
+add_subdirectory(libs/rtmidi)
 
-set(GODOTCPP_SYSTEM_HEADERS ON CACHE BOOL "" FORCE)
-add_subdirectory(src/gdextension/godot-cpp)
-add_subdirectory(src/gdextension)
-add_subdirectory(src/module)
+# Engine & Plugins
+add_subdirectory(src)         # synth_canvas_core
+add_subdirectory(src/module)  # plugins
 
-## Clang-Format & Clang-Tidy
+# Godot Bindings
+add_subdirectory(bindings/godot) # synth_canvas_gdextension
 
+## Custom Build Targets
+
+# Core only
+add_custom_target(build_core
+    DEPENDS synth_canvas_core
+    COMMENT "Building only the static engine core library..."
+)
+
+# Plugins only
+# Note: This target is defined in src/module/CMakeLists.txt but can be used here.
+
+# Full build with godot binding
+add_custom_target(build_godot
+    DEPENDS synth_canvas_gdextension build_plugins
+    COMMENT "Building godot-binding project (GDExtension + Core + Plugins)..."
+)
+
+## Clang-Format / Clang-Tidy
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 file(GLOB_RECURSE ALL_SOURCE_FILES 
-    "${CORE_DIR}/src/*.cpp" 
-    "${CORE_DIR}/src/*.h" 
-    "${CORE_DIR}/src/*.hpp" 
-    "${CORE_DIR}/src/*.c" 
-    "${CORE_DIR}/src/*.cc"
+    "${CORE_DIR}/src/*.cpp" "${CORE_DIR}/src/*.h" "${CORE_DIR}/src/*.hpp"
+    "${CORE_DIR}/bindings/*.cpp" "${CORE_DIR}/bindings/*.h" "${CORE_DIR}/bindings/*.hpp"
 )
 list(FILTER ALL_SOURCE_FILES EXCLUDE REGEX "/godot-cpp/|/clap-saw-demo/")
 
-# clang-format -i
 find_program(CLANG_FORMAT_EXE NAMES "clang-format")
 if(CLANG_FORMAT_EXE)
-    add_custom_target(
-        format
-        COMMAND "${CLANG_FORMAT_EXE}" -i -style=file ${ALL_SOURCE_FILES}
-        COMMENT "Running clang-format on source files..."
-        WORKING_DIRECTORY ${CORE_DIR}
-    )
-else()
-    message(WARNING "clang-format not found. 'format' target will not be available.")
+    add_custom_target(format COMMAND "${CLANG_FORMAT_EXE}" -i -style=file ${ALL_SOURCE_FILES})
 endif()
 
-# clang-tidy
 find_program(CLANG_TIDY_EXE NAMES "clang-tidy")
 if(CLANG_TIDY_EXE)
-    add_custom_target(
-        check
-        COMMAND "${CLANG_TIDY_EXE}" -p ${CMAKE_BINARY_DIR} ${ALL_SOURCE_FILES}
-        COMMENT "Running clang-tidy on source files..."
-        WORKING_DIRECTORY ${CORE_DIR}
-    )
-else()
-    message(WARNING "clang-tidy not found. 'check' target will not be available.")
+    add_custom_target(check COMMAND "${CLANG_TIDY_EXE}" -p ${CMAKE_BINARY_DIR} ${ALL_SOURCE_FILES})
 endif()

@@ -9,12 +9,14 @@
 #include <clap/helpers/event-list.hh>
 #include <clap/helpers/host.hh>
 #include <clap/helpers/plugin-proxy.hh>
-#include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #include "constants.h"
+#include "graph_types.h"
+#include "processing_node.h"
 #include "readerwriterqueue.h"
 
 namespace synth_canvas::host {
@@ -31,7 +33,9 @@ using PluginProxy = clap::helpers::PluginProxy<kPluginHostMh, kPluginHostCl>;
 extern template class clap::helpers::PluginProxy<kPluginHostMh, kPluginHostCl>;
 
 namespace synth_canvas::host {
-class PluginHost final : public BaseHost {
+
+// Host for a single CLAP plugin instance, implementing the ProcessingNode interface.
+class PluginHost final : public ProcessingNode, public BaseHost {
    public:
     enum PluginState {
         kInactive,
@@ -45,94 +49,98 @@ class PluginHost final : public BaseHost {
     PluginHost();
     ~PluginHost() override;
 
-    auto load(const std::string& path, int plugin_index) -> bool;
-    void unload();
+    // --- ProcessingNode Lifecycle ---
+    void activate(int32_t sample_rate, int32_t block_size) override;
+    void deactivate() override;
+    void setProcessingEnabled(bool enabled) override;
+    void setTransport(const TransportState* transport) override;
 
-    auto canActivate() const -> bool;
-    void activate(int32_t sample_rate, int32_t block_size);
-    void deactivate();
-    void setProcessingEnabled(bool enabled);
-
-    void setParameterValue(clap_id param_id, double value);
-    void pollMainThread();
-
+    // --- ProcessingNode Audio / Event Processing ---
     void setPorts(uint32_t num_inputs, clap_audio_buffer* inputs, uint32_t num_outputs,
-                  clap_audio_buffer* outputs);
+                  clap_audio_buffer* outputs) override;
+    void processBegin(int num_frames) override;
+    void process() override;
+    void processEvents(int num_frames) override;
+    void processEnd(int num_frames) override;
 
-    void processBegin(int nframes);
-    void processNoteOn(int sample_offset, int channel, int key, double velocity,
-                       int32_t note_id = constants::kClapInvalidId);
-    void processNoteOff(int sample_offset, int channel, int key, double velocity,
-                        int32_t note_id = constants::kClapInvalidId);
-    void processParamModulation(clap_id param_id, double value, uint32_t sample_offset);
-    void process();
-    void processEnd(int nframes);
+    auto getOutputBuffer(uint32_t port_idx) -> AudioBuffer* override;
+    void reserveOutputBuffers(uint32_t count) override;
 
-    std::function<void(clap_id, double)> on_parameter_changed;
+    // --- Parameters & External Events ---
+    void setParameterValue(clap_id param_id, double value) override;
+    void setParameterValue(const std::string& param_id, double value) override;
+    void applyModulation(clap_id param_id, double value, uint32_t sample_offset) override;
 
-    struct AudioPortInfo {
-        uint32_t index;
-        bool is_input;
-        clap_audio_port_info clap_info;
-        bool is_modulation;
-    };
+    auto saveState(std::vector<uint8_t>& data) -> bool override;
+    auto loadState(const std::vector<uint8_t>& data) -> bool override;
 
-    auto getAudioPorts(bool is_input) const -> const std::vector<AudioPortInfo>& {
+    [[nodiscard]] auto getParameterBaseValue(clap_id param_id) const -> double override;
+    [[nodiscard]] auto getParameterCurrentValue(clap_id param_id) const -> double override;
+    [[nodiscard]] auto getParameterModulationOffset(clap_id param_id) const -> double override;
+    void queueEvent(const PluginEvent& event) override;
+    auto popOutputEvent(uint32_t port_index, PluginEvent& out_event) -> bool override;
+    void pollMainThread() override;
+
+    // --- ProcessingNode Metadata Accessors ---
+    void setInstanceId(uint32_t id) override { _instance_id = id; }
+    [[nodiscard]] auto getInstanceId() const -> uint32_t override { return _instance_id; }
+    [[nodiscard]] auto getNodeType() const -> std::string override { return "plugin"; }
+    [[nodiscard]] auto getCreationInfo() const -> std::string override { return _plugin_path; }
+    [[nodiscard]] auto getAudioPorts(bool is_input) const
+        -> const std::vector<AudioPortInfo>& override {
         return is_input ? _audio_input_ports : _audio_output_ports;
     }
-
-    auto isPluginActive() const -> bool;
-    auto isPluginProcessing() const -> bool;
-    auto isPluginSleeping() const -> bool;
-    void setPluginState(PluginState state);
-
-    void setInstanceId(uint32_t id) { _instance_id = id; }
-    auto getInstanceId() const -> uint32_t { return _instance_id; }
-
-    struct ParameterSlot {
-        clap_param_info info;
-        std::atomic<double> base_value{0.0};
-        std::atomic<double> current_value{0.0};
-        std::atomic<double> modulation_value{0.0};
-        bool has_modulation = false;
-    };
-
-    auto getParameters() const -> const std::vector<std::unique_ptr<ParameterSlot>>& {
+    [[nodiscard]] auto getParameters() const
+        -> const std::vector<std::unique_ptr<ParameterSlot>>& override {
         return _params;
     }
+    [[nodiscard]] auto getParameterSlot(clap_id param_id) const -> const ParameterSlot* override;
+    [[nodiscard]] auto getParameterText(clap_id param_id, double value) const
+        -> std::string override;
+
+    // --- ProcessingNode State Check ---
+    [[nodiscard]] auto isActive() const -> bool override;
+
+    // --- Plugin Loading ---
+    auto load(const std::string& path, int plugin_index) -> bool;
+    void unload();
+    void syncParameterValues();
+
+    // --- Internal Getters ---
+    [[nodiscard]] auto isPluginProcessing() const -> bool;
+    [[nodiscard]] auto isPluginSleeping() const -> bool;
     auto getParameterSlot(clap_id param_id) -> ParameterSlot*;
-
-    struct PluginEvent {
-        union {
-            clap_event_header_t header;
-            clap_event_note_t note;
-            clap_event_midi_t midi;
-            clap_event_param_value_t param_value;
-        } event;
-    };
-
     auto getAudioThreadOutputQueue() -> moodycamel::ReaderWriterQueue<PluginEvent>& {
         return _output_events_to_audio;
     }
 
-    void queueEvent(const PluginEvent& event) { _input_events.try_enqueue(event); }
-
    protected:
+    // --- CLAP Host Overrides ---
     void requestRestart() noexcept override;
     void requestProcess() noexcept override;
     void requestCallback() noexcept override;
-    auto implementsGui() const noexcept -> bool override { return false; }
-
-    auto implementsLog() const noexcept -> bool override { return true; }
     void logLog(clap_log_severity severity, const char* message) const noexcept override;
-    auto implementsParams() const noexcept -> bool override { return true; }
     void paramsRescan(clap_param_rescan_flags flags) noexcept override;
     void paramsClear(clap_id param_id, clap_param_clear_flags flags) noexcept override;
     void paramsRequestFlush() noexcept override;
+    void stateMarkDirty() noexcept override;
+    auto threadCheckIsMainThread() const noexcept -> bool override;
+    auto threadCheckIsAudioThread() const noexcept -> bool override;
 
     void scanParameters();
     void scanAudioPorts();
+
+    // Implements
+    auto implementsLog() const noexcept -> bool override { return true; }
+    auto implementsState() const noexcept -> bool override { return true; }
+    auto implementsParams() const noexcept -> bool override { return true; }
+    auto implementsGui() const noexcept -> bool override { return false; }
     auto implementsPosixFdSupport() const noexcept -> bool override { return false; }
+    auto implementsRemoteControls() const noexcept -> bool override { return false; }
+    auto implementsTimerSupport() const noexcept -> bool override { return false; }
+    auto implementsThreadPool() const noexcept -> bool override { return false; }
+
+    // Not implemented extensions
     auto posixFdSupportRegisterFd(int fd, clap_posix_fd_flags_t flags) noexcept -> bool override {
         return false;
     }
@@ -140,35 +148,31 @@ class PluginHost final : public BaseHost {
         return false;
     }
     auto posixFdSupportUnregisterFd(int fd) noexcept -> bool override { return false; }
-    auto implementsRemoteControls() const noexcept -> bool override { return false; }
     void remoteControlsChanged() noexcept override {}
     void remoteControlsSuggestPage(clap_id page_id) noexcept override {}
-    auto implementsState() const noexcept -> bool override { return false; }
-    void stateMarkDirty() noexcept override;
-    auto implementsTimerSupport() const noexcept -> bool override { return false; }
     auto timerSupportRegisterTimer(uint32_t period_ms, clap_id* timer_id) noexcept
         -> bool override {
         return false;
     }
     auto timerSupportUnregisterTimer(clap_id timer_id) noexcept -> bool override { return false; }
-    auto threadCheckIsMainThread() const noexcept -> bool override;
-    auto threadCheckIsAudioThread() const noexcept -> bool override;
-    auto implementsThreadPool() const noexcept -> bool override { return false; }
     auto threadPoolRequestExec(uint32_t num_tasks) noexcept -> bool override { return false; }
 
    private:
     void checkForMainThread();
     void checkForAudioThread();
+    void setPluginState(PluginState state);
 
     void generatePluginInputEvents();
     void handlePluginOutputEvents();
 
+    std::string _plugin_path;
     void* _library_handle = nullptr;
     const clap_plugin_entry* _plugin_entry = nullptr;
     const clap_plugin_factory* _plugin_factory = nullptr;
     std::unique_ptr<PluginProxy> _plugin;
     clap::helpers::EventList _ev_in;
     clap::helpers::EventList _ev_out;
+    std::vector<PluginEvent> _input_events_data;
     clap_process _process;
 
     std::unordered_map<clap_id, bool> _is_adjusting_parameter;
@@ -190,9 +194,14 @@ class PluginHost final : public BaseHost {
     moodycamel::ReaderWriterQueue<PluginEvent> _output_events_to_audio{constants::kEventQueueSize};
 
     uint32_t _instance_id = 0;
+    const TransportState* _transport = nullptr;
 
     std::vector<AudioPortInfo> _audio_input_ports;
     std::vector<AudioPortInfo> _audio_output_ports;
+
+    std::vector<AudioBuffer> _output_buffers;
+
+    std::vector<uint8_t> _cached_state;
 
     std::vector<std::unique_ptr<ParameterSlot>> _params;
     std::unordered_map<clap_id, size_t> _param_id_to_index;
