@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-#include "host/constants.h"
+#include "utils/constants.h"
 
 namespace synth_canvas {
 

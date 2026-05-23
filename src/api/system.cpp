@@ -7,11 +7,11 @@
 #if defined(__ANDROID__)
 #include <clap/clap.h>
 
-#include "host/audio_engine.h"
-#include "host/graph_types.h"
-#include "host/logger.h"
-#include "host/module_router.h"
-#include "host/plugin_host.h"
+#include "host/engine/audio_engine.h"
+#include "host/graph/graph_types.h"
+#include "utils/logger.h"
+#include "host/engine/module_router.h"
+#include "host/nodes/wrappers/plugin_host.h"
 
 #endif
 

@@ -6,29 +6,8 @@
 set(CORE_SOURCES
     api/system.cpp
     utils/base64.cpp
+    utils/logger.cpp
 )
-
-if(ANDROID)
-    list(APPEND CORE_SOURCES
-        host/audio_buffer_manager.cpp
-        host/audio_engine.cpp
-        host/boundary_node.cpp
-        host/composite_node.cpp
-        host/envelope_node.cpp
-        host/graph_processor.cpp
-        host/graph_renderer.cpp
-        host/internal_node_base.cpp
-        host/lfo_node.cpp
-        host/logger.cpp
-        host/midi_input_node.cpp
-        host/module_router.cpp
-        host/plugin_host.cpp
-        host/stepper_node.cpp
-        host/sequencer_node.cpp
-        host/event_tunnel_node.cpp
-        host/transport_node.cpp
-    )
-endif()
 
 add_library(synth_canvas_core STATIC ${CORE_SOURCES})
 
@@ -48,6 +27,8 @@ target_include_directories(synth_canvas_core SYSTEM PUBLIC
 if(ANDROID)
     target_compile_options(synth_canvas_core PRIVATE -fexceptions)
     target_compile_definitions(synth_canvas_core PRIVATE __ANDROID__)
+
+    add_subdirectory(host)
 
     # External libraries (CLAP, etc.) for real implementation
     target_include_directories(synth_canvas_core SYSTEM PRIVATE
