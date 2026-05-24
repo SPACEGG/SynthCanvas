@@ -1,6 +1,7 @@
 #include "osc-voice.h"
-#include <cmath>
+
 #include <algorithm>
+#include <cmath>
 #include <numbers>
 
 namespace synth_canvas::oscillator_plugin {
@@ -8,7 +9,7 @@ namespace synth_canvas::oscillator_plugin {
 static constexpr double kPi = std::numbers::pi;
 
 // PolyBLEP for antialiasing discontinuities
-inline double poly_blep(double t, double dt) {
+inline auto polyBlep(double t, double dt) -> double {
     if (t < dt) {
         t /= dt;
         return t + t - t * t - 1.0;
@@ -44,10 +45,11 @@ void OscVoice::release(double release_ms, double sample_rate) {
     }
 }
 
-void OscVoice::processSample(int waveform, int uni_count, double uni_detune_cents, 
-                            double pw, double freq_hz, double sample_rate, float& out_l, float& out_r) {
+void OscVoice::processSample(int waveform, int uni_count, double uni_detune_cents, double pw,
+                             double freq_hz, double sample_rate, float& out_l, float& out_r) {
     if (env_stage == EnvelopeStage::kIdle) {
-        out_l = 0.0f; out_r = 0.0f;
+        out_l = 0.0f;
+        out_r = 0.0f;
         return;
     }
 
@@ -74,41 +76,45 @@ void OscVoice::processSample(int waveform, int uni_count, double uni_detune_cent
         // Calculate per-unison frequency
         double detune_factor = 0.0;
         if (uni_count > 1) {
-            detune_factor = (2.0 * i / (uni_count - 1)) - 1.0; // -1.0 to 1.0
+            detune_factor = (2.0 * i / (uni_count - 1)) - 1.0;  // -1.0 to 1.0
         }
-        double detune_hz = freq_hz * (std::pow(2.0, (detune_factor * uni_detune_cents) / 1200.0) - 1.0);
+        double detune_hz =
+            freq_hz * (std::pow(2.0, (detune_factor * uni_detune_cents) / 1200.0) - 1.0);
         double actual_freq = freq_hz + detune_hz;
         double dt = actual_freq / sample_rate;
 
         // Phase Warping (PWM)
         double t = phase[i];
         double warped_t = t;
-        if (waveform != 4) { // Not for Noise
+        if (waveform != 4) {  // Not for Noise
             if (pw < 0.01) pw = 0.01;
             if (pw > 0.99) pw = 0.99;
-            if (t < pw) warped_t = 0.5 * t / pw;
-            else warped_t = 0.5 + 0.5 * (t - pw) / (1.0 - pw);
+            if (t < pw) {
+                warped_t = 0.5 * t / pw;
+            } else {
+                warped_t = 0.5 + 0.5 * (t - pw) / (1.0 - pw);
+            }
         }
 
         double val = 0.0;
         switch (waveform) {
-            case 0: // Sine
+            case 0:  // Sine
                 val = std::sin(2.0 * kPi * warped_t);
                 break;
-            case 1: // Triangle
+            case 1:  // Triangle
                 val = 2.0 * std::abs(2.0 * warped_t - 1.0) - 1.0;
                 // Triangle is relatively clean, but could use PolyBLEP if warped heavily
                 break;
-            case 2: // Saw
+            case 2:  // Saw
                 val = 2.0 * warped_t - 1.0;
-                val -= poly_blep(t, dt);
+                val -= polyBlep(t, dt);
                 break;
-            case 3: // Square
+            case 3:  // Square
                 val = (t < pw) ? 1.0 : -1.0;
-                val += poly_blep(t, dt);
-                val -= poly_blep(std::fmod(t + (1.0 - pw), 1.0), dt);
+                val += polyBlep(t, dt);
+                val -= polyBlep(std::fmod(t + (1.0 - pw), 1.0), dt);
                 break;
-            case 4: // Noise
+            case 4:  // Noise
                 val = dist(rng) * 2.0 - 1.0;
                 break;
         }
@@ -116,9 +122,9 @@ void OscVoice::processSample(int waveform, int uni_count, double uni_detune_cent
         // Stereo pan for unison
         double pan = 0.5;
         if (uni_count > 1) {
-            pan = 0.5 + 0.5 * detune_factor; // 0.0 to 1.0
+            pan = 0.5 + 0.5 * detune_factor;  // 0.0 to 1.0
         }
-        
+
         sum_l += val * (1.0 - pan);
         sum_r += val * pan;
 
@@ -132,4 +138,4 @@ void OscVoice::processSample(int waveform, int uni_count, double uni_detune_cent
     out_r = static_cast<float>(sum_r * normalization * env_value);
 }
 
-} // namespace synth_canvas::oscillator_plugin
+}  // namespace synth_canvas::oscillator_plugin

@@ -7,10 +7,10 @@
 
 namespace clap {
 auto SinePlugin::descriptor() -> const clap_plugin_descriptor* {
-    static const std::array<const char*, 3> kFeatures = {CLAP_PLUGIN_FEATURE_INSTRUMENT,
-                                                         "synthesizer", nullptr};
+    static const std::array<const char*, 3> features = {CLAP_PLUGIN_FEATURE_INSTRUMENT,
+                                                        "synthesizer", nullptr};
 
-    static const clap_plugin_descriptor kDesc = {
+    static const clap_plugin_descriptor desc = {
         .clap_version = CLAP_VERSION_INIT,
         .id = "com.synthcanvas.sine-plugin",
         .name = "Sine Synth",
@@ -21,9 +21,9 @@ auto SinePlugin::descriptor() -> const clap_plugin_descriptor* {
         .version = "1.0.0",
         .description =
             "A simple sine wave synthesizer from a tutorial, refactored with clap-helpers.",
-        .features = kFeatures.data(),
+        .features = features.data(),
     };
-    return &kDesc;
+    return &desc;
 }
 
 SinePlugin::SinePlugin(const clap_host_t* host) : super(descriptor(), host) {}
@@ -35,12 +35,12 @@ auto SinePlugin::activate(double sample_rate, uint32_t min_frame_count,
 }
 
 auto SinePlugin::process(const clap_process* process) noexcept -> clap_process_status {
-    const uint32_t kNframes = process->frames_count;
-    const uint32_t kNev = process->in_events->size(process->in_events);
+    const uint32_t nframes = process->frames_count;
+    const uint32_t nev = process->in_events->size(process->in_events);
     uint32_t ev_index = 0;
 
-    for (uint32_t i = 0; i < kNframes;) {
-        while (ev_index < kNev) {
+    for (uint32_t i = 0; i < nframes;) {
+        while (ev_index < nev) {
             const clap_event_header_t* hdr = process->in_events->get(process->in_events, ev_index);
             if (hdr->time > i) break;
 

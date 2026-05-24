@@ -276,11 +276,11 @@ auto OscillatorPlugin::stateSave(const clap_ostream* os) noexcept -> bool {
 }
 
 auto OscillatorPlugin::stateLoad(const clap_istream* is) noexcept -> bool {
-    char buf[1024];
-    int64_t rd = is->read(is, buf, sizeof(buf) - 1);
+    std::array<char, 1024> buf;
+    int64_t rd = is->read(is, buf.data(), buf.size() - 1);
     if (rd <= 0) return false;
     buf[rd] = '\0';
-    std::string s(buf);
+    std::string s(buf.data());
     std::stringstream ss(s);
     std::string pair;
     while (std::getline(ss, pair, ';')) {

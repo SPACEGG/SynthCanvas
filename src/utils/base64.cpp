@@ -26,14 +26,14 @@ auto base64Encode(const std::vector<uint8_t>& data) -> std::string {
 
 auto base64Decode(const std::string& base64_str) -> std::vector<uint8_t> {
     std::vector<uint8_t> out;
-    std::vector<int> T(256, -1);
-    for (int i = 0; i < 64; i++) T[kBase64Chars[i]] = i;
+    std::vector<int> t(256, -1);
+    for (int i = 0; i < 64; i++) t[kBase64Chars[i]] = i;
 
     int val = 0;
     int valb = -8;
     for (char c : base64_str) {
-        if (T[c] == -1) break;
-        val = (val << 6) + T[c];
+        if (t[c] == -1) break;
+        val = (val << 6) + t[c];
         valb += 6;
         if (valb >= 0) {
             out.push_back((val >> valb) & 0xFF);

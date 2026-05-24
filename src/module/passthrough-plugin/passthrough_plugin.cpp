@@ -40,19 +40,19 @@ auto PassthroughPlugin::audioPortsInfo(uint32_t index, bool is_input,
 }
 
 auto PassthroughPlugin::process(const clap_process* process) noexcept -> clap_process_status {
-    const uint32_t kNframes = process->frames_count;
-    const uint32_t kInCount = process->audio_inputs_count;
-    const uint32_t kOutCount = process->audio_outputs_count;
+    const uint32_t nframes = process->frames_count;
+    const uint32_t in_count = process->audio_inputs_count;
+    const uint32_t out_count = process->audio_outputs_count;
 
     // If no output, nothing to do
-    if (kOutCount == 0) return CLAP_PROCESS_CONTINUE;
+    if (out_count == 0) return CLAP_PROCESS_CONTINUE;
 
     // Get output buffer
     float** outputs = process->audio_outputs[0].data32;
     uint32_t out_channels = process->audio_outputs[0].channel_count;
 
     // If we have input, copy it to output
-    if (kInCount > 0) {
+    if (in_count > 0) {
         float** inputs = process->audio_inputs[0].data32;
         uint32_t in_channels = process->audio_inputs[0].channel_count;
 
@@ -60,21 +60,21 @@ auto PassthroughPlugin::process(const clap_process* process) noexcept -> clap_pr
         uint32_t common_channels = std::min(in_channels, out_channels);
         for (uint32_t c = 0; c < common_channels; ++c) {
             if (inputs[c] && outputs[c]) {
-                std::copy(inputs[c], inputs[c] + kNframes, outputs[c]);
+                std::copy(inputs[c], inputs[c] + nframes, outputs[c]);
             }
         }
 
         // Silence remaining output channels if output has more channels than input
         for (uint32_t c = common_channels; c < out_channels; ++c) {
             if (outputs[c]) {
-                std::fill(outputs[c], outputs[c] + kNframes, 0.0f);
+                std::fill(outputs[c], outputs[c] + nframes, 0.0f);
             }
         }
     } else {
         // No input, output silence
         for (uint32_t c = 0; c < out_channels; ++c) {
             if (outputs[c]) {
-                std::fill(outputs[c], outputs[c] + kNframes, 0.0f);
+                std::fill(outputs[c], outputs[c] + nframes, 0.0f);
             }
         }
     }
