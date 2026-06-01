@@ -16,6 +16,9 @@ constexpr int32_t kDefaultChannelCount = 2;
 constexpr int32_t kDefaultAudioPortCount = 1;
 constexpr int32_t kBufferCapacityMultiplier = 8;
 
+constexpr bool kEnableAudioProfiling = true;
+constexpr int32_t kProfilingFixedBlockSize = 256;
+
 // Queue Sizes
 constexpr size_t kSnapshotQueueSize = 32;
 constexpr size_t kEventQueueSize = 4096;

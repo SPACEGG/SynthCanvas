@@ -4,12 +4,14 @@
 #include <clap/clap.h>
 #include <oboe/Oboe.h>
 
+#include <chrono>
 #include <memory>
+#include <vector>
 
 #include "host/engine/audio_buffer_manager.h"
-#include "utils/constants.h"
-#include "host/graph/graph_renderer.h"
 #include "host/engine/module_router.h"
+#include "host/graph/graph_renderer.h"
+#include "utils/constants.h"
 
 namespace synth_canvas::host {
 
@@ -57,6 +59,9 @@ class AudioEngine : public oboe::AudioStreamDataCallback {
     int32_t _channel_count = constants::kDefaultChannelCount;
     int32_t _sample_rate = constants::kDefaultSampleRate;
     int32_t _frames_per_block = 0;
+
+    std::vector<double> _profile_times_ms;
+    int32_t _last_xrun_count = 0;
 };
 
 }  // namespace synth_canvas::host

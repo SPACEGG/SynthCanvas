@@ -1,9 +1,10 @@
 #include "host/engine/audio_engine.h"
 
+#include <algorithm>
 #include <cstring>
 
-#include "utils/logger.h"
 #include "host/nodes/base/processing_node.h"
+#include "utils/logger.h"
 
 namespace synth_canvas::host {
 
@@ -30,6 +31,10 @@ auto AudioEngine::openStream() -> bool {
         ->setChannelCount(_channel_count)
         ->setSampleRate(constants::kDefaultSampleRate)
         ->setDataCallback(this);
+
+    if constexpr (constants::kEnableAudioProfiling) {
+        builder.setFramesPerDataCallback(constants::kProfilingFixedBlockSize);
+    }
 
     oboe::Result result = builder.openStream(_stream);
     if (result != oboe::Result::OK) {
@@ -106,6 +111,8 @@ auto AudioEngine::onAudioReady(oboe::AudioStream* oboe_stream, void* audio_data,
 
     _buffer_manager.prepareBlock();
 
+    auto start_time = std::chrono::steady_clock::now();
+
     // Render first using the CURRENT transport position
     _renderer.render(*_current_render_state, _buffer_manager, num_frames,
                      [this](ProcessingNode* source, const PluginEvent& ev, uint32_t port_index) {
@@ -130,6 +137,35 @@ auto AudioEngine::onAudioReady(oboe::AudioStream* oboe_stream, void* audio_data,
         ProcessingNode* node = _current_render_state->sorted_nodes[src.node_index];
         if (auto* node_buf = node->getOutputBuffer(src.port_index)) {
             accumulateToInterleaved(node_buf, output_ptr, num_frames);
+        }
+    }
+
+    if constexpr (constants::kEnableAudioProfiling) {
+        auto end_time = std::chrono::steady_clock::now();
+        double process_time_ms =
+            std::chrono::duration<double, std::milli>(end_time - start_time).count();
+        if (auto result = _stream->getXRunCount()) {
+            int32_t current_xrun_count = result.value();
+            if (current_xrun_count > _last_xrun_count) {
+                log("[AudioProfiler] XRun detected! Block process time: ", process_time_ms, " ms");
+                _last_xrun_count = current_xrun_count;
+            }
+        }
+
+        _profile_times_ms.push_back(process_time_ms);
+        size_t blocks_per_sec = _sample_rate > 0 ? _sample_rate / num_frames : 187;
+
+        if (_profile_times_ms.size() >= blocks_per_sec) {
+            std::vector<double> sorted = _profile_times_ms;
+            std::ranges::sort(sorted);
+            double p50 = sorted[sorted.size() * 50 / 100];
+            double p95 = sorted[sorted.size() * 95 / 100];
+            double p99 = sorted[sorted.size() * 99 / 100];
+            double p_max = sorted.back();
+            log("[AudioProfiler] \n\t\tSample rate: ", _sample_rate, ", Block size: ", num_frames,
+                "\n\t\tProcess time (ms) - P50: ", p50, " P95: ", p95, " P99: ", p99,
+                " Max: ", p_max);
+            _profile_times_ms.clear();
         }
     }
 
