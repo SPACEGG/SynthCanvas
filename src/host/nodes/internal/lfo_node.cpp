@@ -220,4 +220,62 @@ auto LFONode::getParameterText(clap_id param_id, double value) const -> std::str
     }
 }
 
+auto LFONode::supportsMiniCurve() const -> bool { return true; }
+
+auto LFONode::getMiniCurveCount() const -> uint32_t { return 1; }
+
+auto LFONode::getMiniCurveAxisNames(uint32_t curve_index, std::string& out_x,
+                                    std::string& out_y) const -> bool {
+    if (curve_index != 0) return false;
+    out_x = "Phase";
+    out_y = "Value";
+    return true;
+}
+
+auto LFONode::renderMiniCurve(uint32_t curve_index, std::vector<float>& out_values,
+                              uint32_t resolution) -> uint32_t {
+    if (curve_index != 0 || resolution == 0) return 0;
+
+    out_values.resize(resolution);
+
+    int wave = static_cast<int>(getParameterCurrentValue(kWaveform));
+    auto amp = static_cast<float>(getFunctionalValue(kAmplitude));
+    auto offset = static_cast<float>(getFunctionalValue(kOffset));
+
+    for (uint32_t i = 0; i < resolution; ++i) {
+        float x = static_cast<float>(i) / static_cast<float>(resolution - 1);
+        float raw_val = 0.0f;
+
+        switch (wave) {
+            case 0:  // Sine
+                raw_val = std::sin(2.0f * static_cast<float>(kPi) * x);
+                break;
+            case 1:  // Triangle
+                raw_val = 2.0f * std::abs(2.0f * (x - std::floor(x + 0.5f))) - 1.0f;
+                break;
+            case 2:  // Square
+                raw_val = (x < 0.5f) ? 1.0f : -1.0f;
+                break;
+            case 3:  // Saw
+                raw_val = 2.0f * (x - std::floor(x)) - 1.0f;
+                break;
+            case 4:  // Random (Sample & Hold) - deterministic staircase
+            {
+                int step = static_cast<int>(x * 8.0f);
+                unsigned int seed = static_cast<unsigned int>(step) * 1103515245 + 12345;
+                raw_val = static_cast<float>(seed % 1000) / 500.0f - 1.0f;
+                break;
+            }
+            default:
+                raw_val = 0.0f;
+                break;
+        }
+
+        float target_val = (raw_val * amp) + offset;
+        float norm_val = std::clamp((target_val + 1.0f) * 0.5f, 0.0f, 1.0f);
+        out_values[i] = norm_val;
+    }
+    return 1;
+}
+
 }  // namespace synth_canvas::host

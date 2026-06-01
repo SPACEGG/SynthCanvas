@@ -4,7 +4,6 @@
 #include "api/types.h"
 #include "nlohmann/json.hpp"
 
-
 namespace synth_canvas {
 
 using json = nlohmann::json;
@@ -107,7 +106,8 @@ inline void to_json(json& j, const CompositeConfig& c) {
              {"routings", c.routings},
              {"parameter_mappings", c.parameter_mappings},
              {"input_proxies", c.input_proxies},
-             {"output_proxies", c.output_proxies}};
+             {"output_proxies", c.output_proxies},
+             {"display", c.display}};
 }
 
 // NOLINTNEXTLINE(readability-identifier-naming)
@@ -117,6 +117,7 @@ inline void from_json(const json& j, CompositeConfig& c) {
     j.at("parameter_mappings").get_to(c.parameter_mappings);
     j.at("input_proxies").get_to(c.input_proxies);
     j.at("output_proxies").get_to(c.output_proxies);
+    c.display = j.contains("display") ? j.at("display").get<std::string>() : "";
 }
 
 }  // namespace synth_canvas

@@ -1,7 +1,6 @@
 #ifndef SYNTH_CANVAS_HOST_ENVELOPE_NODE_H
 #define SYNTH_CANVAS_HOST_ENVELOPE_NODE_H
 
-#include <array>
 #include <cstdint>
 
 #include "host/nodes/base/internal_node_base.h"
@@ -51,8 +50,16 @@ class EnvelopeNode final : public InternalNodeBase {
     [[nodiscard]] auto getParameterText(clap_id param_id, double value) const
         -> std::string override;
 
+    [[nodiscard]] auto supportsMiniCurve() const -> bool override;
+    [[nodiscard]] auto getMiniCurveCount() const -> uint32_t override;
+    auto getMiniCurveAxisNames(uint32_t curve_index, std::string& out_x, std::string& out_y) const
+        -> bool override;
+    auto renderMiniCurve(uint32_t curve_index, std::vector<float>& out_values, uint32_t resolution)
+        -> uint32_t override;
+
    private:
-    void triggerNoteOn(int16_t key, int16_t channel, int32_t note_id, double velocity, uint32_t offset);
+    void triggerNoteOn(int16_t key, int16_t channel, int32_t note_id, double velocity,
+                       uint32_t offset);
     void triggerNoteOff(int16_t key, int32_t note_id, uint32_t offset);
 
     // Monophonic State

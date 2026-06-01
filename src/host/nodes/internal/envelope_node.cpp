@@ -1,7 +1,6 @@
 #include "host/nodes/internal/envelope_node.h"
 
 #include <algorithm>
-#include <array>
 #include <cmath>
 
 namespace synth_canvas::host {
@@ -195,6 +194,87 @@ auto EnvelopeNode::getParameterText(clap_id param_id, double value) const -> std
         default:
             return InternalNodeBase::getParameterText(param_id, value);
     }
+}
+
+auto EnvelopeNode::supportsMiniCurve() const -> bool { return true; }
+
+auto EnvelopeNode::getMiniCurveCount() const -> uint32_t { return 1; }
+
+auto EnvelopeNode::getMiniCurveAxisNames(uint32_t curve_index, std::string& out_x,
+                                         std::string& out_y) const -> bool {
+    if (curve_index != 0) return false;
+    out_x = "Time";
+    out_y = "Level";
+    return true;
+}
+
+auto EnvelopeNode::renderMiniCurve(uint32_t curve_index, std::vector<float>& out_values,
+                                   uint32_t resolution) -> uint32_t {
+    if (curve_index != 0 || resolution == 0) return 0;
+
+    out_values.resize(resolution);
+
+    auto c_a = static_cast<float>(getFunctionalValue(kAttackCurve));
+    auto c_d = static_cast<float>(getFunctionalValue(kDecayCurve));
+    auto c_r = static_cast<float>(getFunctionalValue(kReleaseCurve));
+    auto s = static_cast<float>(getFunctionalValue(kSustain));
+    auto amt = static_cast<float>(getFunctionalValue(kAmount));
+
+    auto a = static_cast<float>(getParameterCurrentValue(kAttack));
+    auto d = static_cast<float>(getParameterCurrentValue(kDecay));
+    auto r = static_cast<float>(getParameterCurrentValue(kRelease));
+
+    float p_a = a <= 0.01f ? 0.0f : std::log10(a + 1.0f);
+    float p_d = d <= 0.01f ? 0.0f : std::log10(d + 1.0f);
+    float p_r = r <= 0.01f ? 0.0f : std::log10(r + 1.0f);
+    float p_total = p_a + p_d + p_r;
+
+    float w_a = 0.0f;
+    float w_d = 0.0f;
+    float w_s = 0.20f;
+    float w_r = 0.0f;
+
+    float available_w = 1.0f - w_s;
+    if (p_total > 0.001f) {
+        w_a = (p_a / p_total) * available_w;
+        w_d = (p_d / p_total) * available_w;
+        w_r = (p_r / p_total) * available_w;
+    } else {
+        w_s = 1.0f;
+    }
+
+    auto get_shaped_val = [](float x, float curve) -> float {
+        if (std::abs(curve) < 0.01f) return x;
+        float f = 1.0f + std::abs(curve) * 9.0f;
+        if (curve > 0.0f) return std::pow(x, f);
+        return 1.0f - std::pow(1.0f - x, f);
+    };
+
+    for (uint32_t i = 0; i < resolution; ++i) {
+        float x = static_cast<float>(i) / static_cast<float>(resolution - 1);
+        float target_y = 0.0f;
+
+        if (x < w_a) {
+            float x_rel = x / w_a;
+            target_y = get_shaped_val(x_rel, c_a);
+        } else if (x < w_a + w_d) {
+            float x_rel = (x - w_a) / w_d;
+            target_y = 1.0f - (1.0f - s) * get_shaped_val(x_rel, c_d);
+        } else if (x < w_a + w_d + w_s) {
+            target_y = s;
+        } else {
+            float x_rel = std::min(1.0f, (x - (w_a + w_d + w_s)) / w_r);
+            target_y = s - s * get_shaped_val(x_rel, c_r);
+        }
+
+        if (amt < 0.0f) {
+            target_y = 1.0f - target_y;
+        }
+        target_y *= std::abs(amt);
+
+        out_values[i] = target_y;
+    }
+    return 1;
 }
 
 }  // namespace synth_canvas::host

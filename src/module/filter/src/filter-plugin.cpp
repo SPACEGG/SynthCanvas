@@ -3,7 +3,9 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstring>
 #include <iomanip>
+#include <numbers>
 #include <sstream>
 #include <string>
 
@@ -434,5 +436,105 @@ void FilterPlugin::handleEvents(const clap_input_events* in, uint32_t& event_ind
         event_index++;
     }
 }
+
+auto FilterPlugin::extension(const char* id) noexcept -> const void* {
+    if (std::strcmp(id, CLAP_EXT_MINI_CURVE_DISPLAY) == 0) {
+        return &s_mini_curve_display;
+    }
+    return Plugin::extension(id);
+}
+
+auto FilterPlugin::get_magnitude(float f, float fc, float res, int m) const -> float {
+    int slope_idx = std::clamp(static_cast<int>(_slope + 0.5), 0, 2);
+    int num_stages = (slope_idx == 2) ? 4 : (slope_idx == 1 ? 2 : 1);
+    auto k = static_cast<float>(std::pow(2.0 - 2.0 * res, 1.0 / num_stages));
+
+    float f_val = std::tan(std::numbers::pi_v<float> * f / static_cast<float>(_sample_rate));
+    float g = std::tan(std::numbers::pi_v<float> * fc / static_cast<float>(_sample_rate));
+
+    if (g < 1e-6f) g = 1e-6f;
+    float x = f_val / g;
+
+    float denom_real = 1.0f - x * x;
+    float denom_imag = k * x;
+    float denom_sq = denom_real * denom_real + denom_imag * denom_imag;
+    if (denom_sq < 1e-12f) denom_sq = 1e-12f;
+    float denom = std::sqrt(denom_sq);
+
+    float num = 0.0f;
+    switch (m) {
+        case SvfEngine::kLP:
+            num = 1.0f;
+            break;
+        case SvfEngine::kHP:
+            num = x * x;
+            break;
+        case SvfEngine::kBP:
+            num = x;
+            break;
+        case SvfEngine::kNotch:
+            num = std::abs(1.0f - x * x);
+            break;
+        case SvfEngine::kPeak:
+            num = 1.0f + x * x;
+            break;
+        case SvfEngine::kAll:
+            num = denom;
+            break;
+        default:
+            return 1.0f;
+    }
+
+    float single_stage_mag = num / denom;
+    return std::pow(single_stage_mag, static_cast<float>(num_stages));
+}
+
+const clap_plugin_mini_curve_display_t FilterPlugin::s_mini_curve_display = {
+    // get_curve_count
+    [](const clap_plugin_t* plugin) -> uint32_t { return 1; },
+    // render
+    [](const clap_plugin_t* plugin, clap_mini_curve_display_curve_data_t* curves,
+       uint32_t curves_size) -> uint32_t {
+        if (!plugin || !curves || curves_size == 0) return 0;
+        auto* self = static_cast<FilterPlugin*>(plugin->plugin_data);
+        if (!self) return 0;
+
+        double total_cutoff_norm =
+            std::clamp(self->_cutoff_normalized + self->_cutoff_mod, 0.0, 1.0);
+        auto fc = static_cast<float>(20.0 * std::pow(1000.0, total_cutoff_norm));
+
+        double total_res_norm =
+            std::clamp(self->_resonance_normalized + self->_resonance_mod, 0.0, 1.0);
+        auto res = static_cast<float>(total_res_norm);
+
+        int mode = std::clamp(static_cast<int>(self->_mode + 0.5), 0, 5);
+
+        for (uint32_t i = 0; i < curves[0].values_count; ++i) {
+            float norm_x = static_cast<float>(i) / static_cast<float>(curves[0].values_count - 1);
+            float f = 20.0f * std::pow(1000.0f, norm_x);
+
+            float mag = self->get_magnitude(f, fc, res, mode);
+            float db = 20.0f * std::log10(std::max(mag, 1e-5f));
+
+            float curve_val = std::clamp(0.5f + db / 96.0f, 0.0f, 1.0f);
+            uint16_t raw_val = 1 + static_cast<uint16_t>(curve_val * 65533.0f);
+            curves[0].values[i] = raw_val;
+        }
+
+        curves[0].curve_kind = CLAP_MINI_CURVE_DISPLAY_CURVE_KIND_GAIN_RESPONSE;
+        return 1;
+    },
+    // set_observed
+    [](const clap_plugin_t* plugin, bool is_observed) {},
+    // get_axis_name
+    [](const clap_plugin_t* plugin, uint32_t curve_index, char* x_name, char* y_name,
+       uint32_t name_capacity) -> bool {
+        if (curve_index != 0 || name_capacity < 8) return false;
+        std::strncpy(x_name, "Hz", name_capacity - 1);
+        std::strncpy(y_name, "dB", name_capacity - 1);
+        x_name[name_capacity - 1] = '\0';
+        y_name[name_capacity - 1] = '\0';
+        return true;
+    }};
 
 }  // namespace synth_canvas::filter_plugin

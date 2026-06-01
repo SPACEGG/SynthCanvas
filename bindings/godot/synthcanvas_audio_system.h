@@ -84,6 +84,13 @@ class SynthCanvasAudioSystem : public godot::Node {
 
     void playNoteFromNode(uint32_t from_node_id, int note, double velocity);
     void stopNoteFromNode(uint32_t from_node_id, int note);
+
+    auto supportsMiniCurve(uint32_t instance_id) -> bool;
+    auto getMiniCurveCount(uint32_t instance_id) -> int;
+    auto getMiniCurveAxisNames(uint32_t instance_id, uint32_t curve_index) -> godot::Dictionary;
+    auto renderMiniCurve(uint32_t instance_id, uint32_t curve_index, uint32_t resolution)
+        -> godot::PackedFloat32Array;
+    void setMiniCurveObserved(uint32_t instance_id, bool is_observed);
 };
 
 VARIANT_ENUM_CAST(SynthCanvasAudioSystem::ConnectionType);

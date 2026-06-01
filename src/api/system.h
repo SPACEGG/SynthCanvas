@@ -84,6 +84,16 @@ class System {
     void setEventOccuredCallback(EventOccuredCallback cb);
     void setParamsRescanCallback(std::function<void(uint32_t)> cb);
 
+#if defined(__ANDROID__)
+    [[nodiscard]] auto supportsMiniCurve(uint32_t instance_id) const -> bool;
+    [[nodiscard]] auto getMiniCurveCount(uint32_t instance_id) const -> uint32_t;
+    auto getMiniCurveAxisNames(uint32_t instance_id, uint32_t curve_index, std::string& out_x,
+                               std::string& out_y) const -> bool;
+    auto renderMiniCurve(uint32_t instance_id, uint32_t curve_index, std::vector<float>& out_values,
+                         uint32_t resolution) -> uint32_t;
+    void setMiniCurveObserved(uint32_t instance_id, bool is_observed);
+#endif
+
    private:
     struct Impl;
     std::unique_ptr<Impl> _pimpl;

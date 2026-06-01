@@ -8,10 +8,10 @@
 #include <clap/clap.h>
 
 #include "host/engine/audio_engine.h"
-#include "host/graph/graph_types.h"
-#include "utils/logger.h"
 #include "host/engine/module_router.h"
+#include "host/graph/graph_types.h"
 #include "host/nodes/wrappers/plugin_host.h"
+#include "utils/logger.h"
 
 #endif
 
@@ -504,7 +504,43 @@ void System::setTransportPlaying(bool playing) {
 void System::setEventOccuredCallback(EventOccuredCallback cb) { _pimpl->on_event_occured = cb; }
 
 void System::setParamsRescanCallback(std::function<void(uint32_t)> cb) {
+#if defined(__ANDROID__)
     _pimpl->on_params_rescan = cb;
+#endif
 }
+
+#if defined(__ANDROID__)
+auto System::supportsMiniCurve(uint32_t instance_id) const -> bool {
+    if (!_pimpl->module_router) return false;
+    auto* node = _pimpl->module_router->getProcessingNode(instance_id);
+    return node ? node->supportsMiniCurve() : false;
+}
+
+auto System::getMiniCurveCount(uint32_t instance_id) const -> uint32_t {
+    if (!_pimpl->module_router) return 0;
+    auto* node = _pimpl->module_router->getProcessingNode(instance_id);
+    return node ? node->getMiniCurveCount() : 0;
+}
+
+auto System::getMiniCurveAxisNames(uint32_t instance_id, uint32_t curve_index, std::string& out_x,
+                                   std::string& out_y) const -> bool {
+    if (!_pimpl->module_router) return false;
+    auto* node = _pimpl->module_router->getProcessingNode(instance_id);
+    return node ? node->getMiniCurveAxisNames(curve_index, out_x, out_y) : false;
+}
+
+auto System::renderMiniCurve(uint32_t instance_id, uint32_t curve_index,
+                             std::vector<float>& out_values, uint32_t resolution) -> uint32_t {
+    if (!_pimpl->module_router) return 0;
+    auto* node = _pimpl->module_router->getProcessingNode(instance_id);
+    return node ? node->renderMiniCurve(curve_index, out_values, resolution) : 0;
+}
+
+void System::setMiniCurveObserved(uint32_t instance_id, bool is_observed) {
+    if (!_pimpl->module_router) return;
+    auto* node = _pimpl->module_router->getProcessingNode(instance_id);
+    if (node) node->setMiniCurveObserved(is_observed);
+}
+#endif
 
 }  // namespace synth_canvas

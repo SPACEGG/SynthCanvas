@@ -34,6 +34,13 @@ class LFONode : public InternalNodeBase {
     [[nodiscard]] auto getParameterText(clap_id param_id, double value) const
         -> std::string override;
 
+    [[nodiscard]] auto supportsMiniCurve() const -> bool override;
+    [[nodiscard]] auto getMiniCurveCount() const -> uint32_t override;
+    auto getMiniCurveAxisNames(uint32_t curve_index, std::string& out_x, std::string& out_y) const
+        -> bool override;
+    auto renderMiniCurve(uint32_t curve_index, std::vector<float>& out_values, uint32_t resolution)
+        -> uint32_t override;
+
    private:
     void updateSmoothingCoeff();
     auto generateWaveform(double phase, int waveform) -> float;

@@ -68,6 +68,20 @@ void SynthCanvasAudioSystem::_bind_methods() {
     godot::ClassDB::bind_method(godot::D_METHOD("stop_note_from_node", "from_node_id", "note"),
                                 &SynthCanvasAudioSystem::stopNoteFromNode);
 
+    godot::ClassDB::bind_method(godot::D_METHOD("supports_mini_curve", "instance_id"),
+                                &SynthCanvasAudioSystem::supportsMiniCurve);
+    godot::ClassDB::bind_method(godot::D_METHOD("get_mini_curve_count", "instance_id"),
+                                &SynthCanvasAudioSystem::getMiniCurveCount);
+    godot::ClassDB::bind_method(
+        godot::D_METHOD("get_mini_curve_axis_names", "instance_id", "curve_index"),
+        &SynthCanvasAudioSystem::getMiniCurveAxisNames);
+    godot::ClassDB::bind_method(
+        godot::D_METHOD("render_mini_curve", "instance_id", "curve_index", "resolution"),
+        &SynthCanvasAudioSystem::renderMiniCurve);
+    godot::ClassDB::bind_method(
+        godot::D_METHOD("set_mini_curve_observed", "instance_id", "is_observed"),
+        &SynthCanvasAudioSystem::setMiniCurveObserved);
+
     BIND_ENUM_CONSTANT(kConnectionTypeAudio);
     BIND_ENUM_CONSTANT(kConnectionTypeEvent);
     BIND_ENUM_CONSTANT(kConnectionTypeModulation);
@@ -250,6 +264,11 @@ auto SynthCanvasAudioSystem::createCompositeInstance(const godot::Dictionary& co
                      static_cast<uint32_t>(static_cast<int>(p["internal_port_index"])),
                  .type = static_cast<synth_canvas::ConnectionType>(static_cast<int>(p["type"]))});
         }
+    }
+
+    // 6. Display target alias
+    if (config.has("display")) {
+        cpp_config.display = std::string(godot::String(config["display"]).utf8().get_data());
     }
 
     return _system->createCompositeInstance(cpp_config);
@@ -464,4 +483,73 @@ void SynthCanvasAudioSystem::setTransportPlaying(bool playing) {
     if (_system) {
         _system->setTransportPlaying(playing);
     }
+}
+
+auto SynthCanvasAudioSystem::supportsMiniCurve(uint32_t instance_id) -> bool {
+#if defined(__ANDROID__)
+    if (_system) {
+        return _system->supportsMiniCurve(instance_id);
+    }
+    return false;
+#else
+    return true; // Dummy engine on Windows supports curves for UI testing
+#endif
+}
+
+auto SynthCanvasAudioSystem::getMiniCurveCount(uint32_t instance_id) -> int {
+#if defined(__ANDROID__)
+    if (_system) {
+        return static_cast<int>(_system->getMiniCurveCount(instance_id));
+    }
+#endif
+    return 1; // Dummy count on Windows
+}
+
+auto SynthCanvasAudioSystem::getMiniCurveAxisNames(uint32_t instance_id, uint32_t curve_index)
+    -> godot::Dictionary {
+    godot::Dictionary dict;
+    dict["x"] = "";
+    dict["y"] = "";
+#if defined(__ANDROID__)
+    if (_system) {
+        std::string out_x, out_y;
+        if (_system->getMiniCurveAxisNames(instance_id, curve_index, out_x, out_y)) {
+            dict["x"] = godot::String(out_x.c_str());
+            dict["y"] = godot::String(out_y.c_str());
+        }
+    }
+#endif
+    return dict;
+}
+
+auto SynthCanvasAudioSystem::renderMiniCurve(uint32_t instance_id, uint32_t curve_index,
+                                             uint32_t resolution) -> godot::PackedFloat32Array {
+    godot::PackedFloat32Array arr;
+#if defined(__ANDROID__)
+    if (_system) {
+        std::vector<float> values;
+        uint32_t count = _system->renderMiniCurve(instance_id, curve_index, values, resolution);
+        if (count > 0 && !values.empty()) {
+            arr.resize(static_cast<int64_t>(values.size()));
+            for (size_t i = 0; i < values.size(); ++i) {
+                arr[static_cast<int64_t>(i)] = values[i];
+            }
+        }
+    }
+#else
+    arr.resize(resolution);
+    for (uint32_t i = 0; i < resolution; ++i) {
+        float x = static_cast<float>(i) / static_cast<float>(resolution - 1);
+        arr[i] = (std::sin(x * 3.14159265f * 4.0f) + 1.0f) * 0.5f; // Dummy sine wave
+    }
+#endif
+    return arr;
+}
+
+void SynthCanvasAudioSystem::setMiniCurveObserved(uint32_t instance_id, bool is_observed) {
+#if defined(__ANDROID__)
+    if (_system) {
+        _system->setMiniCurveObserved(instance_id, is_observed);
+    }
+#endif
 }

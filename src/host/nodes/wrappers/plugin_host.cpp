@@ -1,5 +1,6 @@
 #include "host/nodes/wrappers/plugin_host.h"
 
+#include <clap/ext/draft/mini-curve-display.h>
 #include <clap/ext/state.h>
 
 #include <clap/helpers/host.hxx>
@@ -16,6 +17,7 @@
 #include <dlfcn.h>
 #endif
 
+#include <array>
 #include <charconv>
 #include <thread>
 #include <utility>
@@ -939,6 +941,87 @@ auto PluginHost::isActive() const -> bool {
 }
 
 auto PluginHost::isPluginProcessing() const -> bool { return _state == kActiveAndProcessing; }
+
+auto PluginHost::supportsMiniCurve() const -> bool {
+    if (!_plugin || !_plugin->clapPlugin()) return false;
+    return _plugin->clapPlugin()->get_extension(_plugin->clapPlugin(),
+                                                CLAP_EXT_MINI_CURVE_DISPLAY) != nullptr;
+}
+
+auto PluginHost::getMiniCurveCount() const -> uint32_t {
+    if (!_plugin || !_plugin->clapPlugin()) return 0;
+    auto* ext = static_cast<const clap_plugin_mini_curve_display_t*>(
+        _plugin->clapPlugin()->get_extension(_plugin->clapPlugin(), CLAP_EXT_MINI_CURVE_DISPLAY));
+    if (!ext || !ext->get_curve_count) return 0;
+    return ext->get_curve_count(_plugin->clapPlugin());
+}
+
+auto PluginHost::getMiniCurveAxisNames(uint32_t curve_index, std::string& out_x,
+                                       std::string& out_y) const -> bool {
+    if (!_plugin || !_plugin->clapPlugin()) return false;
+    auto* ext = static_cast<const clap_plugin_mini_curve_display_t*>(
+        _plugin->clapPlugin()->get_extension(_plugin->clapPlugin(), CLAP_EXT_MINI_CURVE_DISPLAY));
+    if (!ext || !ext->get_axis_name) return false;
+    std::array<char, 64> x_name = {0};
+    std::array<char, 64> y_name = {0};
+    if (ext->get_axis_name(_plugin->clapPlugin(), curve_index, x_name.data(), y_name.data(),
+                           x_name.size())) {
+        out_x = x_name.data();
+        out_y = y_name.data();
+        return true;
+    }
+    return false;
+}
+
+auto PluginHost::renderMiniCurve(uint32_t curve_index, std::vector<float>& out_values,
+                                 uint32_t resolution) -> uint32_t {
+    if (!_plugin || !_plugin->clapPlugin()) return 0;
+    auto* ext = static_cast<const clap_plugin_mini_curve_display_t*>(
+        _plugin->clapPlugin()->get_extension(_plugin->clapPlugin(), CLAP_EXT_MINI_CURVE_DISPLAY));
+    if (!ext || !ext->render) return 0;
+
+    uint32_t total_curves = getMiniCurveCount();
+    if (curve_index >= total_curves) return 0;
+
+    std::vector<uint16_t> raw_values(resolution, 0);
+    std::vector<clap_mini_curve_display_curve_data_t> curves(total_curves);
+    std::vector<std::vector<uint16_t>> temp_buffers(total_curves);
+
+    for (uint32_t i = 0; i < total_curves; ++i) {
+        if (i == curve_index) {
+            curves[i].values = raw_values.data();
+            curves[i].values_count = resolution;
+        } else {
+            temp_buffers[i].resize(resolution, 0);
+            curves[i].values = temp_buffers[i].data();
+            curves[i].values_count = resolution;
+        }
+        curves[i].curve_kind = CLAP_MINI_CURVE_DISPLAY_CURVE_KIND_UNSPECIFIED;
+    }
+
+    uint32_t rendered_count = ext->render(_plugin->clapPlugin(), curves.data(), total_curves);
+    if (rendered_count == 0) return 0;
+
+    out_values.resize(resolution);
+    for (uint32_t i = 0; i < resolution; ++i) {
+        uint16_t raw_val = raw_values[i];
+        if (raw_val == 0 || raw_val == 65535) {
+            out_values[i] = -1.0f;
+        } else {
+            out_values[i] = static_cast<float>(raw_val - 1) / 65533.0f;
+        }
+    }
+    return 1;
+}
+
+void PluginHost::setMiniCurveObserved(bool is_observed) {
+    if (!_plugin || !_plugin->clapPlugin()) return;
+    auto* ext = static_cast<const clap_plugin_mini_curve_display_t*>(
+        _plugin->clapPlugin()->get_extension(_plugin->clapPlugin(), CLAP_EXT_MINI_CURVE_DISPLAY));
+    if (ext && ext->set_observed) {
+        ext->set_observed(_plugin->clapPlugin(), is_observed);
+    }
+}
 
 }  // namespace synth_canvas::host
 

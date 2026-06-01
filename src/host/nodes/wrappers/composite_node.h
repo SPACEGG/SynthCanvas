@@ -6,10 +6,10 @@
 #include <string>
 #include <vector>
 
-#include "host/nodes/base/boundary_node.h"
 #include "host/graph/graph_processor.h"
 #include "host/graph/graph_renderer.h"
 #include "host/graph/graph_types.h"
+#include "host/nodes/base/boundary_node.h"
 #include "host/nodes/base/processing_node.h"
 #include "readerwriterqueue.h"
 
@@ -71,6 +71,14 @@ class CompositeNode final : public ProcessingNode {
 
     // --- ProcessingNode State Check ---
 
+    [[nodiscard]] auto supportsMiniCurve() const -> bool override;
+    [[nodiscard]] auto getMiniCurveCount() const -> uint32_t override;
+    auto getMiniCurveAxisNames(uint32_t curve_index, std::string& out_x, std::string& out_y) const
+        -> bool override;
+    auto renderMiniCurve(uint32_t curve_index, std::vector<float>& out_values, uint32_t resolution)
+        -> uint32_t override;
+    void setMiniCurveObserved(bool is_observed) override;
+
     [[nodiscard]] auto isActive() const -> bool override;
 
     // Composite Specific Management
@@ -107,6 +115,8 @@ class CompositeNode final : public ProcessingNode {
     void setupParameterMappings(const CompositeConfig& config,
                                 const std::map<std::string, uint32_t>& alias_to_id);
 
+    [[nodiscard]] auto getMiniCurveDelegate() const -> ProcessingNode*;
+
     GraphProcessor _internal_processor;
     AudioBufferManager _internal_buffers;
     GraphRenderer _renderer;
@@ -136,6 +146,7 @@ class CompositeNode final : public ProcessingNode {
     int32_t _block_size = 0;
     int32_t _current_num_frames = 0;
     bool _is_active = false;
+    uint32_t _display_node_id = 0;
 
     // Boundary Nodes
     std::unique_ptr<BoundaryNode> _input_proxy_node_owned;

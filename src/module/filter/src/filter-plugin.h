@@ -1,5 +1,7 @@
 #pragma once
 
+#include <clap/ext/draft/mini-curve-display.h>
+
 #include <clap/helpers/plugin.hh>
 #include <clap/helpers/plugin.hxx>
 #include <string>
@@ -44,6 +46,7 @@ class FilterPlugin : public clap::helpers::Plugin<clap::helpers::MisbehaviourHan
     [[nodiscard]] auto implementsState() const noexcept -> bool override { return true; }
     auto stateSave(const clap_ostream* os) noexcept -> bool override;
     auto stateLoad(const clap_istream* is) noexcept -> bool override;
+    auto extension(const char* id) noexcept -> const void* override;
 
     // Processing
     auto process(const clap_process* process) noexcept -> clap_process_status override;
@@ -92,6 +95,10 @@ class FilterPlugin : public clap::helpers::Plugin<clap::helpers::MisbehaviourHan
     double _sample_rate{44100.0};
 
     SvfEngine _engine;
+
+    static const clap_plugin_mini_curve_display_t s_mini_curve_display;
+
+    [[nodiscard]] auto get_magnitude(float f, float fc, float res, int m) const -> float;
 };
 
 }  // namespace synth_canvas::filter_plugin

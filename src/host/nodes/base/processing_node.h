@@ -90,6 +90,22 @@ class ProcessingNode {
     // Port Count Change Callback (invoked on the main thread when a node's active port count
     // changes)
     std::function<void(uint32_t)> on_ports_changed;
+
+    // Mini curve display interface
+    [[nodiscard]] virtual auto supportsMiniCurve() const -> bool { return false; }
+    [[nodiscard]] virtual auto getMiniCurveCount() const -> uint32_t { return 0; }
+    virtual auto getMiniCurveAxisNames(uint32_t curve_index, std::string& out_x,
+                                       std::string& out_y) const -> bool {
+        return false;
+    }
+    virtual auto renderMiniCurve(uint32_t curve_index, std::vector<float>& out_values,
+                                 uint32_t resolution) -> uint32_t {
+        return 0;
+    }
+    virtual void setMiniCurveObserved(bool is_observed) {}
+
+    // Curve change callback
+    std::function<void(uint32_t)> on_curve_changed;
 };
 
 }  // namespace synth_canvas::host

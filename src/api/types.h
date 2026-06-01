@@ -118,6 +118,7 @@ struct CompositeConfig {
     std::vector<ParameterMappingConfig> parameter_mappings;
     std::vector<PortProxyConfig> input_proxies;
     std::vector<PortProxyConfig> output_proxies;
+    std::string display;
 };
 
 // --- Parameter Metadata ---

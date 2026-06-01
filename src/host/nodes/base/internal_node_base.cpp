@@ -347,4 +347,22 @@ void InternalNodeBase::resizeOutputPorts(uint32_t new_count) {
     }
 }
 
+auto InternalNodeBase::supportsMiniCurve() const -> bool { return false; }
+
+auto InternalNodeBase::getMiniCurveCount() const -> uint32_t { return 0; }
+
+auto InternalNodeBase::getMiniCurveAxisNames(uint32_t curve_index, std::string& out_x,
+                                             std::string& out_y) const -> bool {
+    return false;
+}
+
+auto InternalNodeBase::renderMiniCurve(uint32_t curve_index, std::vector<float>& out_values,
+                                       uint32_t resolution) -> uint32_t {
+    return 0;
+}
+
+void InternalNodeBase::setMiniCurveObserved(bool is_observed) {
+    _is_mini_curve_observed = is_observed;
+}
+
 }  // namespace synth_canvas::host

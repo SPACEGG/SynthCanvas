@@ -3,10 +3,10 @@
 #include <cstring>
 #include <map>
 
-#include "utils/constants.h"
-#include "utils/logger.h"
 #include "host/nodes/wrappers/plugin_host.h"
+#include "utils/constants.h"
 #include "utils/json_converters.h"
+#include "utils/logger.h"
 
 namespace synth_canvas::host {
 
@@ -377,6 +377,14 @@ auto CompositeNode::load(const CompositeConfig& config) -> bool {
     setupOutputProxies(config, alias_to_id);
     setupParameterMappings(config, alias_to_id);
 
+    _display_node_id = 0;
+    if (!_config.display.empty()) {
+        auto it = alias_to_id.find(_config.display);
+        if (it != alias_to_id.end()) {
+            _display_node_id = it->second;
+        }
+    }
+
     pushInternalState();
     return true;
 }
@@ -626,6 +634,41 @@ auto CompositeNode::getParameterText(const std::string& param_id, double value) 
         }
     }
     return std::to_string(value);
+}
+
+auto CompositeNode::getMiniCurveDelegate() const -> ProcessingNode* {
+    if (_display_node_id != 0) {
+        return _internal_processor.getNode(_display_node_id);
+    }
+    return nullptr;
+}
+
+auto CompositeNode::supportsMiniCurve() const -> bool {
+    const auto* d = getMiniCurveDelegate();
+    return d ? d->supportsMiniCurve() : false;
+}
+
+auto CompositeNode::getMiniCurveCount() const -> uint32_t {
+    const auto* d = getMiniCurveDelegate();
+    return d ? d->getMiniCurveCount() : 0;
+}
+
+auto CompositeNode::getMiniCurveAxisNames(uint32_t curve_index, std::string& out_x,
+                                          std::string& out_y) const -> bool {
+    const auto* d = getMiniCurveDelegate();
+    return d ? d->getMiniCurveAxisNames(curve_index, out_x, out_y) : false;
+}
+
+auto CompositeNode::renderMiniCurve(uint32_t curve_index, std::vector<float>& out_values,
+                                    uint32_t resolution) -> uint32_t {
+    auto* d = getMiniCurveDelegate();
+    return d ? d->renderMiniCurve(curve_index, out_values, resolution) : 0;
+}
+
+void CompositeNode::setMiniCurveObserved(bool is_observed) {
+    if (auto* d = getMiniCurveDelegate()) {
+        d->setMiniCurveObserved(is_observed);
+    }
 }
 
 auto CompositeNode::isActive() const -> bool { return _is_active; }
