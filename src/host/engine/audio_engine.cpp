@@ -10,6 +10,7 @@ namespace synth_canvas::host {
 
 AudioEngine::AudioEngine(ModuleRouter* router) : _module_router(router) {
     _sample_rate = constants::kUnspecifiedSampleRate;
+    _profile_histogram.assign(5000, 0);
     log("[AudioEngine] Created.");
 }
 
@@ -44,6 +45,34 @@ auto AudioEngine::openStream() -> bool {
     }
 
     _sample_rate = _stream->getSampleRate();
+
+    if constexpr (constants::kEnableAudioProfiling) {
+        std::string api_str =
+            (_stream->getAudioApi() == oboe::AudioApi::AAudio) ? "AAudio" : "OpenSL ES";
+        std::string mode_str;
+        switch (_stream->getPerformanceMode()) {
+            case oboe::PerformanceMode::LowLatency:
+                mode_str = "LowLatency";
+                break;
+            case oboe::PerformanceMode::PowerSaving:
+                mode_str = "PowerSaving";
+                break;
+            case oboe::PerformanceMode::None:
+                mode_str = "None";
+                break;
+            default:
+                mode_str = "Unknown";
+                break;
+        }
+        std::string sharing_str =
+            (_stream->getSharingMode() == oboe::SharingMode::Exclusive) ? "Exclusive" : "Shared";
+        std::string mmap_str = oboe::OboeExtensions::isMMapUsed(_stream.get()) ? "Yes" : "No";
+
+        log("[AudioProfiler] Stream Established:", "\n\tAudio API: ", api_str,
+            "\n\tPerformance Mode: ", mode_str, "\n\tMMAP Used: ", mmap_str,
+            "\n\tSharing Mode: ", sharing_str);
+    }
+
     return true;
 }
 
@@ -76,6 +105,11 @@ auto AudioEngine::start() -> bool {
 }
 
 void AudioEngine::stop() {
+    if constexpr (constants::kEnableAudioProfiling) {
+        printProfilingStats();
+        resetProfilingStats();
+    }
+
     if (_module_router) {
         for (uint32_t id : _module_router->getProcessOrder()) {
             _module_router->deactivateNode(id);
@@ -111,6 +145,7 @@ auto AudioEngine::onAudioReady(oboe::AudioStream* oboe_stream, void* audio_data,
 
     _buffer_manager.prepareBlock();
 
+    // start clock
     auto start_time = std::chrono::steady_clock::now();
 
     // Render first using the CURRENT transport position
@@ -152,20 +187,34 @@ auto AudioEngine::onAudioReady(oboe::AudioStream* oboe_stream, void* audio_data,
             }
         }
 
-        _profile_times_ms.push_back(process_time_ms);
-        size_t blocks_per_sec = _sample_rate > 0 ? _sample_rate / num_frames : 187;
+        _profile_max_time_ms = std::max(_profile_max_time_ms, process_time_ms);
+        _profile_total_blocks++;
+        _blocks_since_last_print++;
 
-        if (_profile_times_ms.size() >= blocks_per_sec) {
-            std::vector<double> sorted = _profile_times_ms;
-            std::ranges::sort(sorted);
-            double p50 = sorted[sorted.size() * 50 / 100];
-            double p95 = sorted[sorted.size() * 95 / 100];
-            double p99 = sorted[sorted.size() * 99 / 100];
-            double p_max = sorted.back();
-            log("[AudioProfiler] \n\t\tSample rate: ", _sample_rate, ", Block size: ", num_frames,
-                "\n\t\tProcess time (ms) - P50: ", p50, " P95: ", p95, " P99: ", p99,
-                " Max: ", p_max);
-            _profile_times_ms.clear();
+        auto bin = static_cast<size_t>(process_time_ms / 0.01);
+        if (bin >= 5000) bin = 4999;
+        _profile_histogram[bin]++;
+
+        size_t blocks_per_sec =
+            _sample_rate > 0 ? static_cast<size_t>(_sample_rate / num_frames) : 187;
+
+        if (_blocks_since_last_print >= blocks_per_sec) {
+            double p50 = getPercentile(0.50);
+            double p95 = getPercentile(0.95);
+            double p99 = getPercentile(0.99);
+
+            double deadline_ms = (_sample_rate > 0)
+                                     ? (static_cast<double>(num_frames) / _sample_rate) * 1000.0
+                                     : 1.0;
+            double r50 = (p50 / deadline_ms) * 100.0;
+            double r95 = (p95 / deadline_ms) * 100.0;
+            double r99 = (p99 / deadline_ms) * 100.0;
+
+            log("[AudioProfiler] \n\tSample rate: ", _sample_rate, ", Block size: ", num_frames,
+                "\n\tProcess time (ms)    - P50: ", p50, " P95: ", p95, " P99: ", p99,
+                "\n\tProcessing ratio (%) - P50: ", r50, " P95: ", r95, " P99: ", r99,
+                "\n\tMax: ", _profile_max_time_ms, ", Xruns: ", _last_xrun_count);
+            _blocks_since_last_print = 0;
         }
     }
 
@@ -259,6 +308,52 @@ void AudioEngine::setParameterValue(uint32_t instance_id, clap_id param_id, doub
         if (auto* node = _module_router->getProcessingNode(instance_id)) {
             node->setParameterValue(param_id, value);
         }
+    }
+}
+
+auto AudioEngine::getPercentile(double p) const -> double {
+    if (_profile_total_blocks == 0) return 0.0;
+    auto target = static_cast<uint64_t>(static_cast<double>(_profile_total_blocks) * p);
+    uint64_t accum = 0;
+    for (size_t i = 0; i < 5000; ++i) {
+        accum += _profile_histogram[i];
+        if (accum >= target) {
+            return static_cast<double>(i) * 0.01;
+        }
+    }
+    return 50.0;
+}
+
+void AudioEngine::printProfilingStats() {
+    if constexpr (constants::kEnableAudioProfiling) {
+        if (_profile_total_blocks > 0) {
+            double p50 = getPercentile(0.50);
+            double p95 = getPercentile(0.95);
+            double p99 = getPercentile(0.99);
+
+            double deadline_ms =
+                (_sample_rate > 0)
+                    ? (static_cast<double>(_frames_per_block) / _sample_rate) * 1000.0
+                    : 1.0;
+            double r50 = (p50 / deadline_ms) * 100.0;
+            double r95 = (p95 / deadline_ms) * 100.0;
+            double r99 = (p99 / deadline_ms) * 100.0;
+
+            log("[AudioProfiler: FINAL] Total blocks: ", _profile_total_blocks,
+                "\n\tProcess time (ms)    - P50: ", p50, " P95: ", p95, " P99: ", p99,
+                "\n\tProcessing ratio (%) - P50: ", r50, " P95: ", r95, " P99: ", r99,
+                "\n\tMax: ", _profile_max_time_ms, " Xruns: ", _last_xrun_count);
+        }
+    }
+}
+
+void AudioEngine::resetProfilingStats() {
+    if constexpr (constants::kEnableAudioProfiling) {
+        std::ranges::fill(_profile_histogram, 0);
+        _profile_total_blocks = 0;
+        _blocks_since_last_print = 0;
+        _profile_max_time_ms = 0.0;
+        _last_xrun_count = 0;
     }
 }
 

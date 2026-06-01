@@ -4,7 +4,6 @@
 #include <clap/clap.h>
 #include <oboe/Oboe.h>
 
-#include <chrono>
 #include <memory>
 #include <vector>
 
@@ -45,6 +44,9 @@ class AudioEngine : public oboe::AudioStreamDataCallback {
     void updateRenderState();
     void handleEvent(ProcessingNode* source, const PluginEvent& ev, uint32_t port_index);
 
+    void printProfilingStats();
+    void resetProfilingStats();
+
     // Accumulates planar source buffer to interleaved destination buffer (for oboe output)
     void accumulateToInterleaved(const AudioBuffer* src, float* dst_interleaved,
                                  int32_t num_frames);
@@ -60,8 +62,14 @@ class AudioEngine : public oboe::AudioStreamDataCallback {
     int32_t _sample_rate = constants::kDefaultSampleRate;
     int32_t _frames_per_block = 0;
 
-    std::vector<double> _profile_times_ms;
+    // Profiling Histogram (0.01ms resolution, up to 50ms)
+    std::vector<uint32_t> _profile_histogram;
+    uint64_t _profile_total_blocks = 0;
+    uint64_t _blocks_since_last_print = 0;
+    double _profile_max_time_ms = 0.0;
     int32_t _last_xrun_count = 0;
+
+    [[nodiscard]] auto getPercentile(double p) const -> double;
 };
 
 }  // namespace synth_canvas::host
