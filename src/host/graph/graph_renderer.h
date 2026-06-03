@@ -37,13 +37,16 @@ class GraphRenderer {
                            int32_t num_frames);
 
     void applyParameterModulation(size_t node_index, ProcessingNode* node,
-                                  const GraphProcessor::RenderState& state, int32_t num_frames);
+                                  const GraphProcessor::RenderState& state,
+                                  AudioBufferManager& buffers, int32_t num_frames);
 
     void prepareAudioInputs(size_t node_index, ProcessingNode* node,
                             const GraphProcessor::RenderState& state, AudioBufferManager& buffers,
                             int32_t num_frames);
 
-    void prepareAudioOutputs(ProcessingNode* node, AudioBufferManager& buffers, int32_t num_frames);
+    void prepareAudioOutputs(size_t node_index, ProcessingNode* node,
+                             const GraphProcessor::RenderState& state, AudioBufferManager& buffers,
+                             int32_t num_frames);
 
     void executeNodeProcessing(ProcessingNode* node, int32_t num_frames);
 

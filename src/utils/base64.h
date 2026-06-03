@@ -5,7 +5,6 @@
 #include <string>
 #include <vector>
 
-
 namespace synth_canvas::utils {
 
 auto base64Encode(const std::vector<uint8_t>& data) -> std::string;

@@ -9,10 +9,10 @@
 #include <string>
 #include <vector>
 
-#include "utils/constants.h"
 #include "host/graph/graph_processor.h"
 #include "host/graph/graph_types.h"
 #include "readerwriterqueue.h"
+#include "utils/constants.h"
 
 namespace synth_canvas::host {
 

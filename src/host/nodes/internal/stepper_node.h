@@ -7,7 +7,6 @@
 
 #include "host/nodes/base/internal_node_base.h"
 
-
 namespace synth_canvas::host {
 
 class StepperNode final : public InternalNodeBase {

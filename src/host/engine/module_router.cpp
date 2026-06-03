@@ -1,19 +1,18 @@
 #include "host/engine/module_router.h"
 
-#include "host/nodes/wrappers/composite_node.h"
-#include "utils/constants.h"
 #include "host/nodes/internal/envelope_node.h"
 #include "host/nodes/internal/event_tunnel_node.h"
 #include "host/nodes/internal/lfo_node.h"
-#include "utils/logger.h"
 #include "host/nodes/internal/midi_input_node.h"
-#include "host/nodes/wrappers/plugin_host.h"
 #include "host/nodes/internal/sequencer_node.h"
 #include "host/nodes/internal/stepper_node.h"
 #include "host/nodes/internal/transport_node.h"
+#include "host/nodes/wrappers/composite_node.h"
+#include "host/nodes/wrappers/plugin_host.h"
 #include "utils/base64.h"
+#include "utils/constants.h"
 #include "utils/json_converters.h"
-
+#include "utils/logger.h"
 
 namespace synth_canvas::host {
 

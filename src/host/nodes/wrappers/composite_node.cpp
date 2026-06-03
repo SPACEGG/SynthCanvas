@@ -90,6 +90,14 @@ void CompositeNode::setPorts(uint32_t num_inputs, clap_audio_buffer* inputs, uin
     _ext_input_count = num_inputs;
     _ext_outputs = outputs;
     _ext_output_count = num_outputs;
+
+    for (uint32_t i = 0; i < _output_buffers.size(); ++i) {
+        if (i < num_outputs && outputs != nullptr && outputs[i].data32 != nullptr) {
+            _output_buffers[i].data32 = outputs[i].data32;
+        } else {
+            _output_buffers[i].data32 = _output_buffers[i].ptrs.data();
+        }
+    }
 }
 
 void CompositeNode::processBegin(int num_frames) {
@@ -137,6 +145,7 @@ void CompositeNode::updateInternalRenderState() {
             port_counts.push_back(static_cast<uint32_t>(node->getAudioPorts(true).size()));
         }
         _internal_buffers.reserveInputMixBuffers(port_counts);
+        _internal_buffers.reserveSharedBuffers(new_state->total_shared_buffers);
 
         if (_current_state) _released_states.enqueue(std::move(_current_state));
         _current_state = std::move(new_state);

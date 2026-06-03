@@ -92,6 +92,7 @@ class ProcessingNode {
     std::function<void(uint32_t)> on_ports_changed;
 
     // Mini curve display interface
+    [[nodiscard]] virtual auto supportsInPlace() const -> bool { return false; }
     [[nodiscard]] virtual auto supportsMiniCurve() const -> bool { return false; }
     [[nodiscard]] virtual auto getMiniCurveCount() const -> uint32_t { return 0; }
     virtual auto getMiniCurveAxisNames(uint32_t curve_index, std::string& out_x,

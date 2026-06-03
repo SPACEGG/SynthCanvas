@@ -436,6 +436,7 @@ auto PluginHost::load(const std::string& path, int plugin_index) -> bool {
     logMessage(CLAP_LOG_INFO, ("Loading plugin with id: " + std::string(desc->id) +
                                ", index: " + std::to_string(plugin_index))
                                   .c_str());
+    _plugin_id = desc->id;
 
     const auto raw_plugin = _plugin_factory->create_plugin(_plugin_factory, clapHost(), desc->id);
     if (!raw_plugin) {
@@ -503,6 +504,8 @@ void PluginHost::unload() {
     if (_plugin) {
         _plugin.reset();
     }
+
+    _plugin_id.clear();
 
     _params.clear();
     _param_id_to_index.clear();
@@ -788,6 +791,14 @@ void PluginHost::setPorts(uint32_t num_inputs, clap_audio_buffer* inputs, uint32
     _process.audio_inputs_count = num_inputs;
     _process.audio_outputs = outputs;
     _process.audio_outputs_count = num_outputs;
+
+    for (uint32_t i = 0; i < _output_buffers.size(); ++i) {
+        if (i < num_outputs && outputs != nullptr && outputs[i].data32 != nullptr) {
+            _output_buffers[i].data32 = outputs[i].data32;
+        } else {
+            _output_buffers[i].data32 = _output_buffers[i].ptrs.data();
+        }
+    }
 }
 
 void PluginHost::processBegin(int nframes) {
@@ -853,13 +864,10 @@ void PluginHost::process() {
             clap_transport.flags |= CLAP_TRANSPORT_IS_PLAYING;
         }
 
-        // CLAP uses 64-bit fixed point with 31-bit fractional part (CLAP_BEATTIME_FACTOR)
         const auto factor = static_cast<double>(1LL << 31);
-
         clap_transport.song_pos_beats =
             static_cast<int64_t>(std::round(_transport->song_pos_beats * factor));
 
-        // Convert beats to seconds: seconds = (beats * 60) / tempo
         double song_pos_seconds = (_transport->song_pos_beats * 60.0) / _transport->tempo;
         clap_transport.song_pos_seconds =
             static_cast<int64_t>(std::round(song_pos_seconds * factor));
@@ -941,6 +949,11 @@ auto PluginHost::isActive() const -> bool {
 }
 
 auto PluginHost::isPluginProcessing() const -> bool { return _state == kActiveAndProcessing; }
+
+auto PluginHost::supportsInPlace() const -> bool {
+    return _plugin_id == "com.synthcanvas.gain-plugin" ||
+           _plugin_id == "com.synthcanvas.passthrough-plugin";
+}
 
 auto PluginHost::supportsMiniCurve() const -> bool {
     if (!_plugin || !_plugin->clapPlugin()) return false;

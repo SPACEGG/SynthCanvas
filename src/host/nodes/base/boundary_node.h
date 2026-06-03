@@ -5,10 +5,10 @@
 #include <string>
 #include <vector>
 
-#include "utils/constants.h"
 #include "host/graph/graph_types.h"
 #include "host/nodes/base/processing_node.h"
 #include "readerwriterqueue.h"
+#include "utils/constants.h"
 
 namespace synth_canvas::host {
 

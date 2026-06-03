@@ -8,11 +8,14 @@
 #include <unordered_map>
 #include <vector>
 
-#include "utils/constants.h"
 #include "host/graph/graph_types.h"
 #include "host/nodes/base/processing_node.h"
+#include "utils/constants.h"
 
 namespace synth_canvas::host {
+
+constexpr uint32_t kUnusedBufferIndex = 0xFFFFFFFE;
+constexpr uint32_t kSummedBufferIndex = 0xFFFFFFFF;
 
 class GraphProcessor {
    public:
@@ -21,6 +24,7 @@ class GraphProcessor {
         struct AudioSource {
             uint32_t node_index;
             uint32_t port_index;
+            uint32_t source_buffer_idx = 0;
             bool bypass = false;
         };
 
@@ -28,6 +32,7 @@ class GraphProcessor {
             clap_id target_param_id;
             uint32_t source_node_index;
             uint32_t source_port_index;
+            uint32_t source_buffer_idx = 0;
             float scale = 1.0f;
             bool bypass = false;
         };
@@ -66,6 +71,13 @@ class GraphProcessor {
         std::vector<ProcessingNode*> sorted_nodes;
         std::vector<AudioSource> master_output_sources;
         std::vector<PortConnection> connections;
+
+        // Flattened 1D mapping tables to avoid pointer indirection
+        std::vector<uint32_t> flat_output_buffer_indices;
+        std::vector<uint32_t> flat_input_buffer_indices;
+        std::vector<uint32_t> node_output_offsets;
+        std::vector<uint32_t> node_input_offsets;
+        size_t total_shared_buffers = 0;
 
         // CompositeNode states
         std::unordered_map<std::string, ParameterMapping> parameter_mappings;

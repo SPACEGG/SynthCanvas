@@ -27,6 +27,14 @@ void BoundaryNode::setPorts(uint32_t num_inputs, clap_audio_buffer* inputs, uint
                             clap_audio_buffer* outputs) {
     _current_inputs = inputs;
     _current_num_inputs = num_inputs;
+
+    for (uint32_t i = 0; i < _output_buffers.size(); ++i) {
+        if (i < num_outputs && outputs != nullptr && outputs[i].data32 != nullptr) {
+            _output_buffers[i]->data32 = outputs[i].data32;
+        } else {
+            _output_buffers[i]->data32 = _output_buffers[i]->ptrs.data();
+        }
+    }
 }
 
 void BoundaryNode::processBegin(int num_frames) { _current_num_frames = num_frames; }

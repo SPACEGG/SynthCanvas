@@ -33,9 +33,7 @@ void EventTunnelNode::deactivate() {
     }
 }
 
-void EventTunnelNode::queueEvent(const PluginEvent& event) {
-    _event_buffer.push_back(event);
-}
+void EventTunnelNode::queueEvent(const PluginEvent& event) { _event_buffer.push_back(event); }
 
 void EventTunnelNode::process() {
     if (_event_buffer.empty()) {

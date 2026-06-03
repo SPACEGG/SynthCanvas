@@ -98,6 +98,7 @@ class PluginHost final : public ProcessingNode, public BaseHost {
     [[nodiscard]] auto getParameterText(clap_id param_id, double value) const
         -> std::string override;
 
+    [[nodiscard]] auto supportsInPlace() const -> bool override;
     [[nodiscard]] auto supportsMiniCurve() const -> bool override;
     [[nodiscard]] auto getMiniCurveCount() const -> uint32_t override;
     auto getMiniCurveAxisNames(uint32_t curve_index, std::string& out_x, std::string& out_y) const
@@ -174,6 +175,7 @@ class PluginHost final : public ProcessingNode, public BaseHost {
     void handlePluginOutputEvents();
 
     std::string _plugin_path;
+    std::string _plugin_id;
     void* _library_handle = nullptr;
     const clap_plugin_entry* _plugin_entry = nullptr;
     const clap_plugin_factory* _plugin_factory = nullptr;

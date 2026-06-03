@@ -60,7 +60,13 @@ void InternalNodeBase::reserveOutputBuffers(uint32_t count) {
 }
 
 void InternalNodeBase::setPorts(uint32_t num_inputs, clap_audio_buffer* inputs,
-                                uint32_t num_outputs, clap_audio_buffer* outputs) {}
+                                uint32_t num_outputs, clap_audio_buffer* outputs) {
+    if (num_outputs > 0 && outputs != nullptr && outputs[0].data32 != nullptr) {
+        _output_buffer.data32 = outputs[0].data32;
+    } else {
+        _output_buffer.data32 = _output_buffer.ptrs.data();
+    }
+}
 
 void InternalNodeBase::setParameterValue(clap_id param_id, double value) {
     if (auto* slot = getParameterSlot(param_id)) {

@@ -1,10 +1,10 @@
-﻿#include "host/graph/graph_renderer.h"
+#include "host/graph/graph_renderer.h"
 
 #include <algorithm>
 #include <cmath>
 
-#include "utils/constants.h"
 #include "host/nodes/base/processing_node.h"
+#include "utils/constants.h"
 
 namespace synth_canvas::host {
 
@@ -114,15 +114,15 @@ void GraphRenderer::renderEvents(const GraphProcessor::RenderState& state,
 void GraphRenderer::processSingleNode(size_t node_index, ProcessingNode* node,
                                       const GraphProcessor::RenderState& state,
                                       AudioBufferManager& buffers, int32_t num_frames) {
-    applyParameterModulation(node_index, node, state, num_frames);
+    applyParameterModulation(node_index, node, state, buffers, num_frames);
     prepareAudioInputs(node_index, node, state, buffers, num_frames);
-    prepareAudioOutputs(node, buffers, num_frames);
+    prepareAudioOutputs(node_index, node, state, buffers, num_frames);
     executeNodeProcessing(node, num_frames);
 }
 
 void GraphRenderer::applyParameterModulation(size_t node_index, ProcessingNode* node,
                                              const GraphProcessor::RenderState& state,
-                                             int32_t num_frames) {
+                                             AudioBufferManager& buffers, int32_t num_frames) {
     const auto& modulations = state.input_modulations[node_index];
     if (modulations.empty()) return;
 
@@ -132,10 +132,7 @@ void GraphRenderer::applyParameterModulation(size_t node_index, ProcessingNode* 
         for (const auto& mod : modulations) {
             if (mod.bypass) continue;
 
-            ProcessingNode* src_node = state.sorted_nodes[mod.source_node_index];
-            if (!src_node) continue;
-
-            auto* src_buf = src_node->getOutputBuffer(mod.source_port_index);
+            auto* src_buf = buffers.getSharedBuffer(mod.source_buffer_idx);
             if (!src_buf || !src_buf->data32) continue;
 
             float mod_value = src_buf->data32[0][t] * mod.scale;
@@ -170,37 +167,32 @@ void GraphRenderer::prepareAudioInputs(size_t node_index, ProcessingNode* node,
     const auto& input_ports = node->getAudioPorts(true);
     _inputs_workspace.assign(input_ports.size(), clap_audio_buffer{});
 
+    uint32_t in_off = state.node_input_offsets[node_index];
     const auto& port_map = state.input_audio_sources[node_index];
 
     for (size_t i = 0; i < input_ports.size(); ++i) {
         const auto& port_info = input_ports[i];
-
         AudioBuffer* final_input = nullptr;
-        auto it = port_map.find(port_info.index);
 
-        if (it != port_map.end() && !it->second.empty()) {
-            const auto& sources = it->second;
-            if (sources.size() == 1) {
-                const auto& src = sources[0];
-                if (!src.bypass) {
-                    ProcessingNode* src_node = state.sorted_nodes[src.node_index];
-                    if (src_node) final_input = src_node->getOutputBuffer(src.port_index);
-                }
-            } else {
-                AudioBuffer* mix_buf = buffers.getMixBuffer(node_index, port_info.index);
-                if (mix_buf) {
-                    mix_buf->clear();
-                    for (const auto& src : sources) {
+        uint32_t buf_idx = state.flat_input_buffer_indices[in_off + i];
+        if (buf_idx == kSummedBufferIndex) {
+            AudioBuffer* mix_buf = buffers.getMixBuffer(node_index, port_info.index);
+            if (mix_buf) {
+                mix_buf->clear();
+                auto it = port_map.find(port_info.index);
+                if (it != port_map.end()) {
+                    for (const auto& src : it->second) {
                         if (src.bypass) continue;
-                        ProcessingNode* src_node = state.sorted_nodes[src.node_index];
-                        if (src_node) {
-                            AudioBuffer* src_buf = src_node->getOutputBuffer(src.port_index);
+                        AudioBuffer* src_buf = buffers.getSharedBuffer(src.source_buffer_idx);
+                        if (src_buf) {
                             mix_buf->accumulate(src_buf, num_frames);
                         }
                     }
-                    final_input = mix_buf;
                 }
+                final_input = mix_buf;
             }
+        } else if (buf_idx != kUnusedBufferIndex) {
+            final_input = buffers.getSharedBuffer(buf_idx);
         }
 
         _inputs_workspace[i].channel_count = port_info.clap_info.channel_count;
@@ -211,15 +203,36 @@ void GraphRenderer::prepareAudioInputs(size_t node_index, ProcessingNode* node,
     }
 }
 
-void GraphRenderer::prepareAudioOutputs(ProcessingNode* node, AudioBufferManager& buffers,
-                                        int32_t num_frames) {
+void GraphRenderer::prepareAudioOutputs(size_t node_index, ProcessingNode* node,
+                                        const GraphProcessor::RenderState& state,
+                                        AudioBufferManager& buffers, int32_t num_frames) {
     const auto& output_ports = node->getAudioPorts(false);
     _outputs_workspace.assign(output_ports.size(), clap_audio_buffer{});
 
+    uint32_t out_off = state.node_output_offsets[node_index];
+    uint32_t in_off = state.node_input_offsets[node_index];
+    auto input_ports_count = static_cast<uint32_t>(node->getAudioPorts(true).size());
+
     for (size_t i = 0; i < output_ports.size(); ++i) {
         const auto& port_info = output_ports[i];
-        AudioBuffer* buf = node->getOutputBuffer(port_info.index);
-        if (buf && buf->owns_memory) buf->clear();
+        AudioBuffer* buf = nullptr;
+
+        uint32_t buf_idx = state.flat_output_buffer_indices[out_off + i];
+        if (buf_idx != kUnusedBufferIndex) {
+            buf = buffers.getSharedBuffer(buf_idx);
+            if (buf) {
+                bool is_in_place = false;
+                for (uint32_t in_port = 0; in_port < input_ports_count; ++in_port) {
+                    if (state.flat_input_buffer_indices[in_off + in_port] == buf_idx) {
+                        is_in_place = true;
+                        break;
+                    }
+                }
+                if (!is_in_place) {
+                    buf->clear();
+                }
+            }
+        }
 
         _outputs_workspace[i].channel_count = port_info.clap_info.channel_count;
         _outputs_workspace[i].data32 = buf ? buf->data32 : nullptr;
@@ -261,7 +274,7 @@ void GraphRenderer::collectAndRouteEvents(size_t node_index, ProcessingNode* nod
 
                 if (target.type == GraphProcessor::RenderState::EventTarget::Type::kNode) {
                     if (ev.event.header.type == CLAP_EVENT_PARAM_MOD &&
-                        static_cast<int32_t>(target.target_param_id) != constants::kClapInvalidId) {
+                        target.target_param_id != static_cast<clap_id>(constants::kClapInvalidId)) {
                         PluginEvent rewritten_ev = ev;
                         rewritten_ev.event.param_mod.param_id = target.target_param_id;
                         rewritten_ev.event.param_mod.amount *= target.scale;

@@ -492,7 +492,7 @@ auto SynthCanvasAudioSystem::supportsMiniCurve(uint32_t instance_id) -> bool {
     }
     return false;
 #else
-    return true; // Dummy engine on Windows supports curves for UI testing
+    return true;  // Dummy engine on Windows supports curves for UI testing
 #endif
 }
 
@@ -502,7 +502,7 @@ auto SynthCanvasAudioSystem::getMiniCurveCount(uint32_t instance_id) -> int {
         return static_cast<int>(_system->getMiniCurveCount(instance_id));
     }
 #endif
-    return 1; // Dummy count on Windows
+    return 1;  // Dummy count on Windows
 }
 
 auto SynthCanvasAudioSystem::getMiniCurveAxisNames(uint32_t instance_id, uint32_t curve_index)
@@ -540,7 +540,7 @@ auto SynthCanvasAudioSystem::renderMiniCurve(uint32_t instance_id, uint32_t curv
     arr.resize(resolution);
     for (uint32_t i = 0; i < resolution; ++i) {
         float x = static_cast<float>(i) / static_cast<float>(resolution - 1);
-        arr[i] = (std::sin(x * 3.14159265f * 4.0f) + 1.0f) * 0.5f; // Dummy sine wave
+        arr[i] = (std::sin(x * 3.14159265f * 4.0f) + 1.0f) * 0.5f;  // Dummy sine wave
     }
 #endif
     return arr;

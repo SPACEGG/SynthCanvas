@@ -1,19 +1,19 @@
 #pragma once
 
+#include <array>
+#include <atomic>
 #include <clap/helpers/plugin.hh>
 #include <clap/helpers/plugin.hxx>
 #include <string>
 #include <vector>
-#include <array>
-#include <atomic>
 
 #include "osc-voice.h"
 
 namespace synth_canvas::oscillator_plugin {
 
 class OscillatorPlugin : public clap::helpers::Plugin<clap::helpers::MisbehaviourHandler::Terminate,
-                                                       clap::helpers::CheckingLevel::Maximal> {
-public:
+                                                      clap::helpers::CheckingLevel::Maximal> {
+   public:
     OscillatorPlugin(const std::string& plugin_path, const clap_host* host);
 
     static auto descriptor() -> const clap_plugin_descriptor*;
@@ -70,16 +70,17 @@ public:
         kParamCount
     };
 
-private:
+   private:
     void handleEvents(const clap_input_events* in, uint32_t& event_index,
                       uint32_t sample_index) noexcept;
-    void triggerNoteOn(int16_t port, int16_t channel, int16_t key, int32_t note_id, double velocity);
+    void triggerNoteOn(int16_t port, int16_t channel, int16_t key, int32_t note_id,
+                       double velocity);
     void triggerNoteOff(int16_t port, int16_t channel, int16_t key, int32_t note_id);
     auto findFreeVoice() -> OscVoice*;
 
     // Parameters (Normalized 0.0 ~ 1.0 or Stepped)
     std::array<std::atomic<double>, kParamCount> _params;
-    
+
     // Modulation offsets (Normalized)
     std::array<std::atomic<double>, kParamCount> _param_mods;
 
@@ -87,13 +88,13 @@ private:
     static constexpr int kMaxVoices = 32;
     std::array<OscVoice, kMaxVoices> _voices;
     uint32_t _voice_counter = 0;
-    
+
     double _sample_rate = 44100.0;
-    double _pitch_bend = 0.0; // Normalized -1.0 to 1.0
+    double _pitch_bend = 0.0;  // Normalized -1.0 to 1.0
 
     // Mono mode state
     int16_t _mono_last_key = -1;
     int32_t _mono_last_note_id = -1;
 };
 
-} // namespace synth_canvas::oscillator_plugin
+}  // namespace synth_canvas::oscillator_plugin

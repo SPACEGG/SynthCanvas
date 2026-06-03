@@ -180,8 +180,7 @@ auto AudioEngine::onAudioReady(oboe::AudioStream* oboe_stream, void* audio_data,
     for (const auto& src : _current_render_state->master_output_sources) {
         if (src.bypass) continue;
 
-        ProcessingNode* node = _current_render_state->sorted_nodes[src.node_index];
-        if (auto* node_buf = node->getOutputBuffer(src.port_index)) {
+        if (auto* node_buf = _buffer_manager.getSharedBuffer(src.source_buffer_idx)) {
             accumulateToInterleaved(node_buf, output_ptr, num_frames);
         }
     }
@@ -262,6 +261,7 @@ void AudioEngine::updateRenderState() {
             port_counts.push_back(static_cast<uint32_t>(node->getAudioPorts(true).size()));
         }
         _buffer_manager.reserveInputMixBuffers(port_counts);
+        _buffer_manager.reserveSharedBuffers(new_state->total_shared_buffers);
 
         if (_current_render_state) {
             // Prevent timeline jumps during structural changes (node/connection updates)

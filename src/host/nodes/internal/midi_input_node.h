@@ -10,8 +10,8 @@
 #include <memory>
 #include <vector>
 
-#include "utils/constants.h"
 #include "host/nodes/base/internal_node_base.h"
+#include "utils/constants.h"
 
 namespace synth_canvas::host {
 

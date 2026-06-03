@@ -1,8 +1,8 @@
 #ifndef SYNTH_CANVAS_HOST_EVENT_TUNNEL_NODE_H
 #define SYNTH_CANVAS_HOST_EVENT_TUNNEL_NODE_H
 
-#include <vector>
 #include <array>
+#include <vector>
 
 #include "host/nodes/base/internal_node_base.h"
 

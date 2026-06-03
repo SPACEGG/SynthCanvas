@@ -48,6 +48,25 @@ void AudioBufferManager::prepareBlock() {
     }
 }
 
+void AudioBufferManager::reserveSharedBuffers(size_t count) {
+    if (count > _shared_buffers.size()) {
+        size_t old_size = _shared_buffers.size();
+        _shared_buffers.resize(count);
+        for (size_t i = old_size; i < count; ++i) {
+            _shared_buffers[i] = std::make_unique<AudioBuffer>();
+            _shared_buffers[i]->owns_memory = true;
+            _shared_buffers[i]->resize(_channels, _max_frames);
+        }
+    }
+}
+
+auto AudioBufferManager::getSharedBuffer(size_t index) -> AudioBuffer* {
+    if (index < _shared_buffers.size()) {
+        return _shared_buffers[index].get();
+    }
+    return nullptr;
+}
+
 void AudioBufferManager::resize(int channels, int max_frames) {
     _channels = channels;
     _max_frames = max_frames;
@@ -55,6 +74,9 @@ void AudioBufferManager::resize(int channels, int max_frames) {
         for (auto& buf : node_ports) {
             if (buf) buf->resize(channels, max_frames);
         }
+    }
+    for (auto& buf : _shared_buffers) {
+        if (buf) buf->resize(channels, max_frames);
     }
 }
 
