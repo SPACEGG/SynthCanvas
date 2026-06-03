@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <sstream>
 
 #include "host/nodes/base/processing_node.h"
 #include "utils/logger.h"
@@ -26,12 +27,13 @@ auto AudioEngine::openStream() -> bool {
     builder.setDirection(oboe::Direction::Output)
         ->setPerformanceMode(oboe::PerformanceMode::LowLatency)
         ->setSharingMode(oboe::SharingMode::Exclusive)
-        ->setFormat(oboe::AudioFormat::Float)
-        ->setUsage(oboe::Usage::Game)
-        ->setContentType(oboe::ContentType::Sonification)
+        ->setUsage(oboe::Usage::Media)
+        ->setContentType(oboe::ContentType::Music)
         ->setChannelCount(_channel_count)
         ->setSampleRate(constants::kDefaultSampleRate)
-        ->setDataCallback(this);
+        ->setDataCallback(this)
+        ->setSampleRateConversionQuality(oboe::SampleRateConversionQuality::Medium)
+        ->setFormatConversionAllowed(true);
 
     if constexpr (constants::kEnableAudioProfiling) {
         builder.setFramesPerDataCallback(constants::kProfilingFixedBlockSize);
@@ -42,6 +44,12 @@ auto AudioEngine::openStream() -> bool {
         log("[AudioEngine] Failed to create stream. Error: ", oboe::convertToText(result));
         _stream.reset();
         return false;
+    }
+
+    // Down-size active buffer queue to 2 * Burst to minimize latency cushion
+    int32_t burst = _stream->getFramesPerBurst();
+    if (burst > 0) {
+        _stream->setBufferSizeInFrames(2 * burst);
     }
 
     _sample_rate = _stream->getSampleRate();
@@ -70,7 +78,10 @@ auto AudioEngine::openStream() -> bool {
 
         log("[AudioProfiler] Stream Established:", "\n\tAudio API: ", api_str,
             "\n\tPerformance Mode: ", mode_str, "\n\tMMAP Used: ", mmap_str,
-            "\n\tSharing Mode: ", sharing_str);
+            "\n\tSharing Mode: ", sharing_str,
+            "\n\tBuffer Size: ", _stream->getBufferSizeInFrames(),
+            "\n\tBuffer Capacity: ", _stream->getBufferCapacityInFrames(),
+            "\n\tBurst Size: ", burst);
     }
 
     return true;
@@ -210,10 +221,14 @@ auto AudioEngine::onAudioReady(oboe::AudioStream* oboe_stream, void* audio_data,
             double r95 = (p95 / deadline_ms) * 100.0;
             double r99 = (p99 / deadline_ms) * 100.0;
 
-            log("[AudioProfiler] \n\tSample rate: ", _sample_rate, ", Block size: ", num_frames,
+            int32_t buffer_size = _stream->getBufferSizeInFrames();
+            int32_t buffer_capacity = _stream->getBufferCapacityInFrames();
+            int32_t burst_size = _stream->getFramesPerBurst();
+
+            log("[AudioProfiler] \n\tSample rate: ", _sample_rate, " Block size: ", num_frames,
                 "\n\tProcess time (ms)    - P50: ", p50, " P95: ", p95, " P99: ", p99,
                 "\n\tProcessing ratio (%) - P50: ", r50, " P95: ", r95, " P99: ", r99,
-                "\n\tMax: ", _profile_max_time_ms, ", Xruns: ", _last_xrun_count);
+                "\n\tMax: ", _profile_max_time_ms, " Xruns: ", _last_xrun_count);
             _blocks_since_last_print = 0;
         }
     }
@@ -339,10 +354,66 @@ void AudioEngine::printProfilingStats() {
             double r95 = (p95 / deadline_ms) * 100.0;
             double r99 = (p99 / deadline_ms) * 100.0;
 
+            // 1. Report basic real-time metrics
             log("[AudioProfiler: FINAL] Total blocks: ", _profile_total_blocks,
-                "\n\tProcess time (ms)    - P50: ", p50, " P95: ", p95, " P99: ", p99,
+                "\n\tProcess time (ms) - P50: ", p50, " P95: ", p95, " P99: ", p99,
                 "\n\tProcessing ratio (%) - P50: ", r50, " P95: ", r95, " P99: ", r99,
                 "\n\tMax: ", _profile_max_time_ms, " Xruns: ", _last_xrun_count);
+
+            // 2. Report ASCII bar chart representing the histogram distribution
+            std::stringstream ss;
+            ss << "\n[AudioProfiler: HISTOGRAM]";
+
+            const double bucket_step = 0.2;
+            const size_t num_buckets = 15;  // 0.0ms to 3.0ms
+            uint64_t total = _profile_total_blocks;
+
+            // Loop and compile counts for bins representing 0.2ms step sizes
+            for (size_t b = 0; b < num_buckets; ++b) {
+                double min_val = b * bucket_step;
+                double max_val = (b + 1) * bucket_step;
+
+                size_t start_bin = b * 20;  // 0.2ms = 20 bins of 0.01ms resolution
+                size_t end_bin = (b + 1) * 20;
+
+                uint64_t count = 0;
+                for (size_t i = start_bin; i < end_bin; ++i) {
+                    count += _profile_histogram[i];
+                }
+
+                double pct = (static_cast<double>(count) / total) * 100.0;
+                int bar_len = static_cast<int>((pct / 100.0) * 30.0);
+                std::string bar(bar_len, '#');
+                if (count > 0 && bar_len == 0) {
+                    bar = ".";
+                }
+
+                // NOLINTNEXTLINE
+                char buf[128];
+                snprintf(buf, sizeof(buf), "\n  %3.1f - %3.1f ms [%8llu] : %s", min_val, max_val,
+                         static_cast<unsigned long long>(count), bar.c_str());
+                ss << buf;
+            }
+
+            // Compile count for the overflow bucket representing times > 3.0ms
+            uint64_t over_count = 0;
+            for (size_t i = 300; i < 5000; ++i) {
+                over_count += _profile_histogram[i];
+            }
+            double over_pct = (static_cast<double>(over_count) / total) * 100.0;
+            int over_bar_len = static_cast<int>((over_pct / 100.0) * 30.0);
+            std::string over_bar(over_bar_len, '#');
+            if (over_count > 0 && over_bar_len == 0) {
+                over_bar = ".";
+            }
+
+            // NOLINTNEXTLINE
+            char over_buf[128];
+            snprintf(over_buf, sizeof(over_buf), "\n  > 3.0 ms     [%8llu] : %s",
+                     static_cast<unsigned long long>(over_count), over_bar.c_str());
+            ss << over_buf;
+
+            log(ss.str());
         }
     }
 }
