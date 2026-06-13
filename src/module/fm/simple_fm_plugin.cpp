@@ -188,7 +188,6 @@ auto SimpleFmPlugin::stateSave(const clap_ostream* os) noexcept -> bool {
     std::string s = oss.str();
     int64_t result = os->write(os, s.c_str(), s.size());
     return std::cmp_equal(result, s.size());
-    // return std::cmp_equal(result, static_cast<int64_t>(s.size()));
 }
 
 auto SimpleFmPlugin::stateLoad(const clap_istream* is) noexcept -> bool {
