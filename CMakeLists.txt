@@ -73,3 +73,10 @@ find_program(CLANG_TIDY_EXE NAMES "clang-tidy")
 if(CLANG_TIDY_EXE)
     add_custom_target(check COMMAND "${CLANG_TIDY_EXE}" -p ${CMAKE_BINARY_DIR} ${ALL_SOURCE_FILES})
 endif()
+
+# Enable test suite
+include(CTest)
+if(BUILD_TESTING)
+    add_subdirectory(tests)
+endif()
+
