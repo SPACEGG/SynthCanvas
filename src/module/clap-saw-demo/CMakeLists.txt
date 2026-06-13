@@ -53,6 +53,12 @@ add_library(${PROJECT_NAME} MODULE
 )
 target_link_libraries(${PROJECT_NAME} clap-core clap-helpers readerwriterqueue)
 
+# Disable clang-tidy for this target
+set_target_properties(${PROJECT_NAME} PROPERTIES 
+    C_CLANG_TIDY ""
+    CXX_CLANG_TIDY ""
+)
+
 if (${CSD_INCLUDE_GUI})
     target_sources(${PROJECT_NAME} PRIVATE
     src/clap-saw-demo-editor.cpp

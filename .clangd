@@ -1,2 +1,11 @@
 CompileFlags:
   CompilationDatabase: build/android
+  Add: [
+    "-DANDROID",
+    "-D__ANDROID__",
+    "-D__ANDROID_API__=33",
+    "--target=aarch64-none-linux-android33"
+  ]
+Diagnostics:
+  ClangTidy:
+    FastCheckFilter: Loose

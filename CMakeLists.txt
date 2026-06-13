@@ -58,6 +58,28 @@ add_custom_target(build_godot
 
 ## Clang-Format / Clang-Tidy
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+# Function to recursively disable clang-tidy for all targets in a directory
+function(disable_clang_tidy_recursive dir)
+    get_property(subdirs DIRECTORY "${dir}" PROPERTY SUBDIRECTORIES)
+    foreach(subdir ${subdirs})
+        disable_clang_tidy_recursive("${subdir}")
+    endforeach()
+
+    get_property(targets DIRECTORY "${dir}" PROPERTY BUILDSYSTEM_TARGETS)
+    foreach(target ${targets})
+        set_target_properties(${target} PROPERTIES 
+            C_CLANG_TIDY ""
+            CXX_CLANG_TIDY ""
+        )
+    endforeach()
+endfunction()
+
+# Disable clang-tidy for external libraries
+foreach(lib_dir "libs/clap" "libs/clap-helpers" "libs/readerwriterqueue" "libs/rtmidi")
+    disable_clang_tidy_recursive("${CMAKE_CURRENT_SOURCE_DIR}/${lib_dir}")
+endforeach()
+
 file(GLOB_RECURSE ALL_SOURCE_FILES 
     "${CORE_DIR}/src/*.cpp" "${CORE_DIR}/src/*.h" "${CORE_DIR}/src/*.hpp"
     "${CORE_DIR}/bindings/*.cpp" "${CORE_DIR}/bindings/*.h" "${CORE_DIR}/bindings/*.hpp"

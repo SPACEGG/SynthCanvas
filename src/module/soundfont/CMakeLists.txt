@@ -19,5 +19,11 @@ target_include_directories(soundfont-plugin PRIVATE
 # Link against clap and clap-helpers libraries
 target_link_libraries(soundfont-plugin PRIVATE clap clap-helpers)
 
+# Disable clang-tidy for this target
+set_target_properties(soundfont-plugin PROPERTIES 
+    C_CLANG_TIDY ""
+    CXX_CLANG_TIDY ""
+)
+
 # Call the helper function from the parent to add the copy command
 add_plugin_post_build_copy_command(soundfont-plugin)
