@@ -1,7 +1,7 @@
 ---
 Checks: "google-*,readability-identifier-naming,modernize-*"
 WarningsAsErrors: "*"
-HeaderFilterRegex: "(src|tests|bindings)"
+HeaderFilterRegex: "core[/\\](src|tests|bindings)[/\\]"
 FormatStyle: none
 CheckOptions:
   # --- Naming Conventions (Google Style with Custom Member Prefix) ---
