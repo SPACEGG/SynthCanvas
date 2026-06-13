@@ -17,9 +17,15 @@ FetchContent_Declare(
 # Make Catch2 targets available
 FetchContent_MakeAvailable(Catch2)
 
+# Treat Catch2 headers as SYSTEM includes to prevent linter errors
+set_target_properties(Catch2 PROPERTIES INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "$<TARGET_PROPERTY:Catch2,INTERFACE_INCLUDE_DIRECTORIES>")
+set_target_properties(Catch2WithMain PROPERTIES INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "$<TARGET_PROPERTY:Catch2WithMain,INTERFACE_INCLUDE_DIRECTORIES>")
+
 # Define test executable
 add_executable(synth_canvas_tests
     sanity_test.cpp
+    simple_fm_test.cpp
+    ../src/module/fm/simple_fm_plugin.cpp
 )
 
 # Link Catch2 (using Catch2WithMain so we don't have to write main())
@@ -28,6 +34,13 @@ target_link_libraries(synth_canvas_tests
     PRIVATE
     Catch2::Catch2WithMain
     synth_canvas_core
+    clap
+    clap-helpers
+)
+
+# Include directories relative to src/
+target_include_directories(synth_canvas_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
 )
 
 # Register with CTest
