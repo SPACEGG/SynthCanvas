@@ -25,7 +25,9 @@ set_target_properties(Catch2WithMain PROPERTIES INTERFACE_SYSTEM_INCLUDE_DIRECTO
 add_executable(synth_canvas_tests
     sanity_test.cpp
     simple_fm_test.cpp
+    fm_synth_test.cpp
     ../src/module/fm/simple_fm_plugin.cpp
+    ../src/module/fm-synth/fm_synth_plugin.cpp
 )
 
 # Link Catch2 (using Catch2WithMain so we don't have to write main())
